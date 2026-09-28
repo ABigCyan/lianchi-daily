@@ -1,6 +1,6 @@
 /* 练吃日课：界面与数据（全部保存在手机本地） */
 (() => {
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.1';
 const REPO = 'ABigCyan/lianchi-daily';
 const E = window.Engine;
 const $ = s => document.querySelector(s);

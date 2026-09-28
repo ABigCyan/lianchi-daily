@@ -13,7 +13,11 @@ window.AI = (() => {
     { id: 'anthropic', name: 'Anthropic Claude', type: 'anthropic', base: 'https://api.anthropic.com' },
     { id: 'custom', name: '其他（OpenAI 兼容接口）', type: 'openai', base: '' },
   ];
-  const VISION = /(vl|vision|4v|omni|gpt-4o|gpt-4\.1|gpt-5|claude|gemini|glm-4\.?\dv|qvq|seed|kimi-k2|o3|o4|pixtral|llava|internvl)/i;
+  const VISION = /(-vl|vl-|vision|4v|omni|gpt-4o|gpt-4\.1|gpt-5|claude|gemini|glm-4\.?\dv|qvq|doubao-seed|pixtral|llava|internvl)/i;
+  // 不适合拍照识别的：OCR 专用、实时语音、代码、纯推理
+  const NOT_FOR_FOOD = /(ocr|realtime|audio|tts|asr|embedding|code|coder|image-gen|wanx)/i;
+  // 自动选择时的优先顺序：靠前的先选
+  const PREFER = [/^qwen3-vl-plus$/i, /^qwen-vl-max(-latest)?$/i, /^qwen3-vl-plus/i, /^qwen-vl-max/i, /^qwen3-vl-flash$/i, /^qwen-vl-plus/i, /^glm-4\.?\dv/i, /^doubao-seed/i, /^gpt-4o$/i, /^gpt-5/i, /-vl-/i, /vl/i, /vision/i];
   const trimBase = b => String(b || '').trim().replace(/\/+$/, '');
 
   function anthropicHeaders(key) {
@@ -24,10 +28,15 @@ window.AI = (() => {
       'content-type': 'application/json',
     };
   }
-  async function httpJson(url, opts) {
+  async function httpJson(url, opts, timeoutMs = 90000) {
     let res;
-    try { res = await fetch(url, opts); }
-    catch (e) { throw new Error('网络请求失败，请检查网络或接口地址（' + (e.message || e) + '）'); }
+    const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = ctl ? setTimeout(() => ctl.abort(), timeoutMs) : null;
+    try { res = await fetch(url, ctl ? { ...opts, signal: ctl.signal } : opts); }
+    catch (e) {
+      if (e && e.name === 'AbortError') throw new Error(`请求超过 ${timeoutMs / 1000} 秒没有返回，可能这个模型不支持看图或太慢，请换一个带“图”的模型`);
+      throw new Error('网络请求失败，请检查网络或接口地址（' + (e.message || e) + '）');
+    } finally { if (timer) clearTimeout(timer); }
     const text = await res.text();
     let data = null;
     try { data = JSON.parse(text); } catch (e) { /* 非 JSON */ }
@@ -57,7 +66,7 @@ window.AI = (() => {
       const d = await httpJson(`${base}/models`, { headers: { Authorization: 'Bearer ' + cfg.key } });
       (d.data || d.models || []).forEach(m => ids.push({ id: m.id || m.name, name: m.id || m.name }));
     }
-    ids = ids.filter(m => m.id).map(m => ({ ...m, vision: cfg.type === 'anthropic' || VISION.test(m.id) }));
+    ids = ids.filter(m => m.id).map(m => ({ ...m, vision: (cfg.type === 'anthropic' || VISION.test(m.id)) && !NOT_FOR_FOOD.test(m.id) }));
     ids.sort((a, b) => (b.vision - a.vision) || a.id.localeCompare(b.id));
     return ids;
   }
@@ -66,8 +75,9 @@ window.AI = (() => {
       const pref = models.find(m => m.id === 'claude-opus-5');
       if (pref) return pref.id;
     }
-    const v = models.find(m => m.vision);
-    return (v || models[0] || {}).id || '';
+    const vis = models.filter(m => m.vision && !/thinking/i.test(m.id));
+    for (const re of PREFER) { const hit = vis.find(m => re.test(m.id)); if (hit) return hit.id; }
+    return (vis[0] || models.find(m => m.vision) || models[0] || {}).id || '';
   }
 
   /* ---------- 内置的“饮食识别助手” ---------- */
@@ -98,7 +108,9 @@ window.AI = (() => {
       'advice 用一两句中文（不超过 80 字），结合用户这一餐的目标，说这餐碳水、蛋白质够不够，怎么调整（比如米饭少吃多少克、再加多少瘦肉）。',
       'kcal = 碳水×4 + 蛋白质×4 + 脂肪×9。数字取整。',
       '如果照片里不是食物，items 返回空数组，advice 说明原因。',
-      '只输出一个 JSON 对象，不要输出其他文字。',
+      '只输出一个 JSON 对象，不要输出其他文字，字段名必须和下面完全一致（数字不带单位）：',
+      '{"items":[{"name":"米饭","grams":200,"carbs_g":60,"protein_g":5,"fat_g":1,"kcal":269,"category":"主食碳水","note":""}],',
+      ' "total":{"carbs_g":60,"protein_g":5,"fat_g":1,"kcal":269},"flags":[],"advice":"……","confidence":0.8}',
     ].join('\n');
   }
   const SCHEMA = {
@@ -146,11 +158,21 @@ window.AI = (() => {
     const a = s.indexOf('{'), b = s.lastIndexOf('}');
     if (a < 0 || b < a) throw new Error('模型没有返回 JSON：' + s.slice(0, 120));
     const obj = JSON.parse(s.slice(a, b + 1));
-    obj.items = (obj.items || []).map(it => ({
-      name: String(it.name || '未知'), grams: Math.round(+it.grams || 0),
-      carbs_g: Math.round(+it.carbs_g || 0), protein_g: Math.round(+it.protein_g || 0), fat_g: Math.round(+it.fat_g || 0),
-      kcal: Math.round(+it.kcal || 0), category: it.category || '其他', note: it.note || '',
-    }));
+    // 不同模型的字段名不完全一样（OpenAI 兼容接口不强制结构），这里兼容常见写法
+    const pick = (o, keys) => { for (const k of keys) if (o[k] != null && o[k] !== '') return +String(o[k]).replace(/[^\d.]/g, '') || 0; return 0; };
+    const G = ['grams', 'weight_g', 'weight', 'gram', 'amount_g', '重量'], C = ['carbs_g', 'carb_g', 'carbs', 'carb', 'carbohydrate_g', 'carbohydrates', '碳水'];
+    const P = ['protein_g', 'protein', 'proteins', '蛋白质'], F = ['fat_g', 'fat', 'fats', '脂肪'], K = ['kcal', 'calories', 'energy_kcal', 'calorie', '热量'];
+    const confs = [];
+    obj.items = (obj.items || obj.foods || []).map(it => {
+      const c = pick(it, C), p = pick(it, P), f = pick(it, F);
+      if (it.confidence != null) confs.push(+it.confidence);
+      return {
+        name: String(it.name || it.food || '未知'), grams: Math.round(pick(it, G)),
+        carbs_g: Math.round(c), protein_g: Math.round(p), fat_g: Math.round(f),
+        kcal: Math.round(pick(it, K) || (c * 4 + p * 4 + f * 9)), category: it.category || '其他', note: it.note || '',
+      };
+    });
+    if (obj.confidence == null && confs.length) obj.confidence = confs.reduce((a, b) => a + b, 0) / confs.length;
     const t = obj.items.reduce((s, it) => ({ carbs_g: s.carbs_g + it.carbs_g, protein_g: s.protein_g + it.protein_g, fat_g: s.fat_g + it.fat_g, kcal: s.kcal + it.kcal }), { carbs_g: 0, protein_g: 0, fat_g: 0, kcal: 0 });
     obj.total = t;
     obj.flags = Array.isArray(obj.flags) ? obj.flags.map(String) : [];
@@ -203,6 +225,7 @@ window.AI = (() => {
     }
     const msg = d.choices && d.choices[0] && d.choices[0].message;
     const content = msg && (typeof msg.content === 'string' ? msg.content : (msg.content || []).map(x => x.text || '').join(''));
+    if (typeof window !== 'undefined' && window.__AI_DEBUG) window.__AI_DEBUG(content);
     return parseJson(content);
   }
 
