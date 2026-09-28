@@ -145,7 +145,7 @@ window.AI = (() => {
   };
   function userText(ctx) {
     return [
-      `这是我的${ctx.meal || '一餐'}照片。`,
+      ctx.text ? `我吃了：${ctx.text}（没有照片，请按文字描述估算）` : `这是我的${ctx.meal || '一餐'}照片。`,
       ctx.goal ? `我现在是${ctx.goal === 'cut' ? '减脂' : '增肌'}期。` : '',
       ctx.target ? `这一餐的目标：碳水约 ${ctx.target.c}g，蛋白质约 ${ctx.target.p}g。` : '',
       ctx.eaten ? `今天之前已记录：碳水 ${ctx.eaten.c}g，蛋白质 ${ctx.eaten.p}g；全天目标碳水 ${ctx.day.c}g、蛋白质 ${ctx.day.p}g。` : '',
@@ -183,17 +183,17 @@ window.AI = (() => {
 
   async function analyze(cfg, dataUrl, ctx) {
     const base = trimBase(cfg.base);
-    if (!base || !cfg.key || !cfg.model) throw new Error('请先在“设置 → 拍照识别”里填好接口、Key 并选择模型');
-    const b64 = dataUrl.split(',')[1];
+    if (!base || !cfg.key || !cfg.model) throw new Error('请先在“我的 → 大模型接口”里填好接口、Key 并选择模型');
+    const b64 = dataUrl ? dataUrl.split(',')[1] : '';
     const sys = systemPrompt();
     const text = userText(ctx);
     if (cfg.type === 'anthropic') {
       const body = {
         model: cfg.model, max_tokens: 4000, system: sys,
-        messages: [{ role: 'user', content: [
+        messages: [{ role: 'user', content: dataUrl ? [
           { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } },
           { type: 'text', text },
-        ] }],
+        ] : [{ type: 'text', text }] }],
         output_config: { format: { type: 'json_schema', schema: SCHEMA } },
       };
       let d;
@@ -211,7 +211,7 @@ window.AI = (() => {
       model: cfg.model,
       messages: [
         { role: 'system', content: sys },
-        { role: 'user', content: [{ type: 'image_url', image_url: { url: dataUrl } }, { type: 'text', text }] },
+        { role: 'user', content: dataUrl ? [{ type: 'image_url', image_url: { url: dataUrl } }, { type: 'text', text }] : text },
       ],
       response_format: { type: 'json_object' },
     };
@@ -247,5 +247,20 @@ window.AI = (() => {
     });
   }
 
-  return { PRESETS, listModels, defaultModel, analyze, compress, systemPrompt };
+  /* 热量数据分析：只发送汇总数字，不发照片 */
+  async function analyzeWeek(cfg, summary) {
+    const base = trimBase(cfg.base);
+    if (!base || !cfg.key || !cfg.model) throw new Error('请先在“我的 → 大模型接口”里填好接口、Key 并选择模型');
+    const sys = '你是按《健身Excel超级套表》（B站好人松松）执行饮食训练的教练助手。根据用户最近几天的热量和体重数据，用中文给出不超过 200 字的分析：先一句话结论，再列 2-3 条具体可执行的建议（比如每天少吃多少克米饭、瘦肉吃够没有）。套表规则：减脂 2 周约减重 2%；体重只比较 1-2 周平均值；只吃瘦肉，不吃高脂肉和糖油混合物；减脂期记录到的摄入本就低于实际（原表预留了 10-20%）。不要编造数据里没有的信息。';
+    const user = '我的数据（JSON）：' + JSON.stringify(summary);
+    if (cfg.type === 'anthropic') {
+      const d = await httpJson(`${base}/v1/messages`, { method: 'POST', headers: anthropicHeaders(cfg.key), body: JSON.stringify({ model: cfg.model, max_tokens: 2000, system: sys, messages: [{ role: 'user', content: user }] }) });
+      return (d.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
+    }
+    const d = await httpJson(`${base}/chat/completions`, { method: 'POST', headers: { Authorization: 'Bearer ' + cfg.key, 'content-type': 'application/json' }, body: JSON.stringify({ model: cfg.model, messages: [{ role: 'system', content: sys }, { role: 'user', content: user }] }) });
+    const m = d.choices && d.choices[0] && d.choices[0].message;
+    return String(m && (typeof m.content === 'string' ? m.content : (m.content || []).map(x => x.text || '').join('')) || '').trim();
+  }
+
+  return { PRESETS, listModels, defaultModel, analyze, analyzeWeek, compress, systemPrompt };
 })();

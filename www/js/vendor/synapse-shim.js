@@ -1,0 +1,1 @@
+window.synapse = window.outsystemsSynapse;

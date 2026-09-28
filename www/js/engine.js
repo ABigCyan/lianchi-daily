@@ -72,7 +72,9 @@ window.Engine = (() => {
   /* ---------- 3. 热量与宏量 ---------- */
   function calories(p, goal) {
     const M = p.sex === 'M';
-    const bmr = Math.round(p.weight * 9.99 + p.height * 6.25 - p.age * 4.92 + (M ? 5 : -161));
+    const formula = Math.round(p.weight * 9.99 + p.height * 6.25 - p.age * 4.92 + (M ? 5 : -161));
+    // 用户手动输入基础代谢（例如体测仪或医院测得）时优先使用，否则按表5 G13 公式
+    const bmr = +p.bmrOverride > 500 ? Math.round(+p.bmrOverride) : formula;
     const b = Math.round(bmr / 0.7);
     const c = p.lift === false ? 0 : R.liftBurn[M ? 'M' : 'F'][p.level || 'new'];
     const cw = cardioWeekly(p);
@@ -80,7 +82,7 @@ window.Engine = (() => {
     const factor = goal === 'cut' ? R.cutFactor.value : R.bulkFactor.value;
     const e1 = b + c + d, e2 = b + d;
     const f1 = Math.round(e1 * factor), f2 = Math.round(e2 * factor);
-    return { bmr, b, c, d, cardio: cw, e1, e2, f1, f2, factor };
+    return { bmr, bmrFormula: formula, bmrManual: +p.bmrOverride > 500, b, c, d, cardio: cw, e1, e2, f1, f2, factor };
   }
   function macros(p, goal, cal) {
     const M = p.sex === 'M', w = p.weight;
