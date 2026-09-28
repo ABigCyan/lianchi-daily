@@ -1,0 +1,12 @@
+{
+  "appId": "com.abigcyan.lianchi",
+  "appName": "练吃日课",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "CapacitorHttp": { "enabled": true },
+    "LocalNotifications": { "iconColor": "#285C8C" }
+  }
+}

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">练吃日课</string>
+    <string name="title_activity_main">练吃日课</string>
+    <string name="package_name">com.abigcyan.lianchi</string>
+    <string name="custom_url_scheme">com.abigcyan.lianchi</string>
+</resources>
