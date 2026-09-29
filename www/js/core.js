@@ -1,6 +1,6 @@
 /* 核心：存储、每天的卡片、训练、能量计算、奖励（界面文件共用） */
 window.C = (() => {
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.7.0-ai.3';
 const REPO = 'ABigCyan/lianchi-daily';
 const E = window.Engine;
 const $ = s => document.querySelector(s);

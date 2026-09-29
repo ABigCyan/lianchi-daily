@@ -216,22 +216,24 @@ async function drawLocal() {
   const box = $('#loc-box'); if (!box || box.hidden) return;
   const inf = await LocalAI.info(), p = LocalAI.prefs(), dl = LocalAI.dl;
   if (!inf.available) { box.innerHTML = `<section class="list mat"><div class="row" style="grid-template-columns:1fr"><span class="row-main"><span class="row-title">这台设备不能用</span><span class="row-sub" style="white-space:normal">${esc(inf.reason || '')}</span></span></div></section>`; return; }
-  let h = '<section class="fsec"><h3>模型</h3><div class="list mat">';
+  let h = '<section class="fsec"><h3>模型</h3><div class="list mat loc-list">';
   for (const m of LocalAI.MODELS) {
     const have = inf.dev || await LocalAI.exists(m), part = have ? 0 : await LocalAI.partial(m), on = p.model === m.id, busy = dl.running && dl.id === m.id;
     const got = busy ? dl.bytes : part, pct = Math.min(100, Math.round(got / m.size * 100));
     let act;
-    if (inf.dev) act = '<span class="row-val">电脑调试</span>';
+    if (inf.dev) act = '<span class="t-cap l3">电脑调试</span>';
     else if (have) act = `<button class="tbtn" data-loc-del="${m.id}">删除</button>`;
     else if (busy) act = `<button class="tbtn" data-loc-pause>暂停</button>`;
     else act = `<button class="tbtn" data-loc-dl="${m.id}" ${dl.running ? 'disabled' : ''}>${part ? '继续' : '下载'}</button>`;
-    h += `<div class="row loc-row" style="grid-template-columns:auto 1fr auto"><button class="hit" data-loc-pick="${m.id}" aria-label="使用 ${esc(m.name)}" style="margin:0" ${have || inf.dev ? '' : 'disabled'}>${Kit.chk(on && (have || inf.dev))}</button>
-      <span class="row-main"><span class="row-title">${esc(m.name)} <span class="t-cap l3">${esc(m.tag)} · ${mb(m.size)}</span></span>
-      <span class="row-sub" data-loc-sub="${m.id}">${have ? (on ? '正在使用 · ' : '已下载 · ') + esc(m.note) : got ? `已下载 ${mb(got)} / ${mb(m.size)}（${pct}%）${!busy && dl.error && dl.id === m.id ? ' · ' + esc(dl.error) : ''}` : esc(m.note)}</span>
-      ${!have && got ? `<span class="progress loc-bar"><i data-loc-bar="${m.id}" style="width:${pct}%"></i></span>` : ''}</span>${act}</div>`;
+    const sub = have ? `${on ? '正在使用' : '已下载'} · ${esc(m.note)}` : got ? `${mb(got)} / ${mb(m.size)} · ${pct}%${!busy && dl.error && dl.id === m.id ? ' · ' + esc(dl.error) : ''}` : `${mb(m.size)} · ${esc(m.note)}`;
+    h += `<div class="loc-row"><button class="loc-pick" data-loc-pick="${m.id}" aria-label="使用 ${esc(m.name)}" ${have || inf.dev ? '' : 'disabled'}>${Kit.chk(on && (have || inf.dev))}</button>
+      <div class="loc-main"><div class="loc-name">${esc(m.name)}<span class="loc-tag">${esc(m.tag)}</span></div><div class="loc-sub" data-loc-sub="${m.id}">${sub}</div>
+      ${!have && got ? `<div class="loc-bar"><i data-loc-bar="${m.id}" style="width:${pct}%"></i></div>` : ''}</div>
+      <div class="loc-act">${act}</div></div>`;
   }
   h += '</div></section>';
-  h += `<section class="list mat"><div class="frow"><span class="lbl">助手使用</span><div class="segmented" style="justify-self:end" data-loc-use>${[['cloud', '云端'], ['local', '内置'], ['auto', '没网时内置']].map(([k, n]) => `<button data-v="${k}" aria-pressed="${p.use === k}">${n}</button>`).join('')}</div></div></section>`;
+  h += `<section class="fsec"><h3>助手使用</h3><div class="list mat"><div class="loc-use"><div class="segmented loc-seg" data-loc-use>${[['cloud', '云端'], ['local', '内置'], ['auto', '没网时内置']].map(([k, n]) => `<button data-v="${k}" aria-pressed="${p.use === k}">${n}</button>`).join('')}</div></div></div>
+    <div class="list-footer">“没网时内置”：有网用云端模型，断网自动换成内置模型</div></section>`;
   if (inf.ramMB) h += `<div class="list-footer">这台手机：${inf.cores} 核，内存 ${(inf.ramMB / 1024).toFixed(1)} GB（当前可用 ${(inf.availMB / 1024).toFixed(1)} GB）</div>`;
   box.innerHTML = h;
   box.querySelectorAll('[data-loc-pick]').forEach(b => b.onclick = () => { LocalAI.setPrefs({ model: b.dataset.locPick }); drawLocal(); });
@@ -267,7 +269,7 @@ async function drawLocal() {
     if (!bar && d.running) { drawLocal(); return; }
     const pct = d.total ? Math.min(100, Math.round(d.bytes / d.total * 100)) : 0;
     if (bar) bar.style.width = pct + '%';
-    if (sub) sub.textContent = `已下载 ${mb(d.bytes)} / ${mb(d.total)}（${pct}%）${d.error ? ' · ' + d.error : ''}`;
+    if (sub) sub.textContent = `${mb(d.bytes)} / ${mb(d.total)} · ${pct}%${d.error ? ' · ' + d.error : ''}`;
   });
 }
 function bindLocal() {
