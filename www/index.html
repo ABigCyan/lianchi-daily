@@ -2,22 +2,22 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#E8EAEE" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0B0C0F" media="(prefers-color-scheme: dark)">
 <title>练吃日课</title>
 <link rel="stylesheet" href="css/app.css">
 </head>
-<body>
-<div class="shell" id="app"><div class="loading">正在载入…</div></div>
-<nav class="tabs" id="tabs" hidden><div class="in">
-  <button data-tab="today"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="4" y="4" width="16" height="17" rx="4"/><path d="M8 2.5v3M16 2.5v3M8.5 13l2.5 2.5 4.5-5"/></svg>今天</button>
-  <button data-tab="train"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 9v6M6 7v10M18 7v10M21 9v6M6 12h12"/></svg>训练</button>
-  <button data-tab="food"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 11h16a8 8 0 0 1-16 0zM9 7c0-1.2 1-1.8 1-3.5M14 7c0-1.2 1-1.8 1-3.5"/></svg>饮食</button>
-  <button data-tab="data"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 20V11M12 20V5M19 20v-6"/></svg>数据</button>
-  <button data-tab="me"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20.5c1.2-3.6 4.2-5.3 7.5-5.3s6.3 1.7 7.5 5.3"/></svg>我的</button>
+<body data-tab="today">
+<div class="ambient" aria-hidden="true"><i></i><i></i><i></i></div>
+<div class="navbar" id="navbar" aria-hidden="true"><span class="glass"></span></div>
+<main class="page" id="app"><div class="loading">正在载入…</div></main>
+<nav class="tabbar" id="tabs" hidden><div class="glass">
+  <button data-tab="today"></button><button data-tab="train"></button><button data-tab="food"></button><button data-tab="data"></button><button data-tab="me"></button>
 </div></nav>
 <canvas id="confetti" hidden></canvas>
-<div id="toast" class="toast" hidden></div>
+<div id="toast" class="toast glass" role="status" hidden></div>
 <div id="modal" class="modal" hidden></div>
 <input type="file" id="photoInput" accept="image/*" hidden>
 <script src="js/vendor/capacitor.js"></script>
@@ -26,11 +26,13 @@
 <script src="js/vendor/local-notifications.js"></script>
 <script src="js/vendor/filesystem.js"></script>
 <script src="js/vendor/share.js"></script>
+<script src="js/vendor/haptics.js"></script>
 <script src="js/data-rules.js"></script>
 <script src="js/data-training.js"></script>
 <script src="js/holidays.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/ai.js"></script>
+<script src="js/ui-kit.js"></script>
 <script src="js/core.js"></script>
 <script src="js/ui-today.js"></script>
 <script src="js/ui-train.js"></script>

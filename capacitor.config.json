@@ -3,10 +3,16 @@
   "appName": "练吃日课",
   "webDir": "www",
   "android": {
-    "allowMixedContent": false
+    "allowMixedContent": false,
+    "backgroundColor": "#E9EBEF"
   },
   "plugins": {
-    "CapacitorHttp": { "enabled": true },
-    "LocalNotifications": { "iconColor": "#285C8C" }
-  }
+    "CapacitorHttp": {
+      "enabled": true
+    },
+    "LocalNotifications": {
+      "iconColor": "#285C8C"
+    }
+  },
+  "backgroundColor": "#E9EBEF"
 }

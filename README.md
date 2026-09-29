@@ -1,6 +1,6 @@
 # 练吃日课
 
-一个按 **《健身Excel超级套表》（B站好人松松）** 的规则，自动生成减脂/增肌饮食和训练计划，并每天按时间线提醒、打卡、记录的安卓 App。数据只保存在手机上，不需要联网（拍照识别、检查更新、更新节假日时才联网）。
+一个按 **《健身Excel超级套表》（B站好人松松）** 的规则，自动生成减脂/增肌饮食和训练计划，并每天按时间线提醒、打卡、记录的安卓 App。界面设计见 [DESIGN.md](DESIGN.md)。数据只保存在手机上，不需要联网（拍照识别、检查更新、更新节假日时才联网）。
 
 算法和每条规则的出处见 [ALGORITHM.md](ALGORITHM.md)。
 
@@ -21,7 +21,9 @@
 
 ## 安装
 
-到 [Releases](https://github.com/ABigCyan/lianchi-daily/releases) 下载最新的 `lianchi-daily-x.y.z.apk`，在手机上打开安装（需要允许“安装未知来源应用”）。
+到 [Releases](https://github.com/ABigCyan/lianchi-daily/releases) 下载：
+
+- **安卓**：`lianchi-daily-x.y.z.apk`，在手机上打开安装（需要允许“安装未知来源应用”）。以后的新版本可以直接覆盖安装。
 
 ## 开发
 
@@ -46,5 +48,6 @@ GitHub Actions 会自动编译签名的 APK 并发布到 Releases。签名密钥
 - 动作图片：[free-exercise-db](https://github.com/yuhonas/free-exercise-db)，Unlicense（公有领域）。
 - 节假日数据：[holiday-cn](https://github.com/NateScarlet/holiday-cn)，整理自国务院办公厅通知。
 - 打包框架：[Capacitor](https://capacitorjs.com)，MIT。
+- 界面字体：[Inter](https://rsms.me/inter/)，SIL Open Font License 1.1。
 
 本应用是个人学习工具，不能代替医生建议。

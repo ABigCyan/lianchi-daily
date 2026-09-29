@@ -1,6 +1,6 @@
 /* 核心：存储、每天的卡片、训练、能量计算、奖励（界面文件共用） */
 window.C = (() => {
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const REPO = 'ABigCyan/lianchi-daily';
 const E = window.Engine;
 const $ = s => document.querySelector(s);
@@ -233,18 +233,18 @@ const LEVELS = ['新手', '入门', '坚持者', '自律者', '硬核', '铁人'
 function levelOf(pts) { const lv = Math.min(LEVELS.length - 1, Math.floor(pts / 600)); return { lv, name: LEVELS[lv], into: pts - lv * 600, need: 600, max: lv === LEVELS.length - 1 }; }
 function celebrate(before) { const after = badges().filter(b => b.got); if (after.length > before) { setTimeout(() => toast('解锁奖章：' + after[after.length - 1].name), 1200); confetti(); } }
 
-/* ---------- 通用界面 ---------- */
+/* ---------- 通用界面（HIG 风格：顶部胶囊提示、底部面板、操作表） ---------- */
 let toastT;
-function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2300); }
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; t.style.animation = 'none'; t.offsetHeight; t.style.animation = ''; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2200); }
 function sheet(html, onBind) {
-  const m = $('#modal'); m.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`; m.hidden = false;
+  const m = $('#modal'); m.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><span class="grab"></span>${html}</div>`; m.hidden = false;
   m.onclick = e => { if (e.target === m) close(); };
   if (onBind) onBind(m);
 }
 function close() { const m = $('#modal'); m.hidden = true; m.innerHTML = ''; }
-/* 选择修改范围：只改今天 / 以后都这样 */
+/* 操作表：只改今天 / 以后都这样 */
 function askScope(label, cb) {
-  sheet(`<h2>${esc(label)}</h2><div class="stack"><button class="btn ghost block" data-sc="day">只改今天</button><button class="btn primary block" data-sc="tpl">以后都这样</button><button class="textbtn" data-sc="x">取消</button></div>`, () => {
+  sheet(`<h2>${esc(label)}</h2><div class="list"><button class="row" data-sc="day" style="grid-template-columns:1fr"><span class="row-title" style="text-align:center;color:var(--blue)">只改今天</span></button><button class="row" data-sc="tpl" style="grid-template-columns:1fr"><span class="row-title" style="text-align:center;color:var(--blue);font-weight:600">以后都这样</span></button></div><button class="pill glass wide" data-sc="x">取消</button>`, () => {
     $$('[data-sc]').forEach(b => b.onclick = () => { close(); if (b.dataset.sc !== 'x') cb(b.dataset.sc); });
   });
 }
@@ -252,8 +252,8 @@ function confetti() {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   const c = $('#confetti'), x = c.getContext('2d'); c.hidden = false; c.width = innerWidth; c.height = innerHeight;
   const cs = getComputedStyle(document.documentElement);
-  const cols = ['--train', '--food', '--done', '--gold'].map(v => cs.getPropertyValue(v).trim());
-  const P = [...Array(80)].map(() => ({ x: innerWidth / 2, y: innerHeight * .35, vx: (Math.random() - .5) * 12, vy: Math.random() * -12 - 3, s: Math.random() * 6 + 4, r: Math.random() * 6, c: cols[Math.floor(Math.random() * 4)] }));
+  const cols = ['--blue', '--orange', '--green', '--pink', '--yellow'].map(v => cs.getPropertyValue(v).trim());
+  const P = [...Array(80)].map(() => ({ x: innerWidth / 2, y: innerHeight * .3, vx: (Math.random() - .5) * 12, vy: Math.random() * -12 - 3, s: Math.random() * 6 + 4, r: Math.random() * 6, c: cols[Math.floor(Math.random() * cols.length)] }));
   let f = 0;
   (function step() {
     x.clearRect(0, 0, c.width, c.height);
@@ -262,12 +262,13 @@ function confetti() {
   })();
 }
 const imgUrl = (ex, f) => `img/ex/${ex.img}/${f || 0}.jpg`;
-function dateLabel(d) { const x = E.pd(d); return `${x.getMonth() + 1}月${x.getDate()}日 周${DOW[E.dow(d)]}`; }
-function head(title, d, right) {
-  const nav = d ? `<div class="date"><button class="nav-arrow" data-nav="-1" aria-label="前一天" ${d <= S.profile.startDate ? 'disabled' : ''}>‹</button><span>${dateLabel(d)}</span><button class="nav-arrow" data-nav="1" aria-label="后一天">›</button></div>` : '';
-  return `<div class="head"><div><h1>${title}</h1>${nav}</div>${right || ''}</div>`;
+function dateLabel(d) { const x = E.pd(d); return `${x.getMonth() + 1}月${x.getDate()}日 星期${DOW[E.dow(d)]}`; }
+/* 大标题 + 日期切换（玻璃胶囊） */
+function head(title, d, trailing) {
+  const cap = d ? `<div class="gcap glass"><button class="gbtn" data-nav="-1" aria-label="前一天" ${d <= S.profile.startDate ? 'disabled' : ''}>${Kit.I.left}</button><button class="gbtn" data-nav="1" aria-label="后一天">${Kit.I.right}</button></div>` : '';
+  return Kit.largeTitle(title, d ? dateLabel(d) + (trailing ? ' · ' + trailing : '') : (trailing || ''), cap);
 }
-function bindHead() { $$('[data-nav]').forEach(b => b.onclick = () => { S.day = E.addDays(S.day, +b.dataset.nav); S.edit = false; render(); scrollTo(0, 0); }); }
+function bindHead() { $$('[data-nav]').forEach(b => b.onclick = () => { S.day = E.addDays(S.day, +b.dataset.nav); S.edit = false; Kit.haptic('light'); render(); scrollTo(0, 0); }); }
 function render() { window.__render(); }
 
 return { APP_VERSION, REPO, E, $, $$, esc, today, DOW, uid, src, LS, S, month, peek, rec, save, saveCustom, allDays, ICON, holiday, dayInfo, TYPE,
