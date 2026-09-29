@@ -426,7 +426,7 @@ async function ask(q) {
 /* ---------- 离线模式：内置小模型 ---------- */
 // 小模型不擅长自己多次调用工具：App 先检索套表、整理好“我的计划”，模型只负责组织语言；
 // 要改计划时，让模型只输出一个固定格式的 JSON 指令，再走和云端一样的确认卡。
-function useLocal() { const p = LocalAI.prefs(); return p.use === 'local' || (p.use === 'auto' && !navigator.onLine); }
+function useLocal() { const p = LocalAI.prefs(); return p.enabled && (p.use === 'local' || (p.use === 'auto' && !navigator.onLine)); }
 const EDIT_RE = /(改|调|换|删|去掉|不吃|不练|加练|推迟|提前|挪|目标|设成|设为|设置|取消|恢复|休息一天|别练)/;
 function planBrief(d) {
   const pl = S.plan, info = dayInfo(d), { meals } = tasksFor(d);
@@ -541,7 +541,6 @@ async function askLocal(q, img) {
     st.view.push(live); draw();
     const sys = '你是“练吃日课”的离线助手。只复述下面【我的计划】和【资料】里写了的内容，不要加任何资料里没有的建议或理由（比如休息、训练强度、多喝水这类，资料没写就不要说）。资料里没有答案，就直接说“套表里没有写这个”。每个要点后面用括号写出处，出处只能照抄资料前面方括号里的内容，例如（表17 第32行）。用中文，先说结论和具体做法，不超过 150 字。';
     const user = `【我的计划】\n${planBrief(d)}\n\n【资料】\n${src || '（没有找到相关原文）'}\n\n【问题】${question} /no_think`;
-    window.__lastLocalPrompt = user; // 调试用：看模型实际读到的资料
     const r = await LocalAI.chat([{ role: 'system', content: sys }, { role: 'user', content: user }], { signal: ctl.signal, onToken, maxTokens: 400, temperature: 0.2 });
     live.t = LocalAI.clean(r.text) || '（没有回答）'; delete live.live;
     st.view.push({ k: 'step', t: statLine(r.stats) });

@@ -12,6 +12,10 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
+import java.io.InputStream;
+import java.io.RandomAccessFile;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -49,6 +53,9 @@ public class LocalLlmPlugin extends Plugin {
     }
 
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    private final ExecutorService downloader = Executors.newSingleThreadExecutor();
+    private volatile boolean dlCancel = false;
+    private volatile boolean dlRunning = false;
     private volatile long handle = 0;
     private volatile String loadedPath = "";
 
@@ -171,6 +178,128 @@ public class LocalLlmPlugin extends Plugin {
                 call.reject("生成失败：" + t.getMessage());
             }
         });
+    }
+
+    /** 模型目录：App 私有目录 files/models（卸载 App 时一起删除） */
+    private File modelDir() {
+        File d = new File(getContext().getFilesDir(), "models");
+        if (!d.exists()) d.mkdirs();
+        return d;
+    }
+
+    /** 模型文件信息：是否下载完整、已下载多少（没下完的在 .part 里） */
+    @PluginMethod
+    public void fileInfo(PluginCall call) {
+        String name = call.getString("file", "");
+        long size = call.getLong("size", 0L);
+        File f = new File(modelDir(), name), part = new File(modelDir(), name + ".part");
+        JSObject r = new JSObject();
+        r.put("done", f.exists() && (size <= 0 || f.length() == size));
+        r.put("partial", part.exists() ? part.length() : 0);
+        r.put("path", f.getAbsolutePath());
+        r.put("downloading", dlRunning);
+        call.resolve(r);
+    }
+
+    /**
+     * 下载模型：断点续传（先写 .part，完成后改名），每 300ms 通知一次进度 "download" {file, bytes, total}。
+     * 大文件不经过 JS，也不怕页面切换；cancelDownload 可以随时停下，下次接着下。
+     */
+    @PluginMethod
+    public void download(PluginCall call) {
+        final String url = call.getString("url"), name = call.getString("file");
+        final long expect = call.getLong("size", 0L);
+        if (url == null || name == null || name.contains("/")) { call.reject("参数不对"); return; }
+        if (dlRunning) { call.reject("已经在下载了"); return; }
+        dlCancel = false;
+        dlRunning = true;
+        downloader.execute(() -> {
+            File part = new File(modelDir(), name + ".part"), out = new File(modelDir(), name);
+            HttpURLConnection c = null;
+            try {
+                long have = part.exists() ? part.length() : 0;
+                String loc = url;
+                for (int hop = 0; hop < 6; hop++) {  // 自己跟随跳转，保证 Range 头带到最终地址
+                    c = (HttpURLConnection) new URL(loc).openConnection();
+                    c.setInstanceFollowRedirects(false);
+                    c.setConnectTimeout(20000);
+                    c.setReadTimeout(30000);
+                    c.setRequestProperty("User-Agent", "lianchi-daily");
+                    if (have > 0) c.setRequestProperty("Range", "bytes=" + have + "-");
+                    int code = c.getResponseCode();
+                    if (code >= 300 && code < 400 && c.getHeaderField("Location") != null) {
+                        loc = new URL(new URL(loc), c.getHeaderField("Location")).toString();
+                        c.disconnect();
+                        continue;
+                    }
+                    break;
+                }
+                int code = c.getResponseCode();
+                if (code == 416 && expect > 0 && have == expect) { /* 已经下完 */ }
+                else if (code != 200 && code != 206) throw new Exception("服务器返回 " + code);
+                if (code == 200) have = 0;  // 不支持续传：从头下
+                long total = expect > 0 ? expect : (code == 206 ? have + c.getContentLengthLong() : c.getContentLengthLong());
+                if (code != 416) {
+                    try (InputStream in = c.getInputStream(); RandomAccessFile raf = new RandomAccessFile(part, "rw")) {
+                        raf.setLength(have);
+                        raf.seek(have);
+                        byte[] buf = new byte[256 * 1024];
+                        long last = 0;
+                        int n;
+                        while ((n = in.read(buf)) > 0) {
+                            if (dlCancel) throw new InterruptedException("已暂停");
+                            raf.write(buf, 0, n);
+                            have += n;
+                            long now = System.currentTimeMillis();
+                            if (now - last > 300) { last = now; progress(name, have, total, false, null); }
+                        }
+                    }
+                }
+                if (expect > 0 && part.length() != expect) throw new Exception("文件不完整（" + part.length() + "/" + expect + "），再点一次会接着下载");
+                if (out.exists()) out.delete();
+                if (!part.renameTo(out)) throw new Exception("保存失败");
+                progress(name, out.length(), out.length(), true, null);
+                JSObject r = new JSObject();
+                r.put("path", out.getAbsolutePath());
+                call.resolve(r);
+            } catch (InterruptedException e) {
+                progress(name, part.length(), expect, false, "已暂停");
+                call.reject("已暂停");
+            } catch (Exception e) {
+                progress(name, part.length(), expect, false, String.valueOf(e.getMessage()));
+                call.reject("下载失败：" + e.getMessage());
+            } finally {
+                if (c != null) c.disconnect();
+                dlRunning = false;
+            }
+        });
+    }
+
+    private void progress(String file, long bytes, long total, boolean done, String error) {
+        JSObject ev = new JSObject();
+        ev.put("file", file);
+        ev.put("bytes", bytes);
+        ev.put("total", total);
+        ev.put("done", done);
+        if (error != null) ev.put("error", error);
+        notifyListeners("download", ev);
+    }
+
+    @PluginMethod
+    public void cancelDownload(PluginCall call) {
+        dlCancel = true;
+        call.resolve();
+    }
+
+    @PluginMethod
+    public void deleteModel(PluginCall call) {
+        String name = call.getString("file", "");
+        if (name.contains("/")) { call.reject("参数不对"); return; }
+        File f = new File(modelDir(), name), part = new File(modelDir(), name + ".part");
+        if (handle != 0 && loadedPath.equals(f.getAbsolutePath())) { nativeStop(handle); worker.execute(() -> { nativeFree(handle); handle = 0; loadedPath = ""; }); }
+        f.delete();
+        part.delete();
+        call.resolve();
     }
 
     @PluginMethod

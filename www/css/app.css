@@ -462,3 +462,24 @@ td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .attach-x{position:absolute;top:-6px;right:-6px;width:24px;height:24px;border-radius:50%;background:var(--ink);color:var(--bg);font-size:15px;line-height:24px}
 .msg-img{display:block;max-width:160px;max-height:160px;border-radius:12px;margin-bottom:6px}
 .msg.bot a{color:var(--accent);word-break:break-all;text-decoration:underline;text-underline-offset:2px}
+
+/* 右侧说明文字过长时先省略它，不挤标题（小屏） */
+.row-val{min-width:0}
+.row-val .rv{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:40vw}
+/* 滚轮时间框：按内容宽度，不要默认的 20 个字符宽 */
+.time-in.tw-input,.time-in{width:5.2em;text-align:center}
+.loc-bar{display:block;height:4px;margin-top:6px;border-radius:99px;background:var(--fill2);overflow:hidden}
+.loc-bar i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .3s}
+.loc-row .row-sub{white-space:normal}
+/* 菜单行：标题完整显示，右侧说明文字不够放时省略 */
+.row[data-sub]:not([style]){grid-template-columns:48px minmax(max-content,1fr) minmax(0,auto)}
+.row-val .rv{min-width:0}
+/* 小屏（≤360px）：收紧边距 */
+@media (max-width:360px){
+  .page{padding-left:14px;padding-right:14px}
+  .row{padding-left:14px;padding-right:12px;gap:10px}
+  .row[data-sub]:not([style]){grid-template-columns:36px minmax(max-content,1fr) minmax(0,auto)}
+  .card{padding:16px}
+  .largetitle h1{font-size:30px}
+  .row-val .rv{max-width:34vw}
+}

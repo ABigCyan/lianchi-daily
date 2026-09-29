@@ -10,11 +10,10 @@ const MODELS = [
     url: 'https://modelscope.cn/models/unsloth/Qwen3-0.6B-GGUF/resolve/master/Qwen3-0.6B-Q4_0.gguf', note: '更快、更省电，回答质量差一些' },
 ];
 const DIR = 'models';
-const store = { get: () => Object.assign({ model: 'qwen3-1.7b', use: 'cloud', have: {}, threads: 4 }, C.LS.get('local') || {}), set: v => C.LS.set('local', v) };
+const store = { get: () => Object.assign({ enabled: false, model: 'qwen3-1.7b', use: 'cloud', have: {}, threads: 4 }, C.LS.get('local') || {}), set: v => C.LS.set('local', v) };
 const native = () => !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
 let plugin = null;
 const P = () => plugin || (plugin = window.capacitorExports && window.capacitorExports.registerPlugin('LocalLlm'));
-const FS = () => window.capacitorFilesystemPluginCapacitor && window.capacitorFilesystemPluginCapacitor.Filesystem;
 const dev = () => { try { return JSON.parse(localStorage.getItem('lcd:llmDev')) || localStorage.getItem('lcd:llmDev'); } catch (e) { return localStorage.getItem('lcd:llmDev'); } };
 
 function prefs() { return store.get(); }
@@ -31,23 +30,37 @@ async function info() {
   } catch (e) { return { available: false, reason: '内置模型组件不可用' }; }
 }
 async function exists(m) {
-  try { const st = await FS().stat({ path: `${DIR}/${m.file}`, directory: 'DATA' }); return !m.size || st.size === m.size || st.size > 1e8; } catch (e) { return false; }
+  if (!native()) return !!dev();
+  try { return (await P().fileInfo({ file: m.file, size: m.size })).done; } catch (e) { return false; }
 }
-async function pathOf(m) { const r = await FS().getUri({ path: `${DIR}/${m.file}`, directory: 'DATA' }); return r.uri; }
+async function partial(m) { if (!native()) return 0; try { return (await P().fileInfo({ file: m.file, size: m.size })).partial || 0; } catch (e) { return 0; } }
+async function pathOf(m) { return (await P().fileInfo({ file: m.file, size: m.size })).path; }
 
-/* 下载模型：带进度；文件大，建议连 Wi-Fi */
-async function download(m, onProgress) {
-  if (!native() || !FS()) throw new Error('只有安卓 App 里能下载');
-  let handle = null;
-  try {
-    handle = await FS().addListener('progress', e => { if (e.url === m.url || !e.url) onProgress && onProgress(e.bytes, e.contentLength || m.size); });
-    await FS().downloadFile({ url: m.url, path: `${DIR}/${m.file}`, directory: 'DATA', progress: true, recursive: true });
-  } finally { if (handle) handle.remove(); }
+/* 下载：原生插件负责（断点续传、后台进行），这里只记进度，页面随时可以重新画进度条 */
+const dl = { id: null, bytes: 0, total: 0, running: false, error: '' };
+const watchers = new Set();
+let subscribed = false;
+function onDownload(fn) { watchers.add(fn); return () => watchers.delete(fn); }
+async function subscribe() {
+  if (subscribed || !native()) return;
+  subscribed = true;
+  await P().addListener('download', e => {
+    const m = MODELS.find(x => x.file === e.file);
+    Object.assign(dl, { id: m ? m.id : null, bytes: e.bytes || 0, total: e.total || (m && m.size) || 0, running: !e.done && !e.error, error: e.error || '' });
+    watchers.forEach(fn => { try { fn(dl); } catch (err) { /* 画进度条出错不影响下载 */ } });
+  });
+}
+async function download(m) {
+  if (!native()) throw new Error('只有安卓 App 里能下载');
+  await subscribe();
+  Object.assign(dl, { id: m.id, bytes: await partial(m), total: m.size, running: true, error: '' });
+  watchers.forEach(fn => fn(dl));
+  await P().download({ url: m.url, file: m.file, size: m.size });
   const p = prefs(); p.have[m.id] = true; setPrefs(p);
 }
+function pause() { if (native()) P().cancelDownload(); }
 async function remove(m) {
-  try { await P().unload(); } catch (e) { /* 没加载也没关系 */ }
-  try { await FS().deleteFile({ path: `${DIR}/${m.file}`, directory: 'DATA' }); } catch (e) { /* 本来就没有 */ }
+  if (native()) await P().deleteModel({ file: m.file });
   const p = prefs(); delete p.have[m.id]; setPrefs(p);
 }
 
@@ -94,5 +107,5 @@ async function chatDev(messages, { onToken, signal, maxTokens, temperature }) {
 /* Qwen3 会输出 <think></think>：去掉（生成中途也能用） */
 function clean(t) { return String(t || '').replace(/<think>[\s\S]*?(<\/think>|$)/g, '').replace(/^\s+/, ''); }
 
-return { MODELS, prefs, setPrefs, current, info, exists, download, remove, chat, clean, native, dev };
+return { MODELS, prefs, setPrefs, current, info, exists, partial, download, pause, remove, dl, onDownload, chat, clean, native, dev };
 })();
