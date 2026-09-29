@@ -173,7 +173,7 @@ function timeWheel(value, title, cb) {
 }
 /* 页面里所有 <input type="time"> 自动换成只读文本框，点一下弹出滚轮；改完照常触发 input / change 事件 */
 function upgradeTimeInputs() {
-  document.querySelectorAll('input[type="time"]').forEach(i => { i.type = 'text'; i.readOnly = true; i.classList.add('tw-input'); i.setAttribute('inputmode', 'none'); });
+  document.querySelectorAll('input[type="time"]').forEach(i => { i.type = 'text'; i.readOnly = true; i.size = 5; i.classList.add('tw-input'); i.setAttribute('inputmode', 'none'); });
 }
 new MutationObserver(upgradeTimeInputs).observe(document.documentElement, { childList: true, subtree: true });
 document.addEventListener('click', e => {

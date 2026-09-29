@@ -27,7 +27,10 @@ jobs:
       - name: Install and test
         run: |
           npm ci
-          node test/engine.test.js
+          npm test
+
+      - name: Fetch llama.cpp (内置大模型)
+        run: bash tools/fetch-llama.sh
 
       - name: Sync web assets into Android project
         run: npx cap sync android
@@ -67,5 +70,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/*.apk --title "练吃日课 $GITHUB_REF_NAME" --notes-file CHANGELOG.md || gh release upload "$GITHUB_REF_NAME" dist/*.apk --clobber
+          # 带“-”的版本（如 v1.7.0-ai.1）是预览版：标成 prerelease，正式版 App 的“检查更新”不会收到
+          PRE=""; if [[ "$GITHUB_REF_NAME" == *-* ]]; then PRE="--prerelease"; fi
+          gh release create "$GITHUB_REF_NAME" dist/*.apk $PRE --title "练吃日课 $GITHUB_REF_NAME" --notes-file CHANGELOG.md || gh release upload "$GITHUB_REF_NAME" dist/*.apk --clobber
 

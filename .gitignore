@@ -13,3 +13,7 @@ android/capacitor-cordova-android-plugins/
 
 .env
 *.env
+
+# 内置大模型：llama.cpp 源码由 tools/fetch-llama.sh 下载，不进仓库
+android/app/src/main/cpp/llama.cpp/
+android/app/.cxx/

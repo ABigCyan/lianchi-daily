@@ -8,7 +8,12 @@ function Installer() {
   return installer;
 }
 function FS() { return window.capacitorFilesystemPluginCapacitor && window.capacitorFilesystemPluginCapacitor.Filesystem; }
-function newer(a, b) { const x = String(a).replace(/^v/, '').split('.').map(Number), y = String(b).replace(/^v/, '').split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0); return false; }
+function newer(a, b) {
+  const parse = v => { const [n, pre] = String(v).replace(/^v/, '').split('-'); return { n: n.split('.').map(k => +k || 0), pre: pre || '' }; };
+  const x = parse(a), y = parse(b);
+  for (let i = 0; i < 3; i++) if ((x.n[i] || 0) !== (y.n[i] || 0)) return (x.n[i] || 0) > (y.n[i] || 0);
+  return !x.pre && !!y.pre; // 同号：正式版比预览版新
+}
 function prefs() { return Object.assign({ auto: true, last: 0, skip: '' }, LS.get('update') || {}); }
 function savePrefs(p) { LS.set('update', Object.assign(prefs(), p)); }
 
