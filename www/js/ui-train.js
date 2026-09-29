@@ -63,7 +63,7 @@ function viewTrain() {
   const future = d > today(), doneLift = r.done && r.done.lift;
   const total = items.reduce((s, x) => s + x.sets, 0), setsDone = items.reduce((s, it) => s + doneSets(r, it), 0);
   let h = head('训练', d, tr.splitName.replace('健身房', ''));
-  h += `<div class="seg-scroll glass">${tr.days.map((dd, i) => `<button data-day="${i}" aria-pressed="${!si.custom && si.dayIdx === i}">${esc(dd.name)}${si.recommended && si.dayIdx === i ? '<span class="rec">推荐</span>' : ''}</button>`).join('')}<button data-day="custom" aria-pressed="${!!si.custom}">自选部位</button></div>`;
+  h += `<div class="seg-wrap glass"><div class="seg-scroll" id="daySeg">${tr.days.map((dd, i) => `<button data-day="${i}" aria-pressed="${!si.custom && si.dayIdx === i}">${esc(dd.name)}${si.recommended && si.dayIdx === i ? '<span class="rec">推荐</span>' : ''}</button>`).join('')}<button data-day="custom" aria-pressed="${!!si.custom}">自选部位</button></div></div>`;
   h += `<p class="plan-why">${esc(whyLine(tr, si))}</p>`;
   if (!info.lift && !doneLift) h += `<section class="note mat">${info.h && info.h.off ? `今天是${esc(info.h.name)}，力训已自动跳过。` : '今天没有安排力训。'} <button class="link" data-ov="lift">今天加练</button></section>`;
   if (femaleSkip) h += '<section class="note warn mat">女性每两轮三分化跳过一次胸日，这次可以换别的部位（表21 C14）</section>';
@@ -125,10 +125,13 @@ function bindTrain() {
   const sk = $('[data-skip]'); if (sk) sk.onclick = () => deckEl.flyLeft();
   $('#editEx').onclick = () => { S.edit = !S.edit; render(); };
   $$('[data-ov]').forEach(b => b.onclick = () => { rec(d).override = b.dataset.ov; scoreDay(d); render(); });
+  Kit.fadeEdges($('#daySeg'));
   $$('[data-str]').forEach(b => b.onclick = () => stretchSheet(+b.dataset.str));
   const allS = $('#allStretch'); if (allS) allS.onclick = allStretchSheet;
   $$('[data-day]').forEach(b => b.onclick = () => { Kit.haptic('light'); if (b.dataset.day === 'custom') return pickCustom(); rec(d).session = { split: tr.split.key, dayIdx: +b.dataset.day }; save(d); render(); });
   $$('[data-extra]').forEach(b => b.onclick = () => { const r = rec(d); r.extra = r.extra || {}; r.extra[b.dataset.extra] = true; save(d); render(); });
+  // 长按动作：有备选就换动作，没有就看大图
+  $$('[data-exopen]').forEach(b => { const i = items.findIndex(x => x.v === b.dataset.exopen), row = b.closest('.row'); if (row && i >= 0) Kit.longPress(row, () => items[i].alts.length ? swap(items, i) : bigImage(items[i].ex)); });
   $$('[data-exopen]').forEach(b => b.onclick = () => { const i = items.findIndex(x => x.v === b.dataset.exopen); sheet(`<div class="k-train" style="display:grid;gap:14px;padding-top:16px">${exBody(items[i], i, items.length, peek(d) || {}, d, d > today())}</div>`, m => { bindSetInputs(m, d, items); m.onclick = e => { if (e.target === m) { close(); render(); } }; }); });
   $$('[data-exdel]').forEach(b => b.onclick = () => { const v = b.dataset.exdel; askScope(`删除「${window.EX[v].n}」`, sc => { modsOf(d, si.key, sc, m => { m.hide = (m.hide || []).concat(v); m.add = (m.add || []).filter(a => a.v !== v); }); render(); toast('已删除'); }); });
   $$('[data-st]').forEach(b => b.onclick = () => { const [v, dir] = b.dataset.st.split('|'); const it = items.find(x => x.v === v); modsOf(d, si.key, 'tpl', m => { m.sets = m.sets || {}; m.sets[v] = Math.max(1, Math.min(10, it.sets + +dir)); }); Kit.haptic('light'); render(); });

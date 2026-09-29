@@ -32,8 +32,13 @@ window.AI = (() => {
     let res;
     const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timer = ctl ? setTimeout(() => ctl.abort(), timeoutMs) : null;
-    try { res = await fetch(url, ctl ? { ...opts, signal: ctl.signal } : opts); }
+    // 外部传入的 signal（用户点“停止”）也能中断请求
+    const outer = opts && opts.signal;
+    if (outer && ctl) { if (outer.aborted) ctl.abort(); else outer.addEventListener('abort', () => ctl.abort(), { once: true }); }
+    const fopts = { ...opts }; delete fopts.signal;
+    try { res = await fetch(url, ctl ? { ...fopts, signal: ctl.signal } : fopts); }
     catch (e) {
+      if (outer && outer.aborted) { const err = new Error('已停止'); err.stopped = true; throw err; }
       if (e && e.name === 'AbortError') throw new Error(`请求超过 ${timeoutMs / 1000} 秒没有返回，可能这个模型不支持看图或太慢，请换一个带“图”的模型`);
       throw new Error('网络请求失败，请检查网络或接口地址（' + (e.message || e) + '）');
     } finally { if (timer) clearTimeout(timer); }
@@ -296,14 +301,14 @@ window.AI = (() => {
     return out;
   }
   /* 发一轮：返回 { content, tool_calls }（OpenAI 格式的 assistant 消息） */
-  async function chatOnce(cfg, messages, tools) {
+  async function chatOnce(cfg, messages, tools, signal) {
     const base = trimBase(cfg.base), model = cfg.chatModel || cfg.model;
     if (!base || !cfg.key || !model) throw new Error('请先在“我的 → 大模型接口”里填好接口、Key 并选择模型');
     if (cfg.type === 'anthropic') {
       const sys = messages.filter(m => m.role === 'system').map(m => m.content).join('\n\n');
       const body = { model, max_tokens: 4000, temperature: 0.2, system: sys, messages: toAnthropic(messages) };
       if (tools && tools.length) body.tools = tools.map(t => ({ name: t.name, description: t.description, input_schema: t.parameters }));
-      const post = () => httpJson(`${base}/v1/messages`, { method: 'POST', headers: anthropicHeaders(cfg.key), body: JSON.stringify(body) }, 120000);
+      const post = () => httpJson(`${base}/v1/messages`, { method: 'POST', headers: anthropicHeaders(cfg.key), body: JSON.stringify(body), signal }, 120000);
       // 有的模型不接受 temperature，报 400 就去掉再试一次
       const d = await post().catch(e => { if (e.status !== 400) throw e; delete body.temperature; return post(); });
       const blocks = d.content || [];
@@ -315,7 +320,7 @@ window.AI = (() => {
     }
     const body = { model, temperature: 0.2, messages: messages.map(m => { const x = { role: m.role, content: m.content == null ? '' : m.content }; if (m.tool_calls && m.tool_calls.length) x.tool_calls = m.tool_calls; if (m.tool_call_id) x.tool_call_id = m.tool_call_id; return x; }) };
     if (tools && tools.length) body.tools = tools.map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }));
-    const post = () => httpJson(`${base}/chat/completions`, { method: 'POST', headers: { Authorization: 'Bearer ' + cfg.key, 'content-type': 'application/json' }, body: JSON.stringify(body) }, 120000);
+    const post = () => httpJson(`${base}/chat/completions`, { method: 'POST', headers: { Authorization: 'Bearer ' + cfg.key, 'content-type': 'application/json' }, body: JSON.stringify(body), signal }, 120000);
     const d = await post().catch(e => { if (e.status !== 400) throw e; delete body.temperature; return post(); });
     const m = (d.choices && d.choices[0] && d.choices[0].message) || {};
     const content = typeof m.content === 'string' ? m.content : (m.content || []).map(x => x.text || '').join('');
@@ -323,9 +328,10 @@ window.AI = (() => {
     return { role: 'assistant', content: content.replace(/<think>[\s\S]*?<\/think>/g, '').trim(), tool_calls: calls };
   }
   /* 跑完一次提问：模型要调工具就执行，直到给出文字回答（最多 8 轮） */
-  async function agent(cfg, messages, tools, runTool, onStep) {
+  async function agent(cfg, messages, tools, runTool, onStep, signal) {
     for (let i = 0; i < 8; i++) {
-      const msg = await chatOnce(cfg, messages, tools);
+      if (signal && signal.aborted) { const err = new Error('已停止'); err.stopped = true; throw err; }
+      const msg = await chatOnce(cfg, messages, tools, signal);
       messages.push(msg);
       if (!msg.tool_calls || !msg.tool_calls.length) return msg.content;
       for (const tc of msg.tool_calls) {
@@ -340,5 +346,23 @@ window.AI = (() => {
     return '（查了太多次还没有结论，请把问题说得具体一点）';
   }
 
-  return { PRESETS, listModels, defaultModel, defaultChatModel, analyze, analyzeWeek, compress, systemPrompt, chatOnce, agent };
+  /* 助手看图：用“看图模型”把照片描述成文字（器械、动作、食物），再交给助手按套表回答 */
+  async function describeImage(cfg, dataUrl, question, signal) {
+    const base = trimBase(cfg.base);
+    if (!cfg.model) throw new Error('没有设置看图模型');
+    const sys = '你是健身房里的助手，帮用户看照片。用中文描述照片里的东西：如果是健身器械，说出器械的常见名称（中文和英文）、主要练哪块肌肉、常见的调节部位；如果是动作，说出动作名称和主要发力肌肉；如果是食物，说出食物名称和大概分量。只描述看到的内容，看不清就说看不清，不超过 150 字。';
+    const text = '用户的问题：' + (question || '这是什么？');
+    const b64 = dataUrl.split(',')[1];
+    if (cfg.type === 'anthropic') {
+      const d = await httpJson(`${base}/v1/messages`, { method: 'POST', headers: anthropicHeaders(cfg.key), signal, body: JSON.stringify({ model: cfg.model, max_tokens: 800, system: sys,
+        messages: [{ role: 'user', content: [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64 } }, { type: 'text', text }] }] }) });
+      return (d.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
+    }
+    const d = await httpJson(`${base}/chat/completions`, { method: 'POST', headers: { Authorization: 'Bearer ' + cfg.key, 'content-type': 'application/json' }, signal,
+      body: JSON.stringify({ model: cfg.model, messages: [{ role: 'system', content: sys }, { role: 'user', content: [{ type: 'image_url', image_url: { url: dataUrl } }, { type: 'text', text }] }] }) });
+    const m = (d.choices && d.choices[0] && d.choices[0].message) || {};
+    return String(typeof m.content === 'string' ? m.content : (m.content || []).map(x => x.text || '').join('')).replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  }
+
+  return { PRESETS, listModels, defaultModel, defaultChatModel, describeImage, analyze, analyzeWeek, compress, systemPrompt, chatOnce, agent };
 })();

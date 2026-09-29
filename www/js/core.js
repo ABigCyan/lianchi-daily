@@ -1,6 +1,6 @@
 /* 核心：存储、每天的卡片、训练、能量计算、奖励（界面文件共用） */
 window.C = (() => {
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 const REPO = 'ABigCyan/lianchi-daily';
 const E = window.Engine;
 const $ = s => document.querySelector(s);
@@ -95,7 +95,34 @@ function tasksFor(d) {
   const key = t => { const m = E.tm(t); return m < cut ? m + 1440 : m; };
   tasks.forEach((t, i) => t._i = i);
   tasks.sort((a, b) => key(a.time) - key(b.time) || (mods.time[b.id] ? 1 : 0) - (mods.time[a.id] ? 1 : 0) || a._i - b._i);
-  return { info, tasks, meals, key };
+  // 饮食页和时间线用同一份餐次：删掉的餐不出现，改过的时间同步，分量按下面的规则调整
+  const shown = adjustMeals(d, meals, mods, info);
+  tasks.forEach(t => { if (t.kind === 'food' && t.meal) { const m = shown.find(x => x.key === t.meal.key); if (m) { m.time = t.time; t.meal = m; t.sub = `碳水 ${m.c}g · 蛋白质 ${m.p}g${m.adj ? ' · 已调整' : ''}`; } } });
+  shown.sort((a, b) => key(a.time) - key(b.time));
+  return { info, tasks, meals: shown, key };
+}
+/* 删掉的餐：分量并到其他餐。零食/夜宵按表5 B89“不吃的话，就在其他各餐多吃几口瘦肉或主食”；其他餐同样按比例并入（应用补充）。
+   当天手动调整过的分量（助手或用户改的）最后覆盖，全天合计仍按计划。 */
+function adjustMeals(d, meals, mods, info) {
+  const keep = meals.filter(m => !mods.hide.has('meal-' + m.key)).map(m => ({ ...m, notes: [] }));
+  const gone = meals.filter(m => mods.hide.has('meal-' + m.key));
+  if (!keep.length) return keep;
+  const spread = (k, amt, pick) => {
+    const tgt = keep.filter(pick); const base = tgt.reduce((s, m) => s + m[k], 0);
+    if (!tgt.length || !amt) return;
+    let left = amt;
+    tgt.forEach((m, i) => { const add = i === tgt.length - 1 ? left : Math.round(amt * (base ? m[k] / base : 1 / tgt.length)); m[k] += add; left -= add; });
+  };
+  gone.forEach(g => {
+    spread('c', g.c, m => m.role !== 'snack');
+    spread('p', g.p, m => m.p > 0 && m.role !== 'snack');
+    keep.forEach(m => m.notes.push(g.role === 'snack' ? '含不吃零食/夜宵并入的分量（表5 B89）' : `含${g.name}并入的分量（应用补充）`));
+    keep.forEach(m => m.adj = true);
+  });
+  const amt = (peek(d) || {}).mealAmt || {};
+  keep.forEach(m => { const o = amt[m.key]; if (o) { if (o.c != null) m.c = Math.max(0, Math.round(+o.c)); if (o.p != null) m.p = Math.max(0, Math.round(+o.p)); if (o.note) m.notes.push(o.note); m.adj = true; } });
+  keep.forEach(m => { if (m.adj) m.foods = E.foodsFor(m, S.profile, S.plan); });
+  return keep;
 }
 function setTaskTime(d, id, time, scope) { // time 为 null 时恢复默认
   const set = o => { if (time) o[id] = time; else delete o[id]; };

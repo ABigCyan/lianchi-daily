@@ -16,7 +16,7 @@ function subOf(t, r, d) {
 function body(t, r, d, future) {
   if (t.kind === 'food' && t.meal) {
     const f = t.meal.foods;
-    return `<div class="dc-body"><ul>${f.c.length ? `<li>主食选一：${f.c.slice(0, 3).map(esc).join(' / ')}</li>` : ''}${f.p.length ? `<li>${f.c.length ? '蛋白质选一：' : ''}${f.p.slice(0, 3).map(esc).join(' / ')}</li>` : ''}</ul>${f.notes.slice(0, 2).map(n => `<div class="t-foot">${esc(n)}</div>`).join('')}</div>
+    return `<div class="dc-body"><ul>${f.c.length ? `<li>主食选一：${f.c.slice(0, 3).map(esc).join(' / ')}</li>` : ''}${f.p.length ? `<li>${f.c.length ? '蛋白质选一：' : ''}${f.p.slice(0, 3).map(esc).join(' / ')}</li>` : ''}</ul>${f.notes.slice(0, 2).map(n => `<div class="t-foot">${esc(n)}</div>`).join('')}${(t.meal.notes || []).length ? `<div class="t-foot l2">${[...new Set(t.meal.notes)].map(esc).join('；')}</div>` : ''}</div>
       ${future ? '' : `<div class="ghost-row"><button class="tbtn" data-log="${t.meal.key}">记录吃了什么</button></div>`}`;
   }
   if (t.kind === 'train') return `<div class="ghost-row"><button class="pill tint" data-go="train">${I.train}开始训练</button></div>`;
@@ -113,6 +113,8 @@ function bindToday() {
   $$('[data-scope]').forEach(b => b.onclick = () => { S.editScope = b.dataset.scope; Kit.haptic('light'); render(); });
   $$('[data-time]').forEach(i => i.onchange = () => changeTime(d, i.dataset.time, i.value));
   $$('[data-tedit]').forEach(b => b.onclick = () => { const t = tasks.find(x => x.id === b.dataset.tedit); if (t) timeSheet(d, t); });
+  // 长按一行：直接改时间
+  $$('[data-tedit]').forEach(b => { const row = b.closest('.row'), t = tasks.find(x => x.id === b.dataset.tedit); if (row && t) Kit.longPress(row, () => timeSheet(d, t)); });
   if (S.flash) { const el = $('.row.flash'); if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); setTimeout(() => { S.flash = null; }, 0); }
   $$('[data-mv]').forEach(b => b.onclick = () => { const [id, dir] = b.dataset.mv.split('|'); moveTask(d, id, +dir); });
   const add = $('#addTl'); if (add) add.onclick = () => addCard(d);

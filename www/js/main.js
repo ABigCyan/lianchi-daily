@@ -26,6 +26,7 @@ $$('#tabs button').forEach(b => b.onclick = () => {
 });
 /* ---------- 安卓返回键：先关弹窗、退出子页面，回到“今天”后连按两次才回桌面 ---------- */
 function goBack() {
+  if (window.__closeWheel && window.__closeWheel()) return true;
   const m = $('#modal');
   if (m && !m.hidden) { C.close(); return true; }
   if (S.chatOn) { S.chatOn = false; if (window.visualViewport) visualViewport.onresize = null; render(); scrollTo(0, 0); return true; }

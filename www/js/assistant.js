@@ -3,7 +3,7 @@
  * 知识库 data-kb.js 由 tools/build-kb.py 从原表生成，第一次打开助手时才加载。
  */
 window.Assistant = (() => {
-const { E, $, $$, esc, S, LS, today, DOW, toast, render, peek, rec, save, saveCustom, training, sessionInfo, sessionItems, LIB, dayInfo, tasksFor,
+const { E, $, $$, esc, S, LS, today, DOW, toast, render, peek, rec, save, saveCustom, training, sessionInfo, sessionItems, LIB, dayInfo, tasksFor, setTaskTime, scoreDay, uid, TYPE,
   burnOf, intakeOf, targetOf, allDays } = C;
 const { I } = Kit;
 
@@ -68,7 +68,9 @@ function todayInfo({ date }) {
   const d = /^\d{4}-\d{2}-\d{2}$/.test(date || '') ? date : today();
   const info = dayInfo(d), r = peek(d) || { done: {} }, { tasks } = tasksFor(d);
   const out = { date: d, weekday: '周' + DOW[E.dow(d)], type: info.lift ? '力训日' : '休息日', holiday: info.h ? info.h.name + (info.h.off ? '（放假）' : '（补班）') : null,
-    timeline: tasks.map(t => `${t.time} ${t.title}${r.done[t.id] ? ' ✓' : ''}`), weight_kg: r.weight || null,
+    timeline: tasks.map(t => ({ item_id: t.id, time: t.time, title: t.title, done: !!r.done[t.id] })),
+    meals: tasksFor(d).meals.map(m => ({ meal_key: m.key, name: m.name, time: m.time, carbs_g: m.c, protein_g: m.p, notes: m.notes || [] })),
+    removed_items: hiddenOf(d), day_override: r.override || null, weight_kg: r.weight || null,
     intake: intakeOf(d), target: targetOf(d), burn_kcal: burnOf(d).total };
   if (S.plan.training && (info.lift || (r.done && r.done.lift))) {
     const { si, items } = sessionItems(d);
@@ -76,6 +78,10 @@ function todayInfo({ date }) {
       exercises: items.map(it => ({ exercise_id: it.v, name: it.ex.n, group: it.group.name, sets: it.sets, reps: it.reps, rest: it.rest, src: it.group.src })) };
   }
   return out;
+}
+function hiddenOf(d) {
+  const type = dayInfo(d).type, tpl = S.custom.timeline[type] || {}, day = (peek(d) || {}).tl || {};
+  return [...new Set([...(tpl.hide || []), ...(day.hide || [])])].map(id => ({ item_id: id, scope: (day.hide || []).includes(id) ? 'day' : 'always' }));
 }
 function history({ days }) {
   const n = Math.max(1, Math.min(+days || 14, 60)), list = allDays().slice(-n);
@@ -144,13 +150,22 @@ const TOOLS = [
     reason: { type: 'string', description: '为什么这样改，引用套表出处' } }, required: ['changes', 'reason'] } },
   { name: 'edit_training', description: '增加、删除动作或修改组数。scope=today 只改今天，always 以后这一天都这样。exercise_id 从 get_today 或 list_exercises 取。会先让用户确认。', parameters: { type: 'object', properties: {
     action: { type: 'string', enum: ['add', 'remove', 'set_sets'] }, exercise_id: { type: 'string' }, sets: { type: 'integer' }, scope: { type: 'string', enum: ['today', 'always'] }, reason: { type: 'string' } }, required: ['action', 'exercise_id', 'scope', 'reason'] } },
+  { name: 'edit_timeline', description: '改某一天（可以是今天或以后的日期）的时间线安排：remove 删掉一项（item_id 从 get_today 取，饮食页会同步去掉，分量并到其他餐），restore 恢复删掉的项，set_time 改时间（会自动按时间排序），add 加一张卡片（title、time、note）。scope=day 只改这一天，always 以后同类日（力训日/休息日/有氧日/节假日）都这样。会先让用户确认。', parameters: { type: 'object', properties: {
+    date: { type: 'string', description: 'YYYY-MM-DD，默认今天' }, action: { type: 'string', enum: ['remove', 'restore', 'set_time', 'add'] }, item_id: { type: 'string' }, time: { type: 'string', description: 'HH:MM' }, title: { type: 'string' }, note: { type: 'string' },
+    scope: { type: 'string', enum: ['day', 'always'] }, reason: { type: 'string' } }, required: ['action', 'reason'] } },
+  { name: 'set_meal_amounts', description: '调整某一天各餐的碳水、蛋白质克数（比如午饭吃不了挪到晚饭、聚餐前后调整）。全天合计应和计划一致（表5 E22-L23 的配额），不一致会提醒。meal_key 从 get_today 的 meals 取。会先让用户确认。', parameters: { type: 'object', properties: {
+    date: { type: 'string' }, meals: { type: 'array', items: { type: 'object', properties: { meal_key: { type: 'string' }, carbs_g: { type: 'number' }, protein_g: { type: 'number' } }, required: ['meal_key'] } }, reset: { type: 'boolean', description: 'true 表示恢复这一天按计划的分量' }, reason: { type: 'string' } }, required: ['reason'] } },
+  { name: 'set_day_training', description: '设某一天练不练：lift 这天加练、rest 这天不练、auto 恢复按计划（节假日自动跳过）。可以用来安排节假日回来、临时有事等。会先让用户确认。', parameters: { type: 'object', properties: {
+    date: { type: 'string' }, type: { type: 'string', enum: ['lift', 'rest', 'auto'] }, reason: { type: 'string' } }, required: ['date', 'type', 'reason'] } },
+  { name: 'exercise_info', description: '查一个动作或器械：动作名、用的器械、是否多关节、是否要避免力竭、所属肌群和套表出处、同组可替换的动作，以及 B站 教程搜索链接。可以按 exercise_id 或名称查。', parameters: { type: 'object', properties: { exercise_id: { type: 'string' }, name: { type: 'string' } } } },
+  { name: 'video_links', description: '给出教程视频链接：套表里提到的 B站 视频（带出处），以及按关键词搜 B站 的链接（表21 C4：动作教程在 B站 搜动作名称即可）。', parameters: { type: 'object', properties: { topic: { type: 'string', description: '动作名或主题，例如“高位下拉”“饮食定量”' } }, required: ['topic'] } },
   { name: 'set_today_training', description: '换今天练哪一天（day_index 来自 get_my_plan），或者用 group_ids 自选几个肌群。会先让用户确认。', parameters: { type: 'object', properties: { day_index: { type: 'integer' }, group_ids: { type: 'array', items: { type: 'string' } }, reason: { type: 'string' } } } },
 ];
-const WRITE = new Set(['update_profile', 'edit_training', 'set_today_training']);
-const STEP_TEXT = { search_excel: a => `查套表：${a.query || ''}${a.sheet ? '（表' + a.sheet + '）' : ''}`, read_excel_rows: a => `读原文：表${a.sheet} 第${a.from_row}-${a.to_row}行`, get_my_plan: () => '看你的计划', get_today: a => `看${a.date || '今天'}的安排`, get_history: a => `看最近 ${a.days || 14} 天记录`, list_exercises: a => `查动作库${a.part ? '：' + a.part : ''}`, update_profile: () => '准备修改计划', edit_training: () => '准备修改训练动作', set_today_training: () => '准备换今天的训练' };
+const WRITE = new Set(['update_profile', 'edit_training', 'set_today_training', 'edit_timeline', 'set_meal_amounts', 'set_day_training']);
+const STEP_TEXT = { search_excel: a => `查套表：${a.query || ''}${a.sheet ? '（表' + a.sheet + '）' : ''}`, read_excel_rows: a => `读原文：表${a.sheet} 第${a.from_row}-${a.to_row}行`, get_my_plan: () => '看你的计划', get_today: a => `看${a.date || '今天'}的安排`, get_history: a => `看最近 ${a.days || 14} 天记录`, list_exercises: a => `查动作库${a.part ? '：' + a.part : ''}`, update_profile: () => '准备修改计划', edit_training: () => '准备修改训练动作', set_today_training: () => '准备换今天的训练', edit_timeline: a => `准备修改${a.date || '今天'}的安排`, set_meal_amounts: a => `准备调整${a.date || '今天'}各餐分量`, set_day_training: a => `准备设置 ${a.date} 练不练`, exercise_info: a => `查动作：${a.name || a.exercise_id || ''}`, video_links: a => `找视频：${a.topic || ''}`, describe_image: () => '看图片' };
 
 /* ---------- 对话状态 ---------- */
-const st = { busy: false, view: [], msgs: [], pending: {} };
+const st = { busy: false, view: [], msgs: [], pending: {}, ctl: null, img: null, draft: LS.get('chatDraft') || '' };
 (function load() { const c = LS.get('chat'); if (c) { st.view = c.view || []; st.msgs = c.msgs || []; } })();
 function persist() {
   // 只留最近 40 条（从某个用户提问开始截，保证工具调用成对）
@@ -168,6 +183,9 @@ function sysPrompt() {
     '2. 只转述工具返回的原文和 App 算出的数字。不要自己推断后果或补充理由（比如“会导致失衡”“影响体态”“更安全”），原文没写的一律不说。每个要点后面用括号标出处，照抄工具给的 src，例如（表17 第32行）。',
     '3. 搜了两三次仍查不到，就直接说“套表里没有写这个”，不要编，也不要换成通用健身知识来回答。',
     '4. 不做医疗诊断；伤病、疾病、用药问题提醒就医。',
+    '7. 安排当天或以后的日子（节假日回来、今天有事、聚餐、加班）：先 get_today 看那一天，再按套表规则用 edit_timeline（删/加/改时间）、set_meal_amounts（挪各餐分量，全天合计保持配额）、set_day_training（这天练不练）。不吃零食/夜宵时分量并到其他餐（表5 B89）；练前餐只垫碳水（表5 I44）；休息日自己安排，不必一轮练完才休息（表21 C8）。',
+    '8. 用户发了照片时，消息里会附上“图片识别”的文字。识别器械、说明器械怎么调这类套表没写的操作常识可以用常识回答，但要在句末标“（常识，非套表）”；组数、次数、重量、饮食分量、计划安排仍然只按套表。',
+    '9. 需要教程视频时用 video_links 或 exercise_info，把链接原样给用户（Markdown 链接格式 [文字](网址)），不要自己编视频号。',
     '5. 用户要改计划（目标、目标体重、训练日、部位、分化、动作、组数、今天练什么）：直接调用 update_profile / edit_training / set_today_training，App 会弹出确认卡，由用户决定改不改，你不用再口头问“要不要改”。和套表建议冲突时，把冲突和出处写进 reason，照样调用工具。一次请求里有几项修改，就都放进同一次调用。',
     '6. 中文回答，先结论后理由，一般不超过 250 字。可以用“- ”列要点、用 **粗体** 强调，不要用表格和标题。',
     `今天是 ${today()}（周${DOW[E.dow(today())]}）。用户：${p.sex === 'F' ? '女' : '男'}，${p.age} 岁，${p.height}cm，${p.weight}kg，当前${pl.goal === 'cut' ? '减脂' : '增肌'}，饮食按${pl.sheet.sheet}《${pl.sheet.name}》，训练${pl.training ? pl.training.splitName : '不做力训'}。`,
@@ -240,6 +258,78 @@ async function runTool(name, a) {
     }
     return { ok: true, today: todayInfo({}).training };
   }
+  if (name === 'exercise_info') {
+    let v = a.exercise_id && window.EX[a.exercise_id] ? a.exercise_id : null;
+    if (!v && a.name) { const q = String(a.name); v = Object.keys(window.EX).find(k => window.EX[k].n === q) || Object.keys(window.EX).find(k => window.EX[k].n.includes(q) || q.includes(window.EX[k].n)); }
+    if (!v) return { error: '动作库里没有找到，先用 list_exercises 看有哪些' };
+    const ex = window.EX[v], lib = LIB[v] || {};
+    const alts = Object.values(window.ENTRY || {}).find(list => list.includes(v)) || [];
+    return { exercise_id: v, name: ex.n, equipment: ex.eq, multi_joint: !!ex.multi, avoid_failure: !!ex.noFail, group: lib.group, part: lib.part, src: lib.src,
+      alternatives_same_entry: alts.filter(x => x !== v).map(x => window.EX[x] ? window.EX[x].n : x),
+      rest_rule: ex.multi ? '多关节动作组间休息 2-3 分钟（表21 C11）' : '单关节动作组间休息 1-1.5 分钟（表21 C11）',
+      failure_rule: ex.noFail ? '自由卧推/深蹲/推举这类可能砸伤的动作不追求完全力竭，提前一两个停（表21 C13）' : '无危险动作可以做到力竭（表21 C13）',
+      bilibili_search: 'https://search.bilibili.com/all?keyword=' + encodeURIComponent(ex.n + ' 教程') };
+  }
+  if (name === 'video_links') {
+    const topic = String(a.topic || '').trim(), rows = window.KB.rows.filter(r => /BV[0-9A-Za-z]{10}/.test(r.t));
+    const seen = new Set(), vids = [];
+    rows.forEach(r => (r.t.match(/[^｜/。；]*?BV[0-9A-Za-z]{10}[^｜/。；]*/g) || []).forEach(seg => { const bv = seg.match(/BV[0-9A-Za-z]{10}/)[0]; if (!seen.has(bv + seg.slice(0, 20))) { seen.add(bv + seg.slice(0, 20)); vids.push({ url: 'https://www.bilibili.com/video/' + bv, context: seg.trim().slice(0, 120), src: srcOf(r) }); } }));
+    const tw = terms(topic);
+    vids.forEach(x => x.score = tw.reduce((sc, w) => sc + (x.context.includes(w) ? w.length : 0), 0));
+    vids.sort((p, q) => q.score - p.score);
+    return { excel_videos: vids.slice(0, 5), bilibili_search: topic ? 'https://search.bilibili.com/all?keyword=' + encodeURIComponent(topic + ' 教程') : null,
+      note: '套表作者的视频有：新手完全训练手册 BV1Hk4y187jF、骨肌解剖与健身运用 BV1mM6JY6Ei9、饮食配套视频 BV1zu4m1N76R（表21 C4、表17 第32行）；具体动作教程按表21 C4 在 B站 搜动作名称' };
+  }
+  if (name === 'edit_timeline') {
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(a.date || '') ? a.date : today(), info = dayInfo(d), scope = a.scope === 'always' ? 'tpl' : 'day';
+    const { tasks } = tasksFor(d), t = tasks.find(x => x.id === a.item_id), label = scope === 'tpl' ? `以后每个${TYPE[info.type][0]}` : d;
+    let line;
+    if (a.action === 'remove') { if (!t) return { ok: false, error: '这一天没有这个 item_id，先 get_today' }; line = `删掉“${t.title}”`; }
+    else if (a.action === 'restore') { if (!hiddenOf(d).some(x => x.item_id === a.item_id)) return { ok: false, error: '这一项没有被删掉' }; line = `恢复 ${a.item_id}`; }
+    else if (a.action === 'set_time') { if (!t || !/^\d{1,2}:\d{2}$/.test(a.time || '')) return { ok: false, error: '需要有效的 item_id 和 HH:MM 时间' }; line = `“${t.title}” ${t.time} → ${a.time.padStart(5, '0')}`; }
+    else if (a.action === 'add') { if (!a.title || !/^\d{1,2}:\d{2}$/.test(a.time || '')) return { ok: false, error: '需要 title 和 HH:MM 时间' }; line = `在 ${a.time.padStart(5, '0')} 加“${a.title}”`; }
+    else return { ok: false, error: 'action 不认识' };
+    if (!await confirmCard('修改安排', [line, `范围：${label}`], a.reason)) return { ok: false, error: '用户取消了' };
+    const layer = () => { if (scope === 'tpl') return S.custom.timeline[info.type] || (S.custom.timeline[info.type] = { hide: [], add: [] }); const r = rec(d); return r.tl || (r.tl = { hide: [], add: [] }); };
+    const L = layer(); L.hide = L.hide || []; L.add = L.add || [];
+    if (a.action === 'remove') { if (t.custom && L.add.some(x => x.id === t.id)) L.add = L.add.filter(x => x.id !== t.id); else if (!L.hide.includes(t.id)) L.hide.push(t.id); }
+    if (a.action === 'restore') { [S.custom.timeline[info.type], (peek(d) || {}).tl].forEach(x => { if (x && x.hide) x.hide = x.hide.filter(id => id !== a.item_id); }); }
+    if (a.action === 'set_time') setTaskTime(d, t.id, a.time.padStart(5, '0'), scope);
+    if (a.action === 'add') L.add.push({ id: 'c-' + uid(), time: a.time.padStart(5, '0'), title: a.title, note: a.note || '', sub: a.note || '', kind: 'habit', optional: false });
+    if (scope === 'tpl') saveCustom(); save(d); scoreDay(d);
+    if (window.Me && Me.scheduleNotifs) Me.scheduleNotifs();
+    return { ok: true, done: line, now: todayInfo({ date: d }).timeline.map(x => `${x.time} ${x.title}`), meals: todayInfo({ date: d }).meals };
+  }
+  if (name === 'set_meal_amounts') {
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(a.date || '') ? a.date : today();
+    if (a.reset) {
+      if (!await confirmCard('调整分量', [`${d} 各餐恢复按计划的分量`], a.reason)) return { ok: false, error: '用户取消了' };
+      const r = rec(d); delete r.mealAmt; save(d); return { ok: true, meals: todayInfo({ date: d }).meals };
+    }
+    const cur = tasksFor(d).meals, list = (a.meals || []).filter(x => cur.some(m => m.key === x.meal_key));
+    if (!list.length) return { ok: false, error: 'meal_key 不对，先 get_today 看 meals' };
+    const after = cur.map(m => { const x = list.find(y => y.meal_key === m.key); return { m, c: x && x.carbs_g != null ? Math.round(x.carbs_g) : m.c, p: x && x.protein_g != null ? Math.round(x.protein_g) : m.p }; });
+    const sumC = after.reduce((t, x) => t + x.c, 0), sumP = after.reduce((t, x) => t + x.p, 0), tc = cur.reduce((t, m) => t + m.c, 0), tp = cur.reduce((t, m) => t + m.p, 0);
+    const lines = after.filter(x => x.c !== x.m.c || x.p !== x.m.p).map(x => `${x.m.name}：碳水 ${x.m.c}→${x.c}g，蛋白质 ${x.m.p}→${x.p}g`);
+    if (!lines.length) return { ok: false, error: '分量没有变化' };
+    const warn = Math.abs(sumC - tc) > tc * 0.05 || Math.abs(sumP - tp) > tp * 0.05 ? `注意：全天合计变成碳水 ${sumC}g（计划 ${tc}g）、蛋白质 ${sumP}g（计划 ${tp}g），和套表配额不一致` : '';
+    if (!await confirmCard('调整分量', lines.concat(warn ? [warn] : []), a.reason)) return { ok: false, error: '用户取消了' };
+    const r = rec(d); r.mealAmt = r.mealAmt || {};
+    after.forEach(x => { if (x.c !== x.m.c || x.p !== x.m.p) r.mealAmt[x.m.key] = { c: x.c, p: x.p, note: '当天调整过：' + String(a.reason || '').slice(0, 40) }; });
+    save(d);
+    return { ok: true, changed: lines, warning: warn || null, meals: todayInfo({ date: d }).meals };
+  }
+  if (name === 'set_day_training') {
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(a.date || '') ? a.date : '';
+    if (!d) return { ok: false, error: 'date 要是 YYYY-MM-DD' };
+    if (a.type === 'lift' && S.profile.lift === false) return { ok: false, error: '现在设置的是不做力训' };
+    const before = dayInfo(d).lift ? '力训日' : '休息日';
+    const what = a.type === 'lift' ? '这天加练' : a.type === 'rest' ? '这天不练' : '恢复按计划';
+    if (!await confirmCard('安排训练日', [`${d}（周${DOW[E.dow(d)]}）：${before} → ${what}`], a.reason)) return { ok: false, error: '用户取消了' };
+    const r = rec(d); if (a.type === 'auto') delete r.override; else r.override = a.type; save(d); scoreDay(d);
+    if (window.Me && Me.scheduleNotifs) Me.scheduleNotifs();
+    return { ok: true, date: d, now: dayInfo(d).lift ? '力训日' : '休息日', eat_kcal: C.targetOf(d).kcal };
+  }
   return { error: '没有这个工具' };
 }
 
@@ -255,10 +345,12 @@ function md(t) {
     h += l.trim() ? `<p>${hd ? `<b>${hd[1]}</b>` : l}</p>` : '';
   });
   if (inList) h += '</ul>';
-  return h.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/（(表[\d０-９][^）]{0,40})）/g, '<span class="cite">$1</span>');
+  return h.replace(/\[([^\]]{1,60})\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/(^|[\s（(：:])(https?:\/\/[^\s<)）]+)/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>')
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/（(表[\d０-９][^）]{0,40})）/g, '<span class="cite">$1</span>');
 }
 function itemHtml(v) {
-  if (v.k === 'user') return `<div class="msg me">${esc(v.t)}</div>`;
+  if (v.k === 'user') return `<div class="msg me">${v.img ? `<img class="msg-img" src="${v.img}" alt="发送的图片">` : ''}${esc(v.t)}</div>`;
   if (v.k === 'bot') return `<div class="msg bot">${md(v.t)}</div>`;
   if (v.k === 'step') return `<div class="step">${I.search || ''}<span>${esc(v.t)}</span></div>`;
   if (v.k === 'err') return `<div class="msg err">${esc(v.t)}</div>`;
@@ -275,42 +367,78 @@ function view() {
   h += st.view.map(itemHtml).join('');
   if (st.busy) h += '<div class="typing"><i></i><i></i><i></i></div>';
   h += '</div>';
-  h += `<div class="composer"><div class="composer-in glass"><textarea id="chat-in" rows="1" placeholder="${model ? '问问套表，或让我改计划' : '先在“我的 → 大模型接口”里设置'}" ${st.busy || !model ? 'disabled' : ''}></textarea><button class="send" id="chat-send" aria-label="发送" ${st.busy || !model ? 'disabled' : ''}>${I.up}</button></div></div>`;
+  h += `<div class="composer">${st.img ? `<div class="attach"><img src="${st.img.thumb}" alt="待发送的图片"><button class="attach-x" data-unimg aria-label="去掉图片">×</button></div>` : ''}<div class="composer-in glass">
+    <button class="cbtn" id="chat-img" aria-label="发图片" ${!model ? 'disabled' : ''}>${I.camera}</button><input type="file" id="chat-file" accept="image/*" hidden>
+    <textarea id="chat-in" rows="1" placeholder="${model ? (st.busy ? '可以直接发新问题打断' : '问问套表，或让我改计划') : '先在“我的 → 大模型接口”里设置'}" ${!model ? 'disabled' : ''}>${esc(st.draft)}</textarea>
+    <button class="send ${st.busy ? 'stop' : ''}" id="chat-send" aria-label="${st.busy ? '停止' : '发送'}" ${!model ? 'disabled' : ''}>${st.busy ? '<i class="sq"></i>' : I.up}</button></div></div>`;
   return `<div class="chat">${h}</div>`;
 }
 function draw() {
   const list = $('#chat-list');
   if (!list) return;
-  const keep = $('#chat-in') ? $('#chat-in').value : '';
+  const had = document.activeElement && document.activeElement.id === 'chat-in';
   const app = $('#app'); app.innerHTML = view(); bind();
-  if ($('#chat-in')) $('#chat-in').value = keep;
+  if (had && $('#chat-in')) $('#chat-in').focus();
   requestAnimationFrame(() => { const l = $('#chat-list'); if (l) l.scrollTop = l.scrollHeight; });
 }
+function setDraft(v) { st.draft = v; LS.set('chatDraft', v || null); }
+/* 打断：中止正在进行的请求，没点的确认卡当作取消 */
+function stop() {
+  if (!st.busy) return;
+  if (st.ctl) st.ctl.abort();
+  Object.keys(st.pending).forEach(id => { const v = st.view.find(x => x.id === id); if (v) v.state = 'no'; st.pending[id](false); delete st.pending[id]; });
+}
 async function ask(q) {
-  q = String(q || '').trim(); if (!q || st.busy) return;
+  q = String(q || '').trim(); const img = st.img;
+  if (!q && !img) return;
+  if (!q) q = '这是什么？';
   const cfg = S.ai;
   if (!cfg.key || !(cfg.chatModel || cfg.model)) { toast('先在“我的 → 大模型接口”里设置'); return; }
-  st.busy = true; st.view.push({ k: 'user', t: q });
+  if (st.busy) { stop(); await new Promise(r => setTimeout(r, 60)); }
+  setDraft(''); st.img = null;
+  const ctl = st.ctl = new AbortController();
+  st.busy = true; st.view.push({ k: 'user', t: q, img: img ? img.thumb : null });
   if (!st.msgs.length || st.msgs[0].role !== 'system') st.msgs.unshift({ role: 'system', content: '' });
   st.msgs[0].content = sysPrompt();
-  st.msgs.push({ role: 'user', content: q }); draw();
+  const mark = st.msgs.length;
+  draw();
   try {
     await loadKB().catch(() => {});
-    const ans = await AI.agent(cfg, st.msgs, TOOLS, runTool, s => { st.view.push({ k: 'step', t: (STEP_TEXT[s.name] || (() => s.name))(s.args) }); draw(); });
-    st.view.push({ k: 'bot', t: ans || '（没有回答）' });
+    let content = q;
+    if (img) {
+      st.view.push({ k: 'step', t: STEP_TEXT.describe_image() }); draw();
+      const desc = await AI.describeImage(cfg, img.data, q, ctl.signal);
+      content = `${q}\n\n[图片识别（${cfg.model}）]：${desc}`;
+    }
+    st.msgs.push({ role: 'user', content });
+    const ans = await AI.agent(cfg, st.msgs, TOOLS, runTool, s => { if (ctl.signal.aborted) return; st.view.push({ k: 'step', t: (STEP_TEXT[s.name] || (() => s.name))(s.args) }); draw(); }, ctl.signal);
+    if (!ctl.signal.aborted) st.view.push({ k: 'bot', t: ans || '（没有回答）' });
   } catch (e) {
-    st.view.push({ k: 'err', t: e.message || String(e) });
-    // 出错时把这次没完成的一轮去掉，免得下次对话格式不完整
-    let i = st.msgs.length - 1; while (i > 0 && st.msgs[i].role !== 'user') i--; st.msgs = st.msgs.slice(0, i);
+    st.view.push({ k: 'err', t: e.stopped || ctl.signal.aborted ? '已停止' : (e.message || String(e)) });
+    // 没完成的一轮：保留用户的问题，去掉半截的工具调用，补一句“被打断”，下次对话格式仍然完整
+    st.msgs = st.msgs.slice(0, mark);
+    st.msgs.push({ role: 'user', content: q }, { role: 'assistant', content: '（这次回答被打断了）' });
   }
-  st.busy = false; persist(); draw();
+  if (st.ctl === ctl) { st.busy = false; st.ctl = null; }
+  persist(); draw();
+}
+async function pickImage(file) {
+  try {
+    const data = await AI.compress(file);
+    const thumb = await new Promise(res => { const im = new Image(); im.onload = () => { const c = document.createElement('canvas'), k = Math.min(1, 240 / Math.max(im.width, im.height)); c.width = im.width * k; c.height = im.height * k; c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', 0.7)); }; im.src = data; });
+    st.img = { data, thumb }; draw();
+  } catch (e) { toast(e.message || '图片读不出来'); }
 }
 function bind() {
   $('[data-cback]').onclick = () => { S.chatOn = false; if (window.visualViewport) visualViewport.onresize = null; render(); scrollTo(0, 0); };
   // 键盘弹出时让输入框跟着上移（按可见区域的高度排版）
   const vv = window.visualViewport;
   if (vv) { const fit = () => { const c = $('.chat'); if (!c) return; c.style.height = vv.height + 'px'; c.style.top = vv.offsetTop + 'px'; c.style.bottom = 'auto'; const l = $('#chat-list'); if (l) l.scrollTop = l.scrollHeight; }; vv.onresize = fit; fit(); }
-  $('[data-cclear]').onclick = () => { if (st.busy) return; st.view = []; st.msgs = []; persist(); draw(); };
+  $('[data-cclear]').onclick = () => { stop(); st.view = []; st.msgs = []; persist(); draw(); };
+  const ib = $('#chat-img'), fi = $('#chat-file');
+  if (ib) ib.onclick = () => fi.click();
+  if (fi) fi.onchange = () => { const f = fi.files[0]; if (f) pickImage(f); };
+  const ux = $('[data-unimg]'); if (ux) ux.onclick = () => { st.img = null; draw(); };
   $$('[data-q]').forEach(b => b.onclick = () => ask(b.dataset.q));
   $$('[data-cf]').forEach(b => b.onclick = () => {
     const [id, ok] = b.dataset.cf.split('|'), v = st.view.find(x => x.id === id);
@@ -321,10 +449,12 @@ function bind() {
   const inp = $('#chat-in'), send = $('#chat-send');
   if (inp) {
     const fit = () => { inp.style.height = 'auto'; inp.style.height = Math.min(inp.scrollHeight, 140) + 'px'; };
-    inp.oninput = fit; fit();
+    inp.oninput = () => { fit(); setDraft(inp.value); if (send) { const idle = !st.busy || inp.value.trim(); send.classList.toggle('stop', !idle); send.innerHTML = idle ? I.up : '<i class="sq"></i>'; } };
+    fit();
     inp.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); ask(inp.value); } };
   }
-  if (send) send.onclick = () => ask(inp.value);
+  // 忙的时候：输入框空着就是“停止”，有字就是“发送并打断”
+  if (send) send.onclick = () => { if (st.busy && !inp.value.trim() && !st.img) { stop(); return; } ask(inp.value); };
   requestAnimationFrame(() => { const l = $('#chat-list'); if (l) l.scrollTop = l.scrollHeight; });
 }
 function open() { S.chatOn = true; render(); loadKB().catch(() => {}); }

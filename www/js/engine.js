@@ -455,6 +455,6 @@ window.Engine = (() => {
     return sex === 'F' ? weight / (1.0278 - 0.0278 * reps) : Math.pow(reps, 0.1) * weight;
   }
 
-  return { build, decideGoal, calories, macros, pickSheet, mealsFor, buildDays, dayName, sessionPlan, pickSplit, cardioPerHour, cardioWeekly, findCardio,
+  return { build, decideGoal, calories, macros, pickSheet, mealsFor, buildDays, dayName, foodsFor, sessionPlan, pickSplit, cardioPerHour, cardioWeekly, findCardio,
     holidayOf, isWorkday, plannedLift, plannedCardio, advice, oneRM, SHEETS, tm, mt, ds, pd, dow, addDays, sessionsPerWeek };
 })();

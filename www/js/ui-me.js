@@ -340,6 +340,7 @@ function viewSettings() {
     <div class="frow stack"><div class="look-preview"><div class="lp-bg" aria-hidden="true"><i></i><i></i><i></i></div><div class="mat card lp-card"><span class="eyebrow">预览</span><div class="fig" style="font-size:40px">1885<small>kcal</small></div><div class="progress"><i style="width:62%;background:var(--accent)"></i></div></div></div></div></div>
     <div class="list-footer">模糊只用在标签栏、顶部导航和弹出面板上；手机发热或卡顿时可以打开省电模式。<button class="link" id="look-reset" style="min-height:0;font-size:12px">恢复默认</button></div></section>`;
   h += `<section class="fsec"><h3>通用</h3><div class="list mat">
+    <div class="frow"><span class="lbl">震动</span><div class="segmented" style="justify-self:end" data-hap>${[['all', '开'], ['long', '仅长按'], ['off', '关']].map(([k, n]) => `<button data-v="${k}" aria-pressed="${Kit.hapticMode() === k}">${n}</button>`).join('')}</div></div>
     <div class="frow"><label for="st-auto">自动检查更新</label><input type="checkbox" class="switch" id="st-auto" ${up.auto ? 'checked' : ''}></div>
     <button class="row" id="st-check" style="grid-template-columns:1fr auto"><span class="row-main"><span class="row-title">现在检查更新</span></span><span class="row-val chev">${APP_VERSION}</span></button>
     <div class="frow"><label for="st-guide">下次打开时显示新手引导</label><input type="checkbox" class="switch" id="st-guide" ${LS.get('guideNext') ? 'checked' : ''}></div>
@@ -360,6 +361,7 @@ function bindSettings() {
   $('#rg-alpha').oninput = e => { Look.set({ alpha: +e.target.value }); $('#rv-alpha').textContent = Math.round(e.target.value * 100) + '%'; };
   $('#st-lite').onchange = e => { Look.set({ lite: e.target.checked }); toast(e.target.checked ? '已关闭模糊和动画' : '已恢复'); };
   $('#look-reset').onclick = () => { Look.reset(); Kit.haptic('light'); render(); toast('已恢复默认外观'); };
+  $$('[data-hap] button').forEach(b => b.onclick = () => { Kit.setHaptic(b.dataset.v); Kit.haptic('medium', true); render(); toast(b.dataset.v === 'off' ? '已关闭震动' : b.dataset.v === 'long' ? '只有长按时震动（长按安排可改时间、长按动作可换动作）' : '已开启震动'); });
   $('#st-auto').onchange = e => Updater.savePrefs({ auto: e.target.checked });
   $('#st-check').onclick = () => Updater.check(false);
   $('#st-guide').onchange = e => { LS.set('guideNext', e.target.checked); toast(e.target.checked ? '下次打开 App 时会显示引导' : '已关闭'); };

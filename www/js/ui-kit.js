@@ -45,7 +45,11 @@ const I = {
 const KIND = { train: ['训练', I.train, 'k-train'], food: ['饮食', I.food, 'k-food'], cardio: ['有氧', I.run, 'k-cardio'], habit: ['习惯', I.clock, 'k-habit'], sleep: ['睡眠', I.moon, 'k-sleep'], scale: ['称重', I.scale, 'k-habit'] };
 
 /* ---------- 触感反馈（HIG：动效之外用触感补充反馈） ---------- */
-function haptic(kind) {
+/* 震动设置：all 全部开 / long 只有长按时 / off 关（我的 → 设置） */
+let hapticMode = (() => { try { return JSON.parse(localStorage.getItem('lcd:haptic')) || 'all'; } catch (e) { return 'all'; } })();
+function setHaptic(m) { hapticMode = m; try { localStorage.setItem('lcd:haptic', JSON.stringify(m)); } catch (e) { /* 存不下不影响 */ } }
+function haptic(kind, fromLongPress) {
+  if (hapticMode === 'off' || (hapticMode === 'long' && !fromLongPress)) return;
   try {
     const H = window.capacitorHaptics && window.capacitorHaptics.Haptics;
     if (H && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
@@ -127,5 +131,70 @@ function row({ icon, kind, title, sub, val, chev, attrs, cls }) {
   const k = kind ? KIND[kind] : null;
   return `<button class="row ${cls || ''}" ${attrs || ''}>${icon || k ? `<span class="row-ico ${k ? k[2] : ''}" ${!k && icon ? 'style="background:var(--label3)"' : ''}>${icon || k[1]}</span>` : '<span></span>'}<span class="row-main"><span class="row-title">${title}</span>${sub ? `<span class="row-sub">${sub}</span>` : ''}</span><span class="row-val ${chev ? 'chev' : ''}">${val || ''}</span></button>`;
 }
-return { I, KIND, haptic, largeTitle, setNav, rings, deck, bindDeck, chk, row, $, $$ };
+/* ---------- 长按：500ms 不动算长按，带震动；滑动或抬起就取消 ---------- */
+function longPress(el, cb) {
+  let t = null, x = 0, y = 0, fired = false;
+  const stop = () => { clearTimeout(t); t = null; };
+  el.addEventListener('pointerdown', e => { fired = false; x = e.clientX; y = e.clientY; stop(); t = setTimeout(() => { fired = true; haptic('medium', true); cb(e); }, 500); });
+  el.addEventListener('pointermove', e => { if (t && Math.hypot(e.clientX - x, e.clientY - y) > 8) stop(); });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(n => el.addEventListener(n, stop));
+  el.addEventListener('contextmenu', e => e.preventDefault());
+  // 长按触发后，松手时的那次点击不再当作普通点击
+  el.addEventListener('click', e => { if (fired) { e.preventDefault(); e.stopImmediatePropagation(); fired = false; } }, true);
+}
+
+/* ---------- 选时间：iOS 式上下滑动的滚轮（替换系统的时钟弹窗） ---------- */
+const IH = 40, pad2 = n => String(n).padStart(2, '0');
+function timeWheel(value, title, cb) {
+  const [h0, m0] = String(value || '08:00').split(':').map(n => +n || 0);
+  const layer = document.createElement('div');
+  layer.className = 'tw-layer';
+  const col = (n, name) => `<div class="tw-col" data-col="${name}" role="listbox" aria-label="${name === 'h' ? '小时' : '分钟'}"><div class="tw-pad"></div>${[...Array(n)].map((_, i) => `<div class="tw-item" data-i="${i}">${pad2(i)}</div>`).join('')}<div class="tw-pad"></div></div>`;
+  layer.innerHTML = `<div class="tw-sheet" role="dialog" aria-modal="true"><div class="tw-head"><button class="tw-btn" data-tw="x">取消</button><b>${title || '选择时间'}</b><button class="tw-btn ok" data-tw="ok">完成</button></div>
+    <div class="tw-body"><div class="tw-band" aria-hidden="true"></div>${col(24, 'h')}<span class="tw-colon">:</span>${col(60, 'm')}</div></div>`;
+  document.body.appendChild(layer);
+  const cols = [...layer.querySelectorAll('.tw-col')];
+  const idx = c => Math.max(0, Math.min(c.children.length - 3, Math.round(c.scrollTop / IH)));
+  const mark = c => { const i = idx(c); c.querySelectorAll('.tw-item').forEach(el => el.classList.toggle('on', +el.dataset.i === i)); return i; };
+  cols[0].scrollTop = h0 * IH; cols[1].scrollTop = m0 * IH;
+  cols.forEach(c => {
+    let last = mark(c), raf = 0;
+    c.addEventListener('scroll', () => { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; const i = mark(c); if (i !== last) { last = i; haptic('light'); } }); }, { passive: true });
+    c.addEventListener('click', e => { const it = e.target.closest('.tw-item'); if (it) c.scrollTo({ top: +it.dataset.i * IH, behavior: 'smooth' }); });
+  });
+  const close = ok => {
+    if (ok) cb(pad2(idx(cols[0])) + ':' + pad2(idx(cols[1])));
+    layer.classList.add('out'); setTimeout(() => layer.remove(), 180);
+  };
+  layer.addEventListener('click', e => { if (e.target === layer) close(false); });
+  layer.querySelector('[data-tw="x"]').onclick = () => close(false);
+  layer.querySelector('[data-tw="ok"]').onclick = () => close(true);
+  window.__closeWheel = () => { if (document.body.contains(layer)) { close(false); return true; } return false; };
+}
+/* 页面里所有 <input type="time"> 自动换成只读文本框，点一下弹出滚轮；改完照常触发 input / change 事件 */
+function upgradeTimeInputs() {
+  document.querySelectorAll('input[type="time"]').forEach(i => { i.type = 'text'; i.readOnly = true; i.classList.add('tw-input'); i.setAttribute('inputmode', 'none'); });
+}
+new MutationObserver(upgradeTimeInputs).observe(document.documentElement, { childList: true, subtree: true });
+document.addEventListener('click', e => {
+  const i = e.target.closest && e.target.closest('input.tw-input');
+  if (!i || i.disabled) return;
+  e.preventDefault(); i.blur();
+  const lab = i.id && document.querySelector(`label[for="${i.id}"]`);
+  timeWheel(i.value, lab ? lab.textContent : (i.getAttribute('aria-label') || '选择时间'), v => {
+    i.value = v;
+    i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+});
+
+/* ---------- 横向滚动条两端的内容渐隐（只在那一侧还有内容时） ---------- */
+function fadeEdges(el) {
+  if (!el) return;
+  const upd = () => { el.classList.toggle('fade-l', el.scrollLeft > 2); el.classList.toggle('fade-r', el.scrollLeft + el.clientWidth < el.scrollWidth - 2); };
+  el.addEventListener('scroll', upd, { passive: true }); upd();
+  const on = el.querySelector('[aria-pressed="true"]');
+  if (on && (on.offsetLeft + on.offsetWidth > el.clientWidth)) { el.scrollLeft = on.offsetLeft - 24; upd(); }
+}
+
+return { I, KIND, haptic, setHaptic, hapticMode: () => hapticMode, longPress, timeWheel, fadeEdges, largeTitle, setNav, rings, deck, bindDeck, chk, row, $, $$ };
 })();
