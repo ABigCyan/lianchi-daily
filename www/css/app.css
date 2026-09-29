@@ -468,9 +468,6 @@ td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .row-val .rv{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:40vw}
 /* 滚轮时间框：按内容宽度，不要默认的 20 个字符宽 */
 .time-in.tw-input,.time-in{width:5.2em;text-align:center}
-.loc-bar{display:block;height:4px;margin-top:6px;border-radius:99px;background:var(--fill2);overflow:hidden}
-.loc-bar i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .3s}
-.loc-row .row-sub{white-space:normal}
 /* 菜单行：标题完整显示，右侧说明文字不够放时省略 */
 .row[data-sub]:not([style]){grid-template-columns:48px minmax(max-content,1fr) minmax(0,auto)}
 .row-val .rv{min-width:0}

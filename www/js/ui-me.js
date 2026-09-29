@@ -196,91 +196,9 @@ function viewAI() {
     <div class="frow"><label for="ai-manual">手动模型 ID</label><input id="ai-manual" placeholder="可选" inputmode="text"></div></section>
   <div class="list-footer">带“（图）”的模型能看照片；助手要用支持工具调用的文字模型，扫描时会自动选一个（如 qwen3-max）</div>
   <button class="pill ink wide" id="ai-save">保存</button>
-  <details class="mat card"><summary class="t-headline">内置的饮食识别提示词</summary><pre class="t-foot l2" style="white-space:pre-wrap;margin:0">${esc(AI.systemPrompt())}</pre></details>
-  <section class="list mat"><button class="row" data-sub="localai" style="grid-template-columns:1fr auto"><span class="row-main"><span class="row-title">内置模型（离线插件）</span><span class="row-sub">没网也能问套表，在“设置 → 插件”里开启</span></span><span class="row-val chev"><span class="rv">${LocalAI.prefs().enabled ? '已开启' : '未开启'}</span></span></button></section>`;
-}
-/* ---------- 插件：内置模型（离线） ---------- */
-function viewLocal() {
-  const p = LocalAI.prefs();
-  let h = back(S.subBack === 'ai' ? '大模型接口' : S.subBack === 'settings' ? '设置' : '我的') + Kit.largeTitle('内置模型', '插件 · 测试版');
-  h += `<section class="mat card" style="gap:10px"><div class="t-headline">在手机上运行的小模型</div>
-    <p class="t-sub l2">不联网也能问套表、做简单修改（改时间、今天不练、改目标）。App 先从套表里找出相关原文，模型只根据原文回答并标出处。拍照识别和复杂的安排调整仍用云端模型。</p>
-    <p class="t-foot l3">需要 64 位安卓手机（骁龙 855 及以后）和约 1.5GB 空闲内存。模型文件 360MB–1GB，建议连 Wi-Fi 下载，可以暂停和续传。</p></section>`;
-  h += `<section class="list mat"><div class="frow"><label for="loc-on">启用插件</label><input type="checkbox" class="switch" id="loc-on" ${p.enabled ? 'checked' : ''}></div></section>`;
-  h += `<div id="loc-box" ${p.enabled ? '' : 'hidden'}><section class="list mat"><div class="row"><span class="row-title l3">检查中…</span></div></section></div>`;
-  return h;
-}
-const mb = n => (n / 1048576).toFixed(0) + ' MB';
-let unwatch = null;
-async function drawLocal() {
-  const box = $('#loc-box'); if (!box || box.hidden) return;
-  const inf = await LocalAI.info(), p = LocalAI.prefs(), dl = LocalAI.dl;
-  if (!inf.available) { box.innerHTML = `<section class="list mat"><div class="row" style="grid-template-columns:1fr"><span class="row-main"><span class="row-title">这台设备不能用</span><span class="row-sub" style="white-space:normal">${esc(inf.reason || '')}</span></span></div></section>`; return; }
-  let h = '<section class="fsec"><h3>模型</h3><div class="list mat">';
-  for (const m of LocalAI.MODELS) {
-    const have = inf.dev || await LocalAI.exists(m), part = have ? 0 : await LocalAI.partial(m), on = p.model === m.id, busy = dl.running && dl.id === m.id;
-    const got = busy ? dl.bytes : part, pct = Math.min(100, Math.round(got / m.size * 100));
-    let act;
-    if (inf.dev) act = '<span class="row-val">电脑调试</span>';
-    else if (have) act = `<button class="tbtn" data-loc-del="${m.id}">删除</button>`;
-    else if (busy) act = `<button class="tbtn" data-loc-pause>暂停</button>`;
-    else act = `<button class="tbtn" data-loc-dl="${m.id}" ${dl.running ? 'disabled' : ''}>${part ? '继续' : '下载'}</button>`;
-    h += `<div class="row loc-row" style="grid-template-columns:auto 1fr auto"><button class="hit" data-loc-pick="${m.id}" aria-label="使用 ${esc(m.name)}" style="margin:0" ${have || inf.dev ? '' : 'disabled'}>${Kit.chk(on && (have || inf.dev))}</button>
-      <span class="row-main"><span class="row-title">${esc(m.name)} <span class="t-cap l3">${esc(m.tag)} · ${mb(m.size)}</span></span>
-      <span class="row-sub" data-loc-sub="${m.id}">${have ? (on ? '正在使用 · ' : '已下载 · ') + esc(m.note) : got ? `已下载 ${mb(got)} / ${mb(m.size)}（${pct}%）${!busy && dl.error && dl.id === m.id ? ' · ' + esc(dl.error) : ''}` : esc(m.note)}</span>
-      ${!have && got ? `<span class="progress loc-bar"><i data-loc-bar="${m.id}" style="width:${pct}%"></i></span>` : ''}</span>${act}</div>`;
-  }
-  h += '</div></section>';
-  h += `<section class="list mat"><div class="frow"><span class="lbl">助手使用</span><div class="segmented" style="justify-self:end" data-loc-use>${[['cloud', '云端'], ['local', '内置'], ['auto', '没网时内置']].map(([k, n]) => `<button data-v="${k}" aria-pressed="${p.use === k}">${n}</button>`).join('')}</div></div></section>`;
-  if (inf.ramMB) h += `<div class="list-footer">这台手机：${inf.cores} 核，内存 ${(inf.ramMB / 1024).toFixed(1)} GB（当前可用 ${(inf.availMB / 1024).toFixed(1)} GB）</div>`;
-  box.innerHTML = h;
-  box.querySelectorAll('[data-loc-pick]').forEach(b => b.onclick = () => { LocalAI.setPrefs({ model: b.dataset.locPick }); drawLocal(); });
-  box.querySelectorAll('[data-loc-use] button').forEach(b => b.onclick = async () => {
-    if (b.dataset.v !== 'cloud' && !inf.dev && !(await LocalAI.exists(LocalAI.current()))) { toast('先下载并选中一个模型'); return; }
-    LocalAI.setPrefs({ use: b.dataset.v }); Kit.haptic('light'); drawLocal();
-  });
-  box.querySelectorAll('[data-loc-del]').forEach(b => b.onclick = () => sheet(`<h2>删除模型？</h2><p class="t-sub l2" style="text-align:center">删除后要重新下载才能用内置模型</p><button class="pill ink wide" id="ld-go">删除</button><button class="pill glass wide" id="ld-x">取消</button>`, m => {
-    m.querySelector('#ld-x').onclick = close;
-    m.querySelector('#ld-go').onclick = async () => { const md = LocalAI.MODELS.find(x => x.id === b.dataset.locDel); close(); await LocalAI.remove(md); if (LocalAI.prefs().model === md.id) LocalAI.setPrefs({ use: 'cloud' }); toast('已删除'); drawLocal(); };
-  }));
-  const pz = box.querySelector('[data-loc-pause]'); if (pz) pz.onclick = () => { LocalAI.pause(); pz.disabled = true; pz.textContent = '暂停中'; };
-  box.querySelectorAll('[data-loc-dl]').forEach(b => b.onclick = async () => {
-    const m = LocalAI.MODELS.find(x => x.id === b.dataset.locDl);
-    const go = async () => {
-      Kit.haptic('light');
-      const run = LocalAI.download(m);
-      drawLocal();
-      try { await run; LocalAI.setPrefs({ model: m.id }); Kit.haptic('success'); toast(`${m.name} 下载完成`); }
-      catch (e) { if (!/已暂停/.test(e.message || e)) toast(String(e.message || e)); }
-      drawLocal();
-    };
-    // 用手机流量时先提醒
-    const conn = navigator.connection;
-    if (conn && conn.type === 'cellular') sheet(`<h2>正在用手机流量</h2><p class="t-sub l2" style="text-align:center">模型约 ${mb(m.size)}，建议连 Wi-Fi 再下载</p><button class="pill glass wide" id="dc-go">继续用流量下载</button><button class="pill ink wide" id="dc-x">等连上 Wi-Fi</button>`, s2 => { s2.querySelector('#dc-x').onclick = close; s2.querySelector('#dc-go').onclick = () => { close(); go(); }; });
-    else go();
-  });
-  // 进度：只更新进度条和文字，不重画整页；下载结束再重画
-  if (unwatch) unwatch();
-  unwatch = LocalAI.onDownload(d => {
-    const bar = document.querySelector(`[data-loc-bar="${d.id}"]`), sub = document.querySelector(`[data-loc-sub="${d.id}"]`);
-    if (!document.body.contains(box)) { if (unwatch) { unwatch(); unwatch = null; } return; }
-    if (!bar && d.running) { drawLocal(); return; }
-    const pct = d.total ? Math.min(100, Math.round(d.bytes / d.total * 100)) : 0;
-    if (bar) bar.style.width = pct + '%';
-    if (sub) sub.textContent = `已下载 ${mb(d.bytes)} / ${mb(d.total)}（${pct}%）${d.error ? ' · ' + d.error : ''}`;
-  });
-}
-function bindLocal() {
-  $$('[data-back]').forEach(b => b.onclick = () => { S.sub = S.subBack || null; S.subBack = null; render(); scrollTo(0, 0); });
-  $('#loc-on').onchange = e => {
-    LocalAI.setPrefs({ enabled: e.target.checked, use: e.target.checked ? LocalAI.prefs().use : 'cloud' });
-    $('#loc-box').hidden = !e.target.checked; Kit.haptic('light');
-    if (e.target.checked) drawLocal(); else toast('已关闭；下载的模型还在，可以在这里删除');
-  };
-  drawLocal();
+  <details class="mat card"><summary class="t-headline">内置的饮食识别提示词</summary><pre class="t-foot l2" style="white-space:pre-wrap;margin:0">${esc(AI.systemPrompt())}</pre></details>`;
 }
 function bindAI() {
-  $$('[data-sub]').forEach(b => b.onclick = () => { S.subBack = 'ai'; S.sub = b.dataset.sub; render(); scrollTo(0, 0); });
   $('#ai-preset').onchange = () => { const pr = AI.PRESETS.find(x => x.id === $('#ai-preset').value); if (pr.base) $('#ai-base').value = pr.base; };
   const collect = () => { const pr = AI.PRESETS.find(x => x.id === $('#ai-preset').value); return { ...S.ai, preset: pr.id, type: pr.type, base: $('#ai-base').value.trim(), key: $('#ai-key').value.trim() }; };
   $('#ai-scan').onclick = async () => {
@@ -421,7 +339,6 @@ function viewSettings() {
     <div class="frow"><label for="st-lite">省电模式</label><input type="checkbox" class="switch" id="st-lite" ${l.lite ? 'checked' : ''}></div>
     <div class="frow stack"><div class="look-preview"><div class="lp-bg" aria-hidden="true"><i></i><i></i><i></i></div><div class="mat card lp-card"><span class="eyebrow">预览</span><div class="fig" style="font-size:40px">1885<small>kcal</small></div><div class="progress"><i style="width:62%;background:var(--accent)"></i></div></div></div></div></div>
     <div class="list-footer">模糊只用在标签栏、顶部导航和弹出面板上；手机发热或卡顿时可以打开省电模式。<button class="link" id="look-reset" style="min-height:0;font-size:12px">恢复默认</button></div></section>`;
-  h += `<section class="fsec"><h3>插件</h3><div class="list mat"><button class="row" data-sub="localai"><span class="row-ico">${I.sparkles}</span><span class="row-main"><span class="row-title">内置模型</span><span class="row-sub">在手机上运行的小模型 · 测试版</span></span><span class="row-val chev"><span class="rv">${LocalAI.prefs().enabled ? '已开启' : '未开启'}</span></span></button></div></section>`;
   h += `<section class="fsec"><h3>通用</h3><div class="list mat">
     <div class="frow"><span class="lbl">震动</span><div class="segmented" style="justify-self:end" data-hap>${[['all', '开'], ['long', '仅长按'], ['off', '关']].map(([k, n]) => `<button data-v="${k}" aria-pressed="${Kit.hapticMode() === k}">${n}</button>`).join('')}</div></div>
     <div class="frow"><label for="st-auto">自动检查更新</label><input type="checkbox" class="switch" id="st-auto" ${up.auto ? 'checked' : ''}></div>
@@ -432,7 +349,6 @@ function viewSettings() {
   return h;
 }
 function bindSettings() {
-  $$('[data-sub]').forEach(b => b.onclick = () => { S.subBack = 'settings'; S.sub = b.dataset.sub; render(); scrollTo(0, 0); });
   $$('[data-back]').forEach(b => b.onclick = () => { S.sub = null; render(); });
   $('#av-pick').onclick = () => $('#av-file').click();
   $('#av-file').onchange = async () => { const f = $('#av-file').files[0]; if (!f) return; try { Look.setAvatar(await Look.cropAvatar(f)); Kit.haptic('success'); render(); toast('头像已更换'); } catch (e) { toast(e.message); } };
@@ -454,7 +370,6 @@ function bindSettings() {
 
 const SUB = {
   settings: { view: viewSettings, bind: bindSettings },
-  localai: { view: viewLocal, bind: bindLocal },
   profile: { view: () => back() + Kit.largeTitle('编辑资料', '') + profileForm(false), bind: () => { $$('[data-back]').forEach(b => b.onclick = () => { S.sub = null; render(); }); bindProfile(false); } },
   plan: { view: viewPlan, bind: () => $$('[data-pd]').forEach(b => b.onclick = () => { S.planDay = b.dataset.pd; render(); }) },
   rules: { view: viewRules }, ai: { view: viewAI, bind: bindAI }, export: { view: viewExport, bind: bindExport }, import: { view: viewImport, bind: bindImport },

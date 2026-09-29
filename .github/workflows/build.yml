@@ -29,9 +29,6 @@ jobs:
           npm ci
           npm test
 
-      - name: Fetch llama.cpp (内置大模型)
-        run: bash tools/fetch-llama.sh
-
       - name: Sync web assets into Android project
         run: npx cap sync android
 
