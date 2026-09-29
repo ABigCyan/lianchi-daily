@@ -35,6 +35,7 @@ const I = {
   calendar: P('<rect x="3.5" y="4.5" width="17" height="16" rx="4"/><path d="M8 2.8v3.4M16 2.8v3.4M3.5 10h17"/>'),
   heart: P('<path d="M12 20s-7.5-4.4-7.5-10.1A4.3 4.3 0 0 1 12 7.2a4.3 4.3 0 0 1 7.5 2.7C19.5 15.6 12 20 12 20z"/>'),
   globe: P('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.4 3.5 5.2 3.5 8.5s-1.1 6.1-3.5 8.5c-2.4-2.4-3.5-5.2-3.5-8.5s1.1-6.1 3.5-8.5z"/>'),
+  search: P('<circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/>'),
   gear: P('<circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M21.2 12h-2.4M5.2 12H2.8M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7M18.5 18.5l-1.7-1.7M7.2 7.2L5.5 5.5"/>'),
   up: P('<path d="M6 14l6-6 6 6"/>'),
   down: P('<path d="M6 10l6 6 6-6"/>'),
@@ -58,8 +59,9 @@ function largeTitle(title, subtitle, trailing) {
   setNav(title);
   return `<header class="largetitle"><div><h1>${title}</h1>${subtitle ? `<div class="subtitle">${subtitle}</div>` : ''}</div>${trailing || ''}</header>`;
 }
-function setNav(title) { const n = $('#navbar'); if (n) n.querySelector('.glass').textContent = title; onScroll(); }
-function onScroll() { const n = $('#navbar'); if (n) n.classList.toggle('show', scrollY > 56); }
+function setNav(title) { const n = $('#navbar'); if (n) n.querySelector('.glass').textContent = title; navShown = null; onScroll(); }
+let navShown = null;
+function onScroll() { const n = $('#navbar'), v = scrollY > 56; if (n && v !== navShown) { navShown = v; n.classList.toggle('show', v); } }
 addEventListener('scroll', onScroll, { passive: true });
 
 /* ---------- 活动圆环 ---------- */

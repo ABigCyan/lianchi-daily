@@ -67,12 +67,13 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 [hidden]{display:none!important}
 html{background:var(--bg)}
-body{margin:0;min-height:100vh;background:linear-gradient(180deg,var(--bg-top),var(--bg) 40%,var(--bg-bottom)) fixed;color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.45;-webkit-font-smoothing:antialiased;font-feature-settings:"cv11","ss01";overscroll-behavior-y:none}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:16px;line-height:1.45;-webkit-font-smoothing:antialiased;font-feature-settings:"cv11","ss01";overscroll-behavior-y:none}
 button,input,select,textarea{font:inherit;color:inherit}
 button{background:none;border:0;padding:0;cursor:pointer;text-align:center}
 h1,h2,h3,p{margin:0}
 :focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:8px}
 .ambient{display:none}
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:linear-gradient(180deg,var(--bg-top),var(--bg) 40%,var(--bg-bottom));transform:translateZ(0)}
 
 /* 文字 */
 .num{font-variant-numeric:tabular-nums;letter-spacing:-.01em}
@@ -98,12 +99,12 @@ h1,h2,h3,p{margin:0}
 .largetitle > div:first-child{display:flex;flex-direction:column-reverse;gap:6px}
 
 /* 玻璃：面板（内容）与控件 */
-.mat,.panel{position:relative;background:var(--glass);-webkit-backdrop-filter:blur(var(--blur)) saturate(1.5);backdrop-filter:blur(var(--blur)) saturate(1.5);border-radius:28px;box-shadow:inset 0 1px 0 var(--rim),0 0 0 .5px var(--hair),var(--shadow)}
-.mat::before,.panel::before,.glass::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
+.mat,.panel{position:relative;background:var(--glass);border-radius:28px;box-shadow:inset 0 1px 0 var(--rim),0 0 0 .5px var(--hair),var(--shadow)}
+.tabbar .glass::before,.navbar .glass::before,.sheet::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;
   background:linear-gradient(150deg,var(--rim) 0%,rgba(255,255,255,0) 32%,rgba(255,255,255,0) 68%,var(--rim-soft) 100%);
   -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude}
 .mat-regular{background:var(--glass-strong)} .mat-thick{background:var(--glass-strong)}
-.glass{position:relative;background:linear-gradient(180deg,var(--glass-strong),var(--glass));-webkit-backdrop-filter:blur(calc(var(--blur) * .8)) saturate(1.6);backdrop-filter:blur(calc(var(--blur) * .8)) saturate(1.6);box-shadow:inset 0 1px 0 var(--rim),inset 0 -1px 0 var(--hair2),0 0 0 .5px var(--hair),0 10px 24px -12px rgba(16,20,28,.3)}
+.glass{position:relative;background:linear-gradient(180deg,var(--glass-strong),var(--glass));box-shadow:inset 0 1px 0 var(--rim),inset 0 -1px 0 var(--hair2),0 0 0 .5px var(--hair),0 10px 24px -12px rgba(16,20,28,.3)}
 .card{padding:20px;display:grid;gap:16px;min-width:0}
 .hair{height:1px;background:var(--hair);border:0;margin:0}
 
@@ -156,13 +157,13 @@ h1,h2,h3,p{margin:0}
 
 /* 堆叠卡组 */
 .deck{position:relative;display:grid;margin:0 6px 30px;touch-action:pan-y}
-.deck .dc{grid-area:1/1;align-self:start;border-radius:28px;padding:22px;display:grid;gap:16px;min-height:180px;transition:transform .42s cubic-bezier(.2,.85,.25,1.05),opacity .3s;will-change:transform;user-select:none;-webkit-user-select:none}
+.deck .dc{grid-area:1/1;align-self:start;border-radius:28px;padding:22px;display:grid;gap:16px;min-height:180px;transition:transform .42s cubic-bezier(.2,.85,.25,1.05),opacity .3s;user-select:none;-webkit-user-select:none}
 .deck .dc.top{position:relative;z-index:3;background:var(--glass-strong);box-shadow:inset 0 1px 0 var(--rim),0 0 0 .5px var(--hair),var(--shadow-lg)}
 .deck .dc.behind{overflow:hidden;pointer-events:none}
 .deck .dc.behind > *{visibility:hidden}
 .deck .dc.b1{z-index:2;transform:translateY(14px) scale(.955) rotate(-1.8deg)}
 .deck .dc.b2{z-index:1;transform:translateY(27px) scale(.91) rotate(2.4deg);opacity:.8}
-.deck .dc.dragging{transition:none}
+.deck .dc.dragging{transition:none;will-change:transform}
 .deck .dc.top.promote{animation:promote1 .4s cubic-bezier(.2,.85,.25,1)}
 .deck .dc.b1.promote{animation:promote2 .4s cubic-bezier(.2,.85,.25,1)}
 @keyframes promote1{from{transform:translateY(14px) scale(.955) rotate(-1.8deg)}to{transform:none}}
@@ -223,7 +224,7 @@ h1,h2,h3,p{margin:0}
 .seg-scroll .rec{font-size:11px;margin-left:6px;opacity:.6}
 .ex-hero{margin:-22px -22px 0;height:180px;border-radius:28px 28px 0 0;overflow:hidden;position:relative;background:var(--fill)}
 .ex-hero img{width:100%;height:100%;object-fit:cover;display:block;filter:saturate(.85)}
-.ex-hero .badge{position:absolute;left:16px;top:16px;padding:5px 12px;border-radius:99px;font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--ink);background:var(--glass-strong);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px)}
+.ex-hero .badge{position:absolute;left:16px;top:16px;padding:5px 12px;border-radius:99px;font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--ink);background:var(--glass-strong)}
 .sets{display:grid;gap:8px}
 .set{display:grid;grid-template-columns:20px 1fr 1fr 44px;gap:10px;align-items:center}
 .set .n{font-size:13px;color:var(--ink3);text-align:left;font-variant-numeric:tabular-nums}
@@ -296,7 +297,7 @@ td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 
 /* 底部面板 */
 .modal{position:fixed;inset:0;z-index:40;background:rgba(14,16,19,.22);display:grid;align-items:end;justify-items:center;animation:fade .25s}
-.sheet{position:relative;width:calc(100% - 16px);max-width:560px;margin-bottom:calc(env(safe-area-inset-bottom,0px) + 8px);max-height:88vh;overflow:auto;border-radius:32px;padding:10px 20px 22px;display:grid;gap:16px;background:var(--glass-strong);-webkit-backdrop-filter:blur(calc(var(--blur) * 1.5)) saturate(1.6);backdrop-filter:blur(calc(var(--blur) * 1.5)) saturate(1.6);box-shadow:inset 0 1px 0 var(--rim),0 0 0 .5px var(--hair),0 30px 80px -20px rgba(0,0,0,.35);animation:rise .38s cubic-bezier(.2,.9,.25,1)}
+.sheet{position:relative;width:calc(100% - 16px);max-width:560px;margin-bottom:calc(env(safe-area-inset-bottom,0px) + 8px);max-height:88vh;overflow:auto;border-radius:32px;padding:10px 20px 22px;display:grid;gap:16px;background:var(--glass-strong);-webkit-backdrop-filter:blur(var(--blur)) saturate(1.4);backdrop-filter:blur(var(--blur)) saturate(1.4);box-shadow:inset 0 1px 0 var(--rim),0 0 0 .5px var(--hair),0 30px 80px -20px rgba(0,0,0,.35);animation:rise .38s cubic-bezier(.2,.9,.25,1)}
 .sheet .grab{width:36px;height:4px;border-radius:2px;background:var(--ink4);justify-self:center}
 .sheet h2{font-size:20px;font-weight:650;letter-spacing:-.015em;text-align:center}
 .sheet .sheet-sub{font-size:13px;color:var(--ink3);text-align:center;margin-top:-10px}
@@ -326,9 +327,9 @@ td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 @keyframes rise{from{transform:translateY(40px);opacity:0}to{transform:none;opacity:1}}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 @keyframes drop{from{transform:translate(-50%,-24px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
-@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.mat,.panel,.glass{background:var(--glass-strong)}}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.tabbar .glass,.navbar .glass,.sheet{background:var(--glass-strong)}}
 @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
-@media (prefers-reduced-transparency: reduce){.mat,.panel,.glass,.sheet{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--glass-strong)}}
+@media (prefers-reduced-transparency: reduce){.tabbar .glass,.navbar .glass,.sheet,.composer-in{-webkit-backdrop-filter:none;backdrop-filter:none;background:var(--glass-strong)}}
 
 /* 新手引导 */
 .guide{display:grid;gap:18px;padding-top:4px}
@@ -370,3 +371,53 @@ td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .lp-bg i:nth-child(2){width:46px;height:46px;right:16%;top:26%;background:var(--accent)}
 .lp-bg i:nth-child(3){width:90px;height:22px;border-radius:99px;left:40%;bottom:14%;background:var(--ok)}
 .lp-card{gap:12px}
+
+.plan-why{font-size:12px;line-height:1.55;color:var(--ink3);padding:0 6px;margin-top:-6px}
+
+/* 只有浮在滚动内容上面的地方才用实时模糊（标签栏、顶部导航、底部面板、输入框） */
+.tabbar .glass,.navbar .glass,.composer-in{-webkit-backdrop-filter:blur(var(--blur)) saturate(1.5);backdrop-filter:blur(var(--blur)) saturate(1.5)}
+.tabbar .glass,.navbar .glass{background:linear-gradient(180deg,var(--glass-strong),var(--glass));transform:translateZ(0)}
+/* 省电模式：完全不用模糊和动画 */
+:root[data-lite] .tabbar .glass,:root[data-lite] .navbar .glass,:root[data-lite] .sheet,:root[data-lite] .composer-in,:root[data-lite] .ex-hero .badge{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--glass-strong)}
+:root[data-lite] *{animation-duration:0s!important;transition-duration:0s!important}
+:root[data-lite] .deck .dc.b2{display:none}
+/* 长列表离开屏幕时跳过渲染 */
+.heat,.medals,.libgrid{content-visibility:auto;contain-intrinsic-size:auto 320px}
+
+/* 页头右侧：助手按钮 + 日期切换 */
+.head-r{display:flex;gap:8px;align-items:center}
+.ai-btn{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;color:var(--ink)}
+.ai-btn svg{width:20px;height:20px}
+
+/* 助手 */
+.chat{position:fixed;inset:0;display:flex;flex-direction:column;background:var(--bg);z-index:30}
+.chat-top{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:calc(env(safe-area-inset-top,0px) + 8px) 14px 8px 20px;border-bottom:.5px solid var(--hair)}
+.chat-top .gbtn{justify-self:end;color:var(--ink2)}
+.chat-title{display:grid;justify-items:center;line-height:1.25}
+.chat-title b{font-size:16px}
+.chat-title span{font-size:11px;color:var(--ink3);max-width:46vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-list{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:16px 16px 12px;display:flex;flex-direction:column;gap:10px;-webkit-overflow-scrolling:touch}
+.chat-empty{display:grid;gap:16px;justify-items:center;text-align:center;padding:28px 8px}
+.chat-empty .chips{justify-content:center}
+.sugg{padding:9px 14px;border-radius:18px;background:var(--glass-strong);box-shadow:0 0 0 .5px var(--hair);font-size:14px;color:var(--ink);text-align:left;line-height:1.35}
+.msg{max-width:88%;padding:11px 15px;border-radius:20px;font-size:15px;line-height:1.6;word-break:break-word}
+.msg.me{align-self:flex-end;background:var(--ink);color:var(--bg);border-bottom-right-radius:6px;white-space:pre-wrap}
+.msg.bot{align-self:flex-start;background:var(--glass-strong);box-shadow:inset 0 1px 0 var(--rim),0 0 0 .5px var(--hair);border-bottom-left-radius:6px}
+.msg.bot p{margin:0 0 6px}.msg.bot p:last-child{margin:0}
+.msg.bot ul{margin:4px 0 8px;padding-left:18px}.msg.bot li{margin:2px 0}
+.msg.err{align-self:flex-start;background:none;color:var(--warn);font-size:13px;padding:4px 6px}
+.cite{display:inline-block;margin:0 2px;padding:0 7px;border-radius:99px;background:var(--fill2);font-size:11.5px;font-weight:600;color:var(--ink2);line-height:1.7;vertical-align:1px}
+.step{align-self:flex-start;display:flex;gap:6px;align-items:center;font-size:12px;color:var(--ink3);padding:0 6px}
+.step svg{width:13px;height:13px;flex:none}
+.confirm{align-self:stretch;padding:16px 18px;border-radius:22px;display:grid;gap:6px}
+.typing{align-self:flex-start;display:flex;gap:5px;padding:14px 16px;border-radius:20px;background:var(--glass-strong)}
+.typing i{width:6px;height:6px;border-radius:50%;background:var(--ink3);animation:blink 1.2s infinite}
+.typing i:nth-child(2){animation-delay:.2s}.typing i:nth-child(3){animation-delay:.4s}
+@keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
+.composer{padding:8px 12px calc(env(safe-area-inset-bottom,0px) + 10px)}
+.composer-in{display:flex;align-items:flex-end;gap:8px;border-radius:26px;padding:6px 6px 6px 16px}
+.composer textarea{flex:1;border:0;background:none;resize:none;outline:none;overflow:hidden;scrollbar-width:none;font-size:16px;line-height:1.45;padding:8px 0;max-height:140px;min-height:24px}
+.composer .send{width:40px;height:40px;border-radius:50%;background:var(--ink);color:var(--bg);display:grid;place-items:center;flex:none}
+.composer .send svg{width:20px;height:20px}
+.composer .send:disabled{opacity:.3}
+.lp-card{-webkit-backdrop-filter:blur(var(--blur)) saturate(1.5);backdrop-filter:blur(var(--blur)) saturate(1.5)}

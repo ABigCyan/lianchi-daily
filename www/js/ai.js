@@ -262,5 +262,83 @@ window.AI = (() => {
     return String(m && (typeof m.content === 'string' ? m.content : (m.content || []).map(x => x.text || '').join('')) || '').trim();
   }
 
-  return { PRESETS, listModels, defaultModel, analyze, analyzeWeek, compress, systemPrompt };
+
+  /* ---------- 助手：多轮对话 + 工具调用 ---------- */
+  // 助手用文字模型：优先选工具调用稳定的大模型；没有就用拍照识别的那个
+  const CHAT_PREFER = [/^qwen3-max$/i, /^qwen-plus-latest$/i, /^qwen-plus$/i, /^qwen3-max/i, /^qwen-max$/i, /^deepseek-v3\.2$/i, /^deepseek-v3/i, /^glm-5/i, /^glm-4\.[5-9]/i,
+    /^kimi-k2\.\d$/i, /^gpt-5/i, /^gpt-4\.1/i, /^gpt-4o$/i, /^claude-(opus|sonnet)/i, /^doubao-seed/i, /^moonshot-v1/i];
+  function defaultChatModel(cfg, models) {
+    const ok = (models || []).filter(m => !/(thinking|-r1|ocr|realtime|audio|tts|asr|embedding|coder|code|image|wanx|vl|vision|distill|preview)/i.test(m.id));
+    for (const re of CHAT_PREFER) { const hit = ok.find(m => re.test(m.id)); if (hit) return hit.id; }
+    return cfg.model || (ok[0] || {}).id || '';
+  }
+  // 对话统一用 OpenAI 格式保存；Claude 接口时临时转换
+  function toAnthropic(messages) {
+    const out = [];
+    messages.forEach(m => {
+      if (m.role === 'system') return;
+      if (m.role === 'tool') {
+        const block = { type: 'tool_result', tool_use_id: m.tool_call_id, content: m.content };
+        const last = out[out.length - 1];
+        if (last && last.role === 'user' && Array.isArray(last.content) && last.content.every(b => b.type === 'tool_result')) last.content.push(block);
+        else out.push({ role: 'user', content: [block] });
+        return;
+      }
+      if (m.role === 'assistant') {
+        const content = [];
+        if (m.content) content.push({ type: 'text', text: m.content });
+        (m.tool_calls || []).forEach(tc => { let input = {}; try { input = JSON.parse(tc.function.arguments || '{}'); } catch (e) { /* 参数坏了就给空 */ } content.push({ type: 'tool_use', id: tc.id, name: tc.function.name, input }); });
+        out.push({ role: 'assistant', content: content.length ? content : [{ type: 'text', text: '…' }] });
+        return;
+      }
+      out.push({ role: 'user', content: m.content });
+    });
+    return out;
+  }
+  /* 发一轮：返回 { content, tool_calls }（OpenAI 格式的 assistant 消息） */
+  async function chatOnce(cfg, messages, tools) {
+    const base = trimBase(cfg.base), model = cfg.chatModel || cfg.model;
+    if (!base || !cfg.key || !model) throw new Error('请先在“我的 → 大模型接口”里填好接口、Key 并选择模型');
+    if (cfg.type === 'anthropic') {
+      const sys = messages.filter(m => m.role === 'system').map(m => m.content).join('\n\n');
+      const body = { model, max_tokens: 4000, temperature: 0.2, system: sys, messages: toAnthropic(messages) };
+      if (tools && tools.length) body.tools = tools.map(t => ({ name: t.name, description: t.description, input_schema: t.parameters }));
+      const post = () => httpJson(`${base}/v1/messages`, { method: 'POST', headers: anthropicHeaders(cfg.key), body: JSON.stringify(body) }, 120000);
+      // 有的模型不接受 temperature，报 400 就去掉再试一次
+      const d = await post().catch(e => { if (e.status !== 400) throw e; delete body.temperature; return post(); });
+      const blocks = d.content || [];
+      return {
+        role: 'assistant',
+        content: blocks.filter(b => b.type === 'text').map(b => b.text).join(''),
+        tool_calls: blocks.filter(b => b.type === 'tool_use').map(b => ({ id: b.id, type: 'function', function: { name: b.name, arguments: JSON.stringify(b.input || {}) } })),
+      };
+    }
+    const body = { model, temperature: 0.2, messages: messages.map(m => { const x = { role: m.role, content: m.content == null ? '' : m.content }; if (m.tool_calls && m.tool_calls.length) x.tool_calls = m.tool_calls; if (m.tool_call_id) x.tool_call_id = m.tool_call_id; return x; }) };
+    if (tools && tools.length) body.tools = tools.map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }));
+    const post = () => httpJson(`${base}/chat/completions`, { method: 'POST', headers: { Authorization: 'Bearer ' + cfg.key, 'content-type': 'application/json' }, body: JSON.stringify(body) }, 120000);
+    const d = await post().catch(e => { if (e.status !== 400) throw e; delete body.temperature; return post(); });
+    const m = (d.choices && d.choices[0] && d.choices[0].message) || {};
+    const content = typeof m.content === 'string' ? m.content : (m.content || []).map(x => x.text || '').join('');
+    const calls = (m.tool_calls || []).map((tc, i) => ({ id: tc.id || 'call_' + Date.now() + '_' + i, type: 'function', function: { name: tc.function.name, arguments: typeof tc.function.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function.arguments || {}) } }));
+    return { role: 'assistant', content: content.replace(/<think>[\s\S]*?<\/think>/g, '').trim(), tool_calls: calls };
+  }
+  /* 跑完一次提问：模型要调工具就执行，直到给出文字回答（最多 8 轮） */
+  async function agent(cfg, messages, tools, runTool, onStep) {
+    for (let i = 0; i < 8; i++) {
+      const msg = await chatOnce(cfg, messages, tools);
+      messages.push(msg);
+      if (!msg.tool_calls || !msg.tool_calls.length) return msg.content;
+      for (const tc of msg.tool_calls) {
+        let args = {};
+        try { args = JSON.parse(tc.function.arguments || '{}'); } catch (e) { /* 忽略 */ }
+        if (onStep) onStep({ name: tc.function.name, args });
+        let result;
+        try { result = await runTool(tc.function.name, args); } catch (e) { result = { error: e.message || String(e) }; }
+        messages.push({ role: 'tool', tool_call_id: tc.id, content: typeof result === 'string' ? result : JSON.stringify(result) });
+      }
+    }
+    return '（查了太多次还没有结论，请把问题说得具体一点）';
+  }
+
+  return { PRESETS, listModels, defaultModel, defaultChatModel, analyze, analyzeWeek, compress, systemPrompt, chatOnce, agent };
 })();

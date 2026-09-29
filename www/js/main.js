@@ -7,6 +7,7 @@ $$('#tabs button').forEach((b, i) => { b.innerHTML = TABS[i][2] + TABS[i][1]; b.
 function render() {
   const app = $('#app');
   document.body.dataset.tab = S.profile ? S.tab : 'me';
+  if (S.chatOn && S.profile) { app.innerHTML = Assistant.view(); $('#tabs').hidden = true; Assistant.bind(); return; }
   if (S.guideOn) { app.innerHTML = Guide.view(); $('#tabs').hidden = true; Guide.bind(); return; }
   if (!S.profile) { app.innerHTML = Me.viewFirst(); $('#tabs').hidden = true; Me.bindFirst(); return; }
   $('#tabs').hidden = false;

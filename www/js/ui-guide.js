@@ -105,7 +105,7 @@ function bind() {
   const scan = $('#g-scan');
   if (scan) scan.onclick = async () => {
     collect(); $('#g-msg').textContent = '扫描中…';
-    try { const models = await AI.listModels(ai); ai = { ...ai, models, model: AI.defaultModel(ai, models) }; Kit.haptic('success'); render(); toast(`找到 ${models.length} 个模型，已选 ${ai.model}`); }
+    try { const models = await AI.listModels(ai); ai = { ...ai, models, model: AI.defaultModel(ai, models), chatModel: AI.defaultChatModel(ai, models) }; Kit.haptic('success'); render(); toast(`找到 ${models.length} 个模型，已选 ${ai.model}`); }
     catch (e) { $('#g-msg').textContent = e.message; }
   };
   const done = $('#g-done'); if (done) done.onclick = finish;

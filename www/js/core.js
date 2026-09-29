@@ -1,6 +1,6 @@
 /* 核心：存储、每天的卡片、训练、能量计算、奖励（界面文件共用） */
 window.C = (() => {
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 const REPO = 'ABigCyan/lianchi-daily';
 const E = window.Engine;
 const $ = s => document.querySelector(s);
@@ -271,10 +271,11 @@ const imgUrl = (ex, f) => `img/ex/${ex.img}/${f || 0}.jpg`;
 function dateLabel(d) { const x = E.pd(d); return `${x.getMonth() + 1}月${x.getDate()}日 星期${DOW[E.dow(d)]}`; }
 /* 大标题 + 日期切换（玻璃胶囊） */
 function head(title, d, trailing) {
-  const cap = d ? `<div class="gcap glass"><button class="gbtn" data-nav="-1" aria-label="前一天" ${d <= S.profile.startDate ? 'disabled' : ''}>${Kit.I.left}</button><button class="gbtn" data-nav="1" aria-label="后一天">${Kit.I.right}</button></div>` : '';
-  return Kit.largeTitle(title, d ? dateLabel(d) + (trailing ? ' · ' + trailing : '') : (trailing || ''), cap);
+  const ai = `<button class="ai-btn glass" data-ai aria-label="助手">${Kit.I.sparkles}</button>`;
+  const cap = ai + (d ? `<div class="gcap glass"><button class="gbtn" data-nav="-1" aria-label="前一天" ${d <= S.profile.startDate ? 'disabled' : ''}>${Kit.I.left}</button><button class="gbtn" data-nav="1" aria-label="后一天">${Kit.I.right}</button></div>` : '');
+  return Kit.largeTitle(title, d ? dateLabel(d) + (trailing ? ' · ' + trailing : '') : (trailing || ''), `<div class="head-r">${cap}</div>`);
 }
-function bindHead() { $$('[data-nav]').forEach(b => b.onclick = () => { S.day = E.addDays(S.day, +b.dataset.nav); S.edit = false; Kit.haptic('light'); render(); scrollTo(0, 0); }); }
+function bindHead() { $$('[data-ai]').forEach(b => b.onclick = () => { Kit.haptic('light'); Assistant.open(); }); $$('[data-nav]').forEach(b => b.onclick = () => { S.day = E.addDays(S.day, +b.dataset.nav); S.edit = false; Kit.haptic('light'); render(); scrollTo(0, 0); }); }
 function render() { window.__render(); }
 
 return { APP_VERSION, REPO, E, $, $$, esc, today, DOW, uid, src, LS, S, month, peek, rec, save, saveCustom, allDays, ICON, holiday, dayInfo, TYPE,

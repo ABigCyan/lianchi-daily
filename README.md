@@ -17,6 +17,7 @@
 - **节假日**：自动跳过法定节假日，调休补班日按工作日算。
 - **大模型**：接入你自己的接口（通义千问、智谱、豆包、Kimi、OpenAI、Claude 等），自动扫描可用模型；内置按套表规则写的饮食识别提示词。
 - **提醒**：安卓本地通知，按时间线提醒未来 7 天。
+- **助手**：只按套表回答并标出处，可以查原文、看你的计划和记录，也可以帮你改目标、训练日、部位、动作（每次都要你确认）。
 - **新手引导**：第一次打开时填身体信息、训练作息、大模型接口，或直接导入备份；可跳过，可在设置里重新打开。
 - **设置**：深浅色、主题色、背景色调、毛玻璃模糊和不透明度、头像。
 - **全部安排**：每一项可以改时间、上下移动（不超出前后两项的时间）。
@@ -32,7 +33,8 @@
 
 ```bash
 npm ci
-node test/engine.test.js          # 算法测试
+npm test                          # 算法测试（含 22 种资料组合）
+python3 tools/build-kb.py 套表.xlsx # 从原表重新生成助手的知识库 www/js/data-kb.js
 python3 -m http.server 8766 --directory www   # 浏览器里预览
 npx cap sync android               # 把 www 同步到安卓工程
 ```
@@ -47,7 +49,7 @@ GitHub Actions 会自动编译签名的 APK 并发布到 Releases。签名密钥
 
 ## 出处和授权
 
-- 饮食和训练规则：《健身Excel超级套表》，作者 B站好人松松（文件名注明“可任意分享”）。本仓库只引用规则和数值并标注出处，不包含原表文件。
+- 饮食和训练规则：《健身Excel超级套表》，作者 B站好人松松（文件名注明“可任意分享”）。本仓库不包含原表文件；助手用的 `www/js/data-kb.js` 是从原表整理出的文字（不含图片和格式），每条都带表号和行号，用来检索和标注出处。
 - 动作图片：[free-exercise-db](https://github.com/yuhonas/free-exercise-db)，Unlicense（公有领域）。
 - 节假日数据：[holiday-cn](https://github.com/NateScarlet/holiday-cn)，整理自国务院办公厅通知。
 - 打包框架：[Capacitor](https://capacitorjs.com)，MIT。

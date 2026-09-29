@@ -19,7 +19,7 @@ function viewMe() {
   let h = Kit.largeTitle('我的', '');
   h += `<section class="mat card"><div style="display:flex;gap:16px;align-items:center">${Look.avatarHtml(p.name)}<div style="display:grid;gap:2px"><span class="t-title3">${esc(p.name || '我')}</span><span class="t-foot l2">${p.sex === 'M' ? '男' : '女'} · ${p.age} 岁 · ${p.height} cm · ${p.weight} kg · BMI ${pl.bmi.toFixed(1)}</span></div></div>
     <div class="stats"><div><span class="k">目标</span><span class="v">${pl.goal === 'cut' ? '减脂' : '增肌'}</span></div><div><span class="k">应吃 kcal</span><span class="v">${pl.f1}</span></div><div><span class="k">蛋白质 g</span><span class="v">${pl.prot}</span></div></div></section>`;
-  h += `<section class="list mat">${item('settings', I.gear, 'var(--ink)', '设置', '外观、头像、更新')}</section>`;
+  h += `<section class="list mat">${item('assistant', I.sparkles, 'var(--ink)', '助手', '按套表回答、帮你改计划')}${item('settings', I.gear, 'var(--ink)', '设置', '外观、头像、更新')}</section>`;
   h += `<section class="list mat">${item('plan', I.calendar, 'var(--blue)', '我的计划', esc(pl.sheet.name))}${item('rules', I.doc, 'var(--indigo)', '规则与出处', 'Excel 表号')}</section>`;
   h += `<section class="list mat">${item('profile', I.person2, 'var(--green)', '编辑资料', '')}${item('profile', I.flame, 'var(--orange)', '基础代谢', pl.bmr + (pl.bmrManual ? ' · 手动' : ' · 公式'))}${item('ai', I.sparkles, 'var(--purple)', '大模型接口', esc(S.ai.model || '未设置'))}
     <div class="row">${ico(I.bell, 'var(--red)')}<span class="row-main"><span class="row-title">按时间线提醒</span>${native ? '' : '<span class="row-sub">只在手机 App 里有效</span>'}</span><input type="checkbox" class="switch" id="nt-on" ${S.notify.on ? 'checked' : ''} ${native ? '' : 'disabled'} aria-label="按时间线提醒"></div>
@@ -30,7 +30,7 @@ function viewMe() {
 }
 function bindMe() {
   if (S.sub && SUB[S.sub]) { $$('[data-back]').forEach(b => b.onclick = () => { S.sub = S.firstImport ? null : null; S.firstImport = false; render(); scrollTo(0, 0); }); return SUB[S.sub].bind && SUB[S.sub].bind(); }
-  $$('[data-sub]').forEach(b => b.onclick = () => { S.sub = b.dataset.sub; render(); scrollTo(0, 0); });
+  $$('[data-sub]').forEach(b => b.onclick = () => { if (b.dataset.sub === 'assistant') return Assistant.open(); S.sub = b.dataset.sub; render(); scrollTo(0, 0); });
   const nt = $('#nt-on'); if (nt) nt.onchange = async () => { Kit.haptic('light'); S.notify.on = nt.checked; LS.set('notify', S.notify); if (nt.checked) { const ok = await scheduleNotifs(true); if (!ok) { S.notify.on = false; LS.set('notify', S.notify); nt.checked = false; } } else cancelNotifs(); };
   $('#up-check').onclick = () => { $('#up-msg').textContent = '检查中…'; Updater.check(false).then(() => { const m = $('#up-msg'); if (m) m.textContent = APP_VERSION; }); };
 }
@@ -170,14 +170,15 @@ function viewRules() {
 /* ---------- 大模型接口 ---------- */
 function viewAI() {
   const ai = S.ai;
-  return back() + Kit.largeTitle('大模型接口', '') + `<p class="t-foot l2" style="padding:0 6px">用于拍照、相册、文字估算饮食和热量分析。Key 只保存在这台手机上。</p>
+  return back() + Kit.largeTitle('大模型接口', '') + `<p class="t-foot l2" style="padding:0 6px">用于拍照、相册、文字估算饮食、热量分析和助手。Key 只保存在这台手机上。</p>
   <section class="list mat"><div class="frow"><label for="ai-preset">服务商</label><select id="ai-preset">${AI.PRESETS.map(x => `<option value="${x.id}" ${ai.preset === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div>
     <div class="frow"><label for="ai-base">接口地址</label><input id="ai-base" value="${esc(ai.base)}" placeholder="https://…/v1" inputmode="url"></div>
     <div class="frow"><label for="ai-key">API Key</label><input id="ai-key" type="password" value="${esc(ai.key)}" autocomplete="off"></div></section>
   <button class="pill glass wide" id="ai-scan">扫描可用模型</button><p class="t-foot l2" id="ai-msg" style="text-align:center"></p>
   <section class="list mat"><div class="frow"><label for="ai-model">模型</label><select id="ai-model">${(ai.models || []).map(m => `<option value="${esc(m.id)}" ${ai.model === m.id ? 'selected' : ''}>${esc(m.id)}${m.vision ? '（图）' : ''}</option>`).join('')}${ai.model && !(ai.models || []).some(m => m.id === ai.model) ? `<option selected>${esc(ai.model)}</option>` : ''}</select></div>
+    <div class="frow"><label for="ai-chat">助手模型</label><select id="ai-chat"><option value="">和上面一样</option>${(ai.models || []).filter(m => !m.vision).map(m => `<option value="${esc(m.id)}" ${ai.chatModel === m.id ? 'selected' : ''}>${esc(m.id)}</option>`).join('')}${ai.chatModel && !(ai.models || []).some(m => m.id === ai.chatModel) ? `<option selected>${esc(ai.chatModel)}</option>` : ''}</select></div>
     <div class="frow"><label for="ai-manual">手动模型 ID</label><input id="ai-manual" placeholder="可选" inputmode="text"></div></section>
-  <div class="list-footer">带“（图）”的模型能看照片</div>
+  <div class="list-footer">带“（图）”的模型能看照片；助手要用支持工具调用的文字模型，扫描时会自动选一个（如 qwen3-max）</div>
   <button class="pill ink wide" id="ai-save">保存</button>
   <details class="mat card"><summary class="t-headline">内置的饮食识别提示词</summary><pre class="t-foot l2" style="white-space:pre-wrap;margin:0">${esc(AI.systemPrompt())}</pre></details>`;
 }
@@ -186,10 +187,10 @@ function bindAI() {
   const collect = () => { const pr = AI.PRESETS.find(x => x.id === $('#ai-preset').value); return { ...S.ai, preset: pr.id, type: pr.type, base: $('#ai-base').value.trim(), key: $('#ai-key').value.trim() }; };
   $('#ai-scan').onclick = async () => {
     const cfg = collect(); $('#ai-msg').textContent = '扫描中…';
-    try { const models = await AI.listModels(cfg); S.ai = { ...cfg, models, model: S.ai.model && models.some(m => m.id === S.ai.model) ? S.ai.model : AI.defaultModel(cfg, models) }; LS.set('ai', S.ai); Kit.haptic('success'); render(); toast(`找到 ${models.length} 个模型，已选 ${S.ai.model}`); }
+    try { const models = await AI.listModels(cfg); S.ai = { ...cfg, models, model: S.ai.model && models.some(m => m.id === S.ai.model) ? S.ai.model : AI.defaultModel(cfg, models), chatModel: S.ai.chatModel && models.some(m => m.id === S.ai.chatModel) ? S.ai.chatModel : AI.defaultChatModel(cfg, models) }; LS.set('ai', S.ai); Kit.haptic('success'); render(); toast(`找到 ${models.length} 个模型，已选 ${S.ai.model}`); }
     catch (e) { $('#ai-msg').textContent = e.message; }
   };
-  $('#ai-save').onclick = () => { const cfg = collect(); const man = $('#ai-manual').value.trim(); S.ai = { ...cfg, model: man || ($('#ai-model') || {}).value || S.ai.model }; LS.set('ai', S.ai); Kit.haptic('success'); toast('已保存'); S.sub = null; render(); };
+  $('#ai-save').onclick = () => { const cfg = collect(); const man = $('#ai-manual').value.trim(); S.ai = { ...cfg, model: man || ($('#ai-model') || {}).value || S.ai.model, chatModel: ($('#ai-chat') || {}).value || '' }; LS.set('ai', S.ai); Kit.haptic('success'); toast('已保存'); S.sub = null; render(); };
 }
 
 /* ---------- 导出 / 导入 ---------- */
@@ -319,8 +320,9 @@ function viewSettings() {
     <div class="frow stack"><span class="lbl l2 t-foot">背景色调</span><div class="swatches">${sw(Look.TONES, l.tone, 'tone', (x, on) => `<button class="sw tone" data-tone="${x[0]}" aria-pressed="${on}" aria-label="${x[1]}"><span style="background:${Look.isDark(l) ? x[3] : x[2]}"></span><small>${x[1]}</small></button>`)}</div></div>
     <div class="frow stack"><div class="range-h"><span>毛玻璃模糊</span><span class="num" id="rv-blur">${Math.round(l.blur)}</span></div><input type="range" class="range" id="rg-blur" min="0" max="48" step="1" value="${l.blur}" aria-label="毛玻璃模糊"></div>
     <div class="frow stack"><div class="range-h"><span>玻璃不透明度</span><span class="num" id="rv-alpha">${Math.round(l.alpha * 100)}%</span></div><input type="range" class="range" id="rg-alpha" min="0.2" max="0.95" step="0.01" value="${l.alpha}" aria-label="玻璃不透明度"></div>
+    <div class="frow"><label for="st-lite">省电模式</label><input type="checkbox" class="switch" id="st-lite" ${l.lite ? 'checked' : ''}></div>
     <div class="frow stack"><div class="look-preview"><div class="lp-bg" aria-hidden="true"><i></i><i></i><i></i></div><div class="mat card lp-card"><span class="eyebrow">预览</span><div class="fig" style="font-size:40px">1885<small>kcal</small></div><div class="progress"><i style="width:62%;background:var(--accent)"></i></div></div></div></div></div>
-    <div class="list-footer">模糊越大、不透明度越高，卡片越“实”；调低会更通透。<button class="link" id="look-reset" style="min-height:0;font-size:12px">恢复默认</button></div></section>`;
+    <div class="list-footer">模糊只用在标签栏、顶部导航和弹出面板上；手机发热或卡顿时可以打开省电模式。<button class="link" id="look-reset" style="min-height:0;font-size:12px">恢复默认</button></div></section>`;
   h += `<section class="fsec"><h3>通用</h3><div class="list mat">
     <div class="frow"><label for="st-auto">自动检查更新</label><input type="checkbox" class="switch" id="st-auto" ${up.auto ? 'checked' : ''}></div>
     <button class="row" id="st-check" style="grid-template-columns:1fr auto"><span class="row-main"><span class="row-title">现在检查更新</span></span><span class="row-val chev">${APP_VERSION}</span></button>
@@ -340,6 +342,7 @@ function bindSettings() {
   $$('[data-tone]').forEach(b => b.onclick = () => { Look.set({ tone: b.dataset.tone }); Kit.haptic('light'); render(); });
   $('#rg-blur').oninput = e => { Look.set({ blur: +e.target.value }); $('#rv-blur').textContent = e.target.value; };
   $('#rg-alpha').oninput = e => { Look.set({ alpha: +e.target.value }); $('#rv-alpha').textContent = Math.round(e.target.value * 100) + '%'; };
+  $('#st-lite').onchange = e => { Look.set({ lite: e.target.checked }); toast(e.target.checked ? '已关闭模糊和动画' : '已恢复'); };
   $('#look-reset').onclick = () => { Look.reset(); Kit.haptic('light'); render(); toast('已恢复默认外观'); };
   $('#st-auto').onchange = e => Updater.savePrefs({ auto: e.target.checked });
   $('#st-check').onclick = () => Updater.check(false);

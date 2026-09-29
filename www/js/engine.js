@@ -263,9 +263,29 @@ window.Engine = (() => {
     if (moved && days.length) {
       const last = days[days.length - 1];
       last.groups = last.groups.concat(moved.map(gp => ({ ...gp, movedNote: '原本和腿一起练，你不练腿，所以移到这一天（应用补充）' })));
-      last.name = last.name + ' + 腹';
     }
-    return { split: sp, splitName: split.name, days };
+    // 名称按你实际保留的肌群生成；原表的标题留在 tableName 里（去掉部位后名称会跟着变）
+    days.forEach(d => { d.tableName = d.name; d.name = dayName(d.groups); d.changed = d.name.replace(/\s/g, '') !== d.tableName.replace(/\s/g, ''); });
+    return { split: sp, splitName: split.name, days, removed: window.PARTS.filter(pt => (p.parts || {})[pt.id] === false).map(pt => pt.name) };
+  }
+  /* 由肌群得出这天练什么：胸 / 背 / 肩（前中后束）/ 肱二头、肱三头 / 腿臀 / 腹，按原表顺序 */
+  function dayName(groups) {
+    const ids = new Set(groups.map(g => g.id)), out = [];
+    const sh = ['front', 'side', 'rear'].filter(x => ids.has(x));
+    const shName = sh.length === 3 ? '肩' : sh.length === 2 && !ids.has('rear') ? '肩前中束' : sh.map(x => ({ front: '肩前束', side: '肩中束', rear: '肩后束' })[x]).join(' + ');
+    const arm = ids.has('bi') && ids.has('tri') ? '大臂' : '';
+    groups.forEach(g => {
+      let n = '';
+      if (['mid_chest', 'low_chest', 'up_chest'].includes(g.id)) n = '胸';
+      else if (['pull', 'row', 'back'].includes(g.id)) n = '背';
+      else if (sh.includes(g.id)) n = shName;
+      else if (g.id === 'bi') n = arm || '肱二头';
+      else if (g.id === 'tri') n = arm || '肱三头';
+      else if (['quad', 'ham', 'glute', 'comp'].includes(g.id)) n = '腿臀';
+      else if (g.id === 'abs') n = '腹';
+      if (n && !out.includes(n)) out.push(n);
+    });
+    return out.join(' + ');
   }
 
   /* 新手不太容易上手、默认往后排的动作（应用补充，仍可手动换回来） */
@@ -428,6 +448,6 @@ window.Engine = (() => {
     return sex === 'F' ? weight / (1.0278 - 0.0278 * reps) : Math.pow(reps, 0.1) * weight;
   }
 
-  return { build, decideGoal, calories, macros, pickSheet, mealsFor, buildDays, sessionPlan, pickSplit, cardioPerHour, cardioWeekly,
+  return { build, decideGoal, calories, macros, pickSheet, mealsFor, buildDays, dayName, sessionPlan, pickSplit, cardioPerHour, cardioWeekly,
     holidayOf, isWorkday, plannedLift, plannedCardio, advice, oneRM, SHEETS, tm, mt, ds, pd, dow, addDays, sessionsPerWeek };
 })();

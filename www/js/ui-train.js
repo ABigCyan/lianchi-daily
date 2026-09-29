@@ -19,6 +19,14 @@ function exBody(it, idx, n, r, d, future) {
     <div class="sets">${[...Array(it.sets)].map((_, i) => { const s = sets[i] || {}; return `<div class="set"><span class="n">${i + 1}</span><input class="field-in" data-set="${it.v}|${i}|w" value="${esc(s.w || '')}" placeholder="kg" inputmode="decimal" aria-label="第${i + 1}组重量" ${future ? 'disabled' : ''}><input class="field-in" data-set="${it.v}|${i}|r" value="${esc(s.r || '')}" placeholder="次数" inputmode="numeric" aria-label="第${i + 1}组次数" ${future ? 'disabled' : ''}><button class="hit" data-sd="${it.v}|${i}" aria-label="第${i + 1}组完成" ${future ? 'disabled' : ''}>${Kit.chk(!!s.done)}</button></div>`; }).join('')}</div>
     <div class="ghost-row">${it.alts.length ? `<button class="tbtn" data-swap="${it.v}">换动作（${it.alts.length}）</button>` : ''}<button class="tbtn" data-big="${it.v}">动作图</button></div>`;
 }
+/* 为什么是这个安排：分化怎么选的、今天为什么练这些、和原表有什么不同 */
+function whyLine(tr, si) {
+  if (si.custom) return '自选部位：从当前分化的肌群里挑，组数按原表';
+  const d = si.day, parts = [`${tr.split.why}${tr.split.src ? '（' + tr.split.src + '）' : ''}`];
+  parts.push(si.recommended ? '接着上次练到的往下排，休息日自己安排（表21 C8）' : '你选的这一天');
+  parts.push(d.changed ? `原表这天是“${d.tableName.replace(/\s/g, '')}”（${d.src}），你没选${tr.removed.join('、') || '部分肌群'}，所以按你保留的肌群改成现在这样` : `原表 ${d.src}`);
+  return parts.join(' · ');
+}
 function viewTrain() {
   const p = S.profile, d = S.day;
   if (p.lift === false) return head('训练') + '<section class="mat card"><div class="t-headline">没有安排力量训练</div><p class="t-sub l2">你设置了不做力训，饮食按表8《无力训者》。想开始力训，到“我的 → 编辑资料”打开。</p></section>';
@@ -28,6 +36,7 @@ function viewTrain() {
   const total = items.reduce((s, x) => s + x.sets, 0), setsDone = items.reduce((s, it) => s + doneSets(r, it), 0);
   let h = head('训练', d, tr.splitName.replace('健身房', ''));
   h += `<div class="seg-scroll glass">${tr.days.map((dd, i) => `<button data-day="${i}" aria-pressed="${!si.custom && si.dayIdx === i}">${esc(dd.name)}${si.recommended && si.dayIdx === i ? '<span class="rec">推荐</span>' : ''}</button>`).join('')}<button data-day="custom" aria-pressed="${!!si.custom}">自选部位</button></div>`;
+  h += `<p class="plan-why">${esc(whyLine(tr, si))}</p>`;
   if (!info.lift && !doneLift) h += `<section class="note mat">${info.h && info.h.off ? `今天是${esc(info.h.name)}，力训已自动跳过。` : '今天没有安排力训。'} <button class="link" data-ov="lift">今天加练</button></section>`;
   if (femaleSkip) h += '<section class="note warn mat">女性每两轮三分化跳过一次胸日，这次可以换别的部位（表21 C14）</section>';
   h += `<section class="mat card hero"><div class="hero-top"><div class="fig hero-fig">${setsDone}<small>/ ${total} 组</small></div><div class="hero-cap">${doneLift ? '今天练完了' : '约 ' + Math.round(total * 3.2) + ' 分钟'}<br><span class="l3">${items.length} 个动作</span></div></div><div class="progress ok"><i style="width:${total ? Math.round(setsDone / total * 100) : 0}%"></i></div></section>`;
@@ -142,7 +151,8 @@ let animT;
 function animate() {
   clearInterval(animT);
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  let f = 0; animT = setInterval(() => { f = 1 - f; $$('img[data-anim]').forEach(img => img.src = `img/ex/${img.dataset.anim}/${f}.jpg`); }, 1200);
+  // 只让最上面那张卡片的动作图动；切到后台就停
+  let f = 0; animT = setInterval(() => { if (document.hidden || window.scrollY > 900) return; f = 1 - f; $$('.dc.top img[data-anim]').forEach(img => img.src = `img/ex/${img.dataset.anim}/${f}.jpg`); }, 1400);
 }
 window.Train = { view: viewTrain, bind: bindTrain, stop: () => clearInterval(animT) };
 })();
