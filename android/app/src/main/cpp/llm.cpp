@@ -74,7 +74,6 @@ Java_com_abigcyan_lianchi_LocalLlmPlugin_nativeLoad(JNIEnv *env, jclass, jstring
     const char *path = env->GetStringUTFChars(jpath, nullptr);
     llama_model_params mp = llama_model_default_params();
     mp.n_gpu_layers = 0;
-    mp.use_mmap = true;
     llama_model *model = llama_model_load_from_file(path, mp);
     env->ReleaseStringUTFChars(jpath, path);
     if (!model) return 0;

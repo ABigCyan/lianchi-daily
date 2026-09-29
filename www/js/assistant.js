@@ -439,12 +439,32 @@ function planBrief(d) {
     `今天各餐：${meals.map(m => `${m.time} ${m.name} 碳水${m.c}g 蛋白质${m.p}g`).join('；')}`,
   ].join('\n');
 }
-// 取出原文里和问题最相关的一小段，控制长度（小模型读得越少越快）
-function snippet(text, q) {
-  const ts = terms(q).filter(w => w.length >= 2).sort((a, b) => b.length - a.length);
-  const hit = ts.map(w => text.indexOf(w)).filter(i => i >= 0).sort((a, b) => a - b)[0];
-  if (hit == null || text.length <= 360) return text.slice(0, 360);
-  const a = Math.max(0, hit - 100); return (a ? '…' : '') + text.slice(a, a + 360) + '…';
+// 长原文取“开头 + 结尾”：套表的问答一般先讲原因、最后给办法（如表17 第32行结尾的“才考虑……二选一”）
+function snippet(text) {
+  if (text.length <= 620) return text;
+  return text.slice(0, 220) + ' …… ' + text.slice(-400);
+}
+// 离线检索：命中的如果只是问题标题（问答表的目录行、题目行），换成紧跟着的回答行；同一段只留一次
+function localSources(q) {
+  const res = searchExcel({ query: q }).results || [], rows = window.KB.rows, out = [], seen = new Set();
+  for (const h of res) {
+    let r = rows.find(x => x.s === String(h.sheet).replace(/^表(\d+).*/, '$1') && x.r === h.row);
+    if (!r) continue;
+    if (r.t.length < 80 && /[？?]\s*\/?\s*$/.test(r.t)) {
+      // 目录里的题目 → 正文里的同名标题 → 标题后面的第一段长文字就是回答
+      const title = r.t.replace(/^[A-Z]+:[\s/]*/, '').replace(/[\s/]*$/, '').slice(0, 14);
+      const sheet = rows.filter(x => x.s === r.s);
+      const head = sheet.find(x => x.r > r.r && x.t.includes(title)) || r;
+      const ans = sheet.find(x => x.r > head.r && x.t.length >= 80);
+      if (ans) r = ans;
+    }
+    const key = r.s + ':' + r.r;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ src: `表${r.s} 第${r.r}行`, text: r.t });
+    if (out.length >= 3) break;
+  }
+  return out;
 }
 function actionSys(d) {
   const { tasks } = tasksFor(d), tm = E.addDays(d, 1);
@@ -515,13 +535,14 @@ async function askLocal(q, img) {
     }
     // 回答问题：App 检索套表原文 + 我的计划，模型只根据这些回答
     await loadKB();
-    const hits = searchExcel({ query: q }).results || [];
-    const src = hits.slice(0, 4).map(h => `[${h.src.replace(/（.*$/, '')}] ${snippet(h.text, q)}`).join('\n');
-    st.view.push({ k: 'step', t: `查套表：找到 ${Math.min(hits.length, 4)} 段` });
+    const hits = localSources(q);
+    const src = hits.map(h => `[${h.src}] ${snippet(h.text)}`).join('\n');
+    st.view.push({ k: 'step', t: hits.length ? `查套表：${hits.map(h => h.src).join('、')}` : '查套表：没有找到相关原文' });
     st.view.push(live); draw();
-    const sys = '你是“练吃日课”的离线助手。只根据下面给的【我的计划】和【资料】回答，不要用资料以外的知识。资料里没有的，就直接说“套表里没有写这个”。每个要点后面用括号写出处，出处只能照抄资料前面方括号里的内容，例如（表17 第32行）。用中文，先结论后理由，不超过 150 字。';
+    const sys = '你是“练吃日课”的离线助手。只复述下面【我的计划】和【资料】里写了的内容，不要加任何资料里没有的建议或理由（比如休息、训练强度、多喝水这类，资料没写就不要说）。资料里没有答案，就直接说“套表里没有写这个”。每个要点后面用括号写出处，出处只能照抄资料前面方括号里的内容，例如（表17 第32行）。用中文，先说结论和具体做法，不超过 150 字。';
     const user = `【我的计划】\n${planBrief(d)}\n\n【资料】\n${src || '（没有找到相关原文）'}\n\n【问题】${question} /no_think`;
-    const r = await LocalAI.chat([{ role: 'system', content: sys }, { role: 'user', content: user }], { signal: ctl.signal, onToken, maxTokens: 400, temperature: 0.3 });
+    window.__lastLocalPrompt = user; // 调试用：看模型实际读到的资料
+    const r = await LocalAI.chat([{ role: 'system', content: sys }, { role: 'user', content: user }], { signal: ctl.signal, onToken, maxTokens: 400, temperature: 0.2 });
     live.t = LocalAI.clean(r.text) || '（没有回答）'; delete live.live;
     st.view.push({ k: 'step', t: statLine(r.stats) });
     st.msgs.push({ role: 'user', content: q }, { role: 'assistant', content: live.t });
