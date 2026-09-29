@@ -1,9 +1,9 @@
 {
   "name": "lianchi-daily",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "按《健身Excel超级套表》规则生成饮食训练计划的每日打卡安卓 App",
   "scripts": {
-    "test": "node test/engine.test.js && node test/profiles.test.js",
+    "test": "node test/engine.test.js && node test/profiles.test.js && node test/tables.test.js",
     "serve": "python3 -m http.server 8766 --directory www",
     "sync": "npx cap sync android",
     "icons": "python3 scripts/make-icons.py"

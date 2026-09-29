@@ -3,7 +3,7 @@
 const fs = require('fs'), vm = require('vm'), assert = require('assert');
 const ctx = { console };
 ctx.window = ctx; vm.createContext(ctx);
-for (const f of ['data-rules.js', 'data-training.js', 'holidays.js', 'engine.js']) vm.runInContext(fs.readFileSync(__dirname + '/../www/js/' + f, 'utf8'), ctx);
+for (const f of ['data-tables.js', 'data-rules.js', 'data-training.js', 'holidays.js', 'engine.js']) vm.runInContext(fs.readFileSync(__dirname + '/../www/js/' + f, 'utf8'), ctx);
 const E = ctx.Engine, R = ctx.RULES, PARTS = ctx.PARTS;
 
 const ALL = { chest: true, back: true, shoulder: true, arm: true, legs: true, abs: true };

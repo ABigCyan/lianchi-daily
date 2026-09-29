@@ -35,6 +35,7 @@
 npm ci
 npm test                          # 算法测试（含 22 种资料组合）
 python3 tools/build-kb.py 套表.xlsx # 从原表重新生成助手的知识库 www/js/data-kb.js
+python3 tools/build-tables.py 套表.xlsx # 从原表重新生成表16、表19 全表和拉伸图
 python3 -m http.server 8766 --directory www   # 浏览器里预览
 npx cap sync android               # 把 www 同步到安卓工程
 ```

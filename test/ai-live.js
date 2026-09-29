@@ -10,7 +10,7 @@ fs.readFileSync(envPath, 'utf8').split('\n').forEach(l => {
 for (const k of ['AI_MODEL', 'TEST_IMAGE', 'TEST_TEXT', 'TEST_WEEK']) if (process.env[k]) env[k] = process.env[k];
 const ctx = { console, fetch, URL, setTimeout, clearTimeout, AbortController };
 ctx.window = ctx; vm.createContext(ctx);
-for (const f of ['data-rules.js', 'ai.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../www/js', f), 'utf8'), ctx);
+for (const f of ['data-tables.js', 'data-rules.js', 'ai.js']) vm.runInContext(fs.readFileSync(path.join(__dirname, '../www/js', f), 'utf8'), ctx);
 const AI = ctx.AI;
 if (process.env.AI_DEBUG) ctx.__AI_DEBUG = c => console.log('--- 原始返回 ---\n' + String(c).slice(0, 1500) + '\n---');
 const mask = s => s ? s.slice(0, 3) + '…' + s.slice(-2) + `（${s.length} 位）` : '（空）';

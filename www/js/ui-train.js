@@ -10,12 +10,40 @@ function lastLift(v, before) {
   for (const d of days) { const r = peek(d); const s = r && r.sets && r.sets[v]; if (s && s.some(x => x && x.w)) return s.filter(x => x && x.w).map(x => `${x.w}×${x.r || '?'}`).join('  '); }
   return '';
 }
+/* 表25：自由卧推 / 深蹲按做到力竭的一组预测最大力量（男 Lombardi，女 Brzycki，表25 G 列） */
+const FREE_1RM = ['bench_bb', 'squat'];
+function rmLine(it, r, d) {
+  if (!FREE_1RM.includes(it.v)) return '';
+  const pick = sets => (sets || []).filter(x => x && +x.w > 0 && +x.r > 0 && +x.r <= 15);
+  let sets = pick((r.sets || {})[it.v]), when = '今天';
+  if (!sets.length) { for (const x of allDays(E.addDays(d, -1)).reverse()) { const s = pick(((peek(x) || {}).sets || {})[it.v]); if (s.length) { sets = s; when = '上次'; break; } } }
+  if (!sets.length) return '<div class="t-foot l3">记录重量和次数后，会按表25 预测最大力量</div>';
+  const F = S.profile.sex === 'F', best = Math.max(...sets.map(x => E.oneRM(+x.w, +x.r, S.profile.sex)));
+  return `<div class="t-foot l2">按${when}的组预测最大力量 ≈ <b class="num">${Math.round(best)} kg</b>（表25 ${F ? 'Brzycki' : 'Lombardi'} 公式按力竭次数算；按表21 C13 提前 1-2 次停的话，实际会比这个高一点）</div>`;
+}
+/* 表26/27 拉伸图谱：按今天练到的肌群列出 */
+function stretchSection(items) {
+  const gids = new Set(items.map(it => it.group.id)), all = window.STRETCH || [];
+  const list = all.map((x, i) => ({ x, i })).filter(({ x }) => x.groups.some(g => gids.has(g)));
+  if (!all.length) return '';
+  return `<section class="section"><div class="section-h"><h2>拉伸</h2><button class="link" id="allStretch">全部 ${all.length} 个</button></div>
+    ${list.length ? `<div class="stretch-row">${list.map(({ x, i }) => `<button class="stretch mat" data-str="${i}"><img src="${x.img}" alt="${esc(x.m)}拉伸" loading="lazy"><span>${esc(x.m)}</span></button>`).join('')}</div>` : ''}
+    <p class="list-footer">按今天练到的肌群列出表26、表27 的拉伸图。原表只给图谱（目录：看图就懂），没有规定拉伸的时间和次数。</p></section>`;
+}
+function stretchSheet(i) {
+  const x = window.STRETCH[i];
+  sheet(`<h2>${esc(x.m)}</h2><img class="bigimg" src="${x.img}" alt="${esc(x.m)}拉伸"><p class="t-foot l3" style="text-align:center">${esc(x.src)}</p>`);
+}
+function allStretchSheet() {
+  sheet(`<h2>拉伸图谱</h2><div class="sheet-sub">表26 上身、表27 下身</div><div class="libgrid">${window.STRETCH.map((x, i) => `<button class="libitem" data-str="${i}"><img src="${x.img}" alt="" loading="lazy"><span>${esc(x.m)}</span><small>${esc(x.src)}</small></button>`).join('')}</div>`,
+    m => m.querySelectorAll('[data-str]').forEach(b => b.onclick = () => stretchSheet(+b.dataset.str)));
+}
 const doneSets = (r, it) => ((r.sets || {})[it.v] || []).slice(0, it.sets).filter(x => x && x.done).length;
 function exBody(it, idx, n, r, d, future) {
   const ex = it.ex, sets = ((r.sets || {})[it.v]) || [], last = lastLift(it.v, d);
   return `<div class="ex-hero"><img data-anim="${esc(ex.img)}" src="${imgUrl(ex, 0)}" alt="${esc(ex.n)}"><span class="badge">${idx + 1} / ${n} · ${esc(it.group.name)}</span></div>
     <div><div class="dc-title" style="font-size:24px">${esc(ex.n)}</div><div class="dc-sub">${it.sets} 组 × ${esc(it.reps)} 次 · 组间休息 ${esc(it.rest)}</div></div>
-    <div class="t-foot l2">${esc(ex.eq)} · ${esc(it.fail)}${last ? ` · 上次 <span class="num">${esc(last)}</span>` : ''}</div>
+    <div class="t-foot l2">${esc(ex.eq)} · ${esc(it.fail)}${last ? ` · 上次 <span class="num">${esc(last)}</span>` : ''}</div>${rmLine(it, r, d)}
     <div class="sets">${[...Array(it.sets)].map((_, i) => { const s = sets[i] || {}; return `<div class="set"><span class="n">${i + 1}</span><input class="field-in" data-set="${it.v}|${i}|w" value="${esc(s.w || '')}" placeholder="kg" inputmode="decimal" aria-label="第${i + 1}组重量" ${future ? 'disabled' : ''}><input class="field-in" data-set="${it.v}|${i}|r" value="${esc(s.r || '')}" placeholder="次数" inputmode="numeric" aria-label="第${i + 1}组次数" ${future ? 'disabled' : ''}><button class="hit" data-sd="${it.v}|${i}" aria-label="第${i + 1}组完成" ${future ? 'disabled' : ''}>${Kit.chk(!!s.done)}</button></div>`; }).join('')}</div>
     <div class="ghost-row">${it.alts.length ? `<button class="tbtn" data-swap="${it.v}">换动作（${it.alts.length}）</button>` : ''}<button class="tbtn" data-big="${it.v}">动作图</button></div>`;
 }
@@ -59,6 +87,7 @@ function viewTrain() {
   h += '</div>';
   if (optionalGroups.length && !S.edit) h += `<div class="list-footer">${(p.level || 'new') === 'new' ? '新手偶尔加做' : '本次可选'}：${optionalGroups.map(g => `<button class="link" data-extra="${g.id}" style="min-height:32px">＋${esc(g.name)}</button>`).join('　')}</div>`;
   h += '</section>';
+  h += stretchSection(items);
   h += `<button class="pill ${doneLift ? 'glass' : 'ink'} wide" id="finish" ${future ? 'disabled' : ''}>${doneLift ? '已完成 · 撤销' : '完成训练'}</button>`;
   h += '<p class="t-cap l3" style="text-align:center">动作、组数、次数来自表21-24，出处见“我的 → 规则与出处”</p>';
   return h;
@@ -96,6 +125,8 @@ function bindTrain() {
   const sk = $('[data-skip]'); if (sk) sk.onclick = () => deckEl.flyLeft();
   $('#editEx').onclick = () => { S.edit = !S.edit; render(); };
   $$('[data-ov]').forEach(b => b.onclick = () => { rec(d).override = b.dataset.ov; scoreDay(d); render(); });
+  $$('[data-str]').forEach(b => b.onclick = () => stretchSheet(+b.dataset.str));
+  const allS = $('#allStretch'); if (allS) allS.onclick = allStretchSheet;
   $$('[data-day]').forEach(b => b.onclick = () => { Kit.haptic('light'); if (b.dataset.day === 'custom') return pickCustom(); rec(d).session = { split: tr.split.key, dayIdx: +b.dataset.day }; save(d); render(); });
   $$('[data-extra]').forEach(b => b.onclick = () => { const r = rec(d); r.extra = r.extra || {}; r.extra[b.dataset.extra] = true; save(d); render(); });
   $$('[data-exopen]').forEach(b => b.onclick = () => { const i = items.findIndex(x => x.v === b.dataset.exopen); sheet(`<div class="k-train" style="display:grid;gap:14px;padding-top:16px">${exBody(items[i], i, items.length, peek(d) || {}, d, d > today())}</div>`, m => { bindSetInputs(m, d, items); m.onclick = e => { if (e.target === m) { close(); render(); } }; }); });

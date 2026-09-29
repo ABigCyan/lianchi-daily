@@ -36,7 +36,7 @@ function bindMe() {
 }
 
 /* ---------- 资料表单 ---------- */
-const CARDIO_KINDS = ['无', '跑步', ...window.CARDIO.filter(c => !c.run).map(c => c.label)];
+const CARDIO_KINDS = ['无', '跑步', ...window.CARDIO.filter(c => !c.run && !c.perSteps).map(c => c.label)];
 function profileForm(first) {
   const p = Object.assign({}, DEF, S.profile || {}); p.parts = Object.assign({}, DEF.parts, p.parts || {});
   const sel = (id, opts, v) => `<select id="f-${id}">${opts.map(([k, t]) => `<option value="${k}" ${String(v) === String(k) ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
@@ -47,7 +47,7 @@ function profileForm(first) {
   const formula = p.weight && p.height && p.age ? Math.round(p.weight * 9.99 + p.height * 6.25 - p.age * 4.92 + (p.sex === 'M' ? 5 : -161)) : '';
   const sheets = [['auto', '按训练时间自动']].concat(Object.entries(E.SHEETS).map(([k, v]) => [k, v.name]));
   const cardio = [0, 1, 2].map(i => { const a = p.cardio[i] || { kind: '无', minutes: 45, pace: 8, days: [] };
-    return `<section class="fsec"><h3>有氧 ${i + 1}</h3><div class="list mat"><div class="frow"><label>项目</label><select data-c="${i}|kind">${CARDIO_KINDS.map(k => `<option ${a.kind === k ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select></div>
+    return `<section class="fsec"><h3>有氧 ${i + 1}</h3><div class="list mat"><div class="frow"><label>项目</label><select data-c="${i}|kind">${CARDIO_KINDS.map(k => `<option ${k === (a.kind === '跑步' || a.kind === '无' || !a.kind ? a.kind : E.findCardio(a.kind).label) ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select></div>
       <div class="frow"><label>每次分钟</label><input data-c="${i}|minutes" value="${esc(a.minutes)}" inputmode="numeric"></div>
       <div class="frow"><label>跑步配速</label><input data-c="${i}|pace" value="${esc(a.pace || '')}" placeholder="分钟/公里" inputmode="decimal"></div>
       <div class="frow"><label>运动心率</label><input data-c="${i}|hr" value="${esc(a.hr || '')}" placeholder="可选" inputmode="numeric"></div>
@@ -138,12 +138,28 @@ function calendar() {
 }
 
 /* ---------- 规则与出处 ---------- */
+/* 原表每一张表在 App 里怎么用（“对照原表”） */
+const COVER = [
+  ['表1-7 减脂 · 表9-15 增肌', '算法', '按训练时间选表（各表 C12）；热量 G13-G19、脂肪 M22、碳水蛋白 P13；餐序和各餐规则'],
+  ['表8 无力训者', '算法', '不力训时的热量和三餐'],
+  ['表16 有氧热量消耗', '全表', '64 个项目 + 心率法；960 个计算结果和原表逐格一致'],
+  ['表17 减脂问答 · 表18 增肌问答', '算法 + 助手', '平台期调整、何时停止减脂、体重看 1-2 周平均等进了计划和提醒；全文助手可查'],
+  ['表19 日常食物营养率', '全表', '103 种食物用于手动记录和拍照识别'],
+  ['表20 蛋白质价格比较', '部分', '省钱模式用鸡蛋等价格；全表助手可查'],
+  ['表21-24 训练计划', '算法', '分化、肌群、组数、次数、动作与备选、腿日轮换、女性注意'],
+  ['表25 最大力量预测', '算法', '自由卧推、深蹲：男 Lombardi、女 Brzycki'],
+  ['表26-27 拉伸', '图谱', '14 张拉伸图，训练页按练到的肌群显示'],
+  ['表28 解剖总结（文字）', '助手', '全文助手可查'],
+  ['表29-30 解剖图示', '未收录', '是表28 的图示版（约 38MB 图片），文字内容已在表28'],
+];
 function viewRules() {
   const p = S.profile, pl = S.plan, R = window.RULES;
   const row = (a, b, c, s, app) => `<tr><td>${a}<br>${src(s, app)}</td><td class="n">${b}</td>${pl.noLift ? '' : `<td class="n">${c}</td>`}</tr>`;
   const para = keys => keys.map(k => `<p class="t-sub">${esc(R[k].text)} ${src(R[k].src)}</p>`).join('');
   let h = back() + Kit.largeTitle('规则与出处', '');
   h += `<p class="t-foot l2" style="padding:0 6px">全部规则来自${esc(window.SRC_BOOK)}。灰色标签是表号和单元格；橙色标签是 Excel 没给具体数值、本应用补充的做法。</p>`;
+  h += `<section class="list mat">${COVER.map(([t, how, note]) => `<div class="row" style="grid-template-columns:1fr auto"><span class="row-main"><span class="row-title">${esc(t)}</span><span class="row-sub">${esc(note)}</span></span><span class="row-val">${esc(how)}</span></div>`).join('')}</section>
+  <p class="list-footer">原表 55MB 里约 54MB 是图片（拉伸图、解剖图示），规则和数据本身约 1MB。饮食表 1-15 是按人填写的模板：热量、配额按原表公式和文字算；每餐具体克数原表留空，App 按原表规则分配（标“应用补充”）。</p>`;
   h += `<section class="mat card"><span class="t-title3">1. 目标</span><p class="t-sub">${esc(pl.goalWhy.reason)} ${src(pl.goalWhy.src)}</p>${para(['noRecomp'])}</section>`;
   h += `<section class="mat card"><span class="t-title3">2. 热量与营养素</span><div class="tbl"><table><thead><tr><th>步骤</th><th class="n">${pl.noLift ? '每天' : '力训日'}</th>${pl.noLift ? '' : '<th class="n">休息日</th>'}</tr></thead><tbody>
     ${row('基础代谢' + (pl.bmrManual ? `（手动，公式为 ${pl.bmrFormula}）` : ''), pl.bmr, pl.bmr, pl.bmrManual ? '用户手动输入' : R.bmr.src, pl.bmrManual)}${row('无运动总消耗 ÷0.7', pl.b, pl.b, R.noExercise.src)}

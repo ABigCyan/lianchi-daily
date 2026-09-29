@@ -45,16 +45,23 @@ window.Engine = (() => {
     }
     return T[T.length - 1][1];
   }
+  /* 按名字找表16 的项目；旧版本存的名字（如“游泳（慢）”）按开头匹配，找不到按快走 */
+  function findCardio(kind) {
+    const L = window.CARDIO.filter(c => !c.run);
+    return L.find(c => c.label === kind) || L.find(c => kind && c.label.startsWith(kind)) || L.find(c => c.label.startsWith('快走')) || L[0];
+  }
   /* 一项有氧每小时的消耗（大卡） */
   function cardioPerHour(act, w) {
     let coef, flat = false, src;
-    if (act.hr && act.rhr) { coef = act.hr / act.rhr * 6.4 - 6.2; src = '表16 B14 心率法'; }
+    // 心率法（表16 方法一）用的体重系数和“站立/一万步”相同，其余项目用一般系数，都按原表 F-T 列公式
+    if (act.hr && act.rhr) { coef = act.hr / act.rhr * 6.4 - 6.2; flat = !!window.CARDIO_WEIGHT_FACTOR.hrFlat; src = '表16 B14 心率法'; }
     else if (act.kind === '跑步') { coef = runCoef(60 / (+act.pace || 8)); src = '表16 D94-E103'; }
     else {
-      const row = window.CARDIO.find(c => c.label === act.kind) || window.CARDIO[0];
+      const row = findCardio(act.kind);
       coef = row.coef; flat = !!row.flat; src = row.src;
     }
-    return { kcal: Math.round(coef * w * weightFactor(w, flat) / 10) * 10, coef, src };
+    // 和 Excel 的 ROUND(…,-1) 一致：先按 15 位有效数字取整（4.1×50 在 JS 里是 204.99999…，Excel 当作 205）
+    return { kcal: Math.round(+(coef * w * weightFactor(w, flat)).toPrecision(15) / 10) * 10, coef, src };
   }
   function cardioWeekly(p) {
     const list = (p.cardio || []).filter(a => a.kind && a.kind !== '无');
@@ -448,6 +455,6 @@ window.Engine = (() => {
     return sex === 'F' ? weight / (1.0278 - 0.0278 * reps) : Math.pow(reps, 0.1) * weight;
   }
 
-  return { build, decideGoal, calories, macros, pickSheet, mealsFor, buildDays, dayName, sessionPlan, pickSplit, cardioPerHour, cardioWeekly,
+  return { build, decideGoal, calories, macros, pickSheet, mealsFor, buildDays, dayName, sessionPlan, pickSplit, cardioPerHour, cardioWeekly, findCardio,
     holidayOf, isWorkday, plannedLift, plannedCardio, advice, oneRM, SHEETS, tm, mt, ds, pd, dow, addDays, sessionsPerWeek };
 })();

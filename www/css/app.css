@@ -424,3 +424,10 @@ td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .composer .send svg{width:20px;height:20px}
 .composer .send:disabled{opacity:.3}
 .lp-card{-webkit-backdrop-filter:blur(var(--blur)) saturate(1.5);backdrop-filter:blur(var(--blur)) saturate(1.5)}
+
+/* 拉伸图 */
+.stretch-row{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(150px,44%);gap:10px;overflow-x:auto;padding:2px 2px 6px;scroll-snap-type:x mandatory;scrollbar-width:none}
+.stretch-row::-webkit-scrollbar{display:none}
+.stretch{display:grid;gap:8px;padding:8px 8px 12px;border-radius:22px;text-align:left;scroll-snap-align:start}
+.stretch img{width:100%;aspect-ratio:4/3;object-fit:cover;object-position:left center;border-radius:16px;background:#fff}
+.stretch span{font-size:14px;font-weight:600;padding:0 4px}
