@@ -1,6 +1,6 @@
 /* 核心：存储、每天的卡片、训练、能量计算、奖励（界面文件共用） */
 window.C = (() => {
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 const REPO = 'ABigCyan/lianchi-daily';
 const E = window.Engine;
 const $ = s => document.querySelector(s);
@@ -81,7 +81,7 @@ function baseTasks(d, info) {
 function tlMods(d, type) {
   const tpl = S.custom.timeline[type] || { hide: [], add: [] };
   const day = (peek(d) || {}).tl || { hide: [], add: [] };
-  return { hide: new Set([...(tpl.hide || []), ...(day.hide || [])]), add: [...(tpl.add || []), ...(day.add || [])], tplAdd: new Set((tpl.add || []).map(a => a.id)) };
+  return { hide: new Set([...(tpl.hide || []), ...(day.hide || [])]), add: [...(tpl.add || []), ...(day.add || [])], tplAdd: new Set((tpl.add || []).map(a => a.id)), time: Object.assign({}, tpl.time || {}, day.time || {}) };
 }
 function tasksFor(d) {
   const info = dayInfo(d);
@@ -89,10 +89,16 @@ function tasksFor(d) {
   const mods = tlMods(d, info.type);
   let tasks = T.filter(t => !mods.hide.has(t.id));
   mods.add.forEach(a => { if (!mods.hide.has(a.id)) tasks.push({ ...a, custom: true, tpl: mods.tplAdd.has(a.id) }); });
+  tasks.forEach(t => { if (mods.time[t.id]) { t.baseTime = t.time; t.time = mods.time[t.id]; } });
   const wake = E.tm(S.profile.wake);
   const key = t => { const m = E.tm(t); return m < wake - 60 ? m + 1440 : m; };
-  tasks.sort((a, b) => key(a.time) - key(b.time));
+  tasks.forEach((t, i) => t._i = i);
+  tasks.sort((a, b) => key(a.time) - key(b.time) || (mods.time[b.id] ? 1 : 0) - (mods.time[a.id] ? 1 : 0) || a._i - b._i);
   return { info, tasks, meals, key };
+}
+function setTaskTime(d, id, time, scope) {
+  if (scope === 'tpl') { const type = dayInfo(d).type; const m = S.custom.timeline[type] || (S.custom.timeline[type] = { hide: [], add: [] }); m.time = m.time || {}; m.time[id] = time; saveCustom(); }
+  else { const r = rec(d); r.tl = r.tl || { hide: [], add: [] }; r.tl.time = r.tl.time || {}; r.tl.time[id] = time; save(d); }
 }
 function scoreDay(d) {
   const r = rec(d), { tasks } = tasksFor(d);
@@ -272,6 +278,6 @@ function bindHead() { $$('[data-nav]').forEach(b => b.onclick = () => { S.day = 
 function render() { window.__render(); }
 
 return { APP_VERSION, REPO, E, $, $$, esc, today, DOW, uid, src, LS, S, month, peek, rec, save, saveCustom, allDays, ICON, holiday, dayInfo, TYPE,
-  tasksFor, scoreDay, pctOf, training, sessionInfo, sessionItems, weekOf, LIB, extraItem, burnOf, intakeOf, targetOf, streaks, totals, weights,
+  tasksFor, setTaskTime, scoreDay, pctOf, training, sessionInfo, sessionItems, weekOf, LIB, extraItem, burnOf, intakeOf, targetOf, streaks, totals, weights,
   badges, levelOf, celebrate, toast, sheet, close, askScope, confetti, imgUrl, dateLabel, head, bindHead, render };
 })();

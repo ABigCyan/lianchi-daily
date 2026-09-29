@@ -7,6 +7,7 @@ $$('#tabs button').forEach((b, i) => { b.innerHTML = TABS[i][2] + TABS[i][1]; b.
 function render() {
   const app = $('#app');
   document.body.dataset.tab = S.profile ? S.tab : 'me';
+  if (S.guideOn) { app.innerHTML = Guide.view(); $('#tabs').hidden = true; Guide.bind(); return; }
   if (!S.profile) { app.innerHTML = Me.viewFirst(); $('#tabs').hidden = true; Me.bindFirst(); return; }
   $('#tabs').hidden = false;
   $$('#tabs button').forEach(b => b.setAttribute('aria-current', b.dataset.tab === S.tab ? 'page' : 'false'));
@@ -25,8 +26,10 @@ $$('#tabs button').forEach(b => b.onclick = () => {
 (function boot() {
   const p = LS.get('profile');
   if (p) { S.profile = Object.assign({}, Me.DEF, p, { parts: Object.assign({}, Me.DEF.parts, p.parts || {}) }); S.plan = E.build(S.profile); }
+  if (!p || LS.get('guideNext')) Guide.start();
   render();
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && S.profile) { if (S.tab === 'today' && !S.edit && !S.sub) { S.day = today(); render(); } Me.scheduleNotifs(); } });
+  if (S.profile) Updater.autoCheck();
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && S.profile) { if (S.tab === 'today' && !S.edit && !S.sub && !S.guideOn) { S.day = today(); render(); } Me.scheduleNotifs(); } });
   if (S.profile) Me.scheduleNotifs();
 })();
 })();

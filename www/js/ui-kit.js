@@ -35,6 +35,9 @@ const I = {
   calendar: P('<rect x="3.5" y="4.5" width="17" height="16" rx="4"/><path d="M8 2.8v3.4M16 2.8v3.4M3.5 10h17"/>'),
   heart: P('<path d="M12 20s-7.5-4.4-7.5-10.1A4.3 4.3 0 0 1 12 7.2a4.3 4.3 0 0 1 7.5 2.7C19.5 15.6 12 20 12 20z"/>'),
   globe: P('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.4 3.5 5.2 3.5 8.5s-1.1 6.1-3.5 8.5c-2.4-2.4-3.5-5.2-3.5-8.5s1.1-6.1 3.5-8.5z"/>'),
+  gear: P('<circle cx="12" cy="12" r="3"/><path d="M12 2.8v2.4M12 18.8v2.4M21.2 12h-2.4M5.2 12H2.8M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7M18.5 18.5l-1.7-1.7M7.2 7.2L5.5 5.5"/>'),
+  up: P('<path d="M6 14l6-6 6 6"/>'),
+  down: P('<path d="M6 10l6 6 6-6"/>'),
   trash: P('<path d="M4.5 6.5h15M9.5 6.5V4.5h5v2M6.5 6.5l1 13.5h9l1-13.5"/>'),
   image: P('<rect x="3" y="4.5" width="18" height="15" rx="3.5"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5.2-5.2L7 19.5"/>'),
 };
@@ -74,13 +77,15 @@ function rings(list) { // list: [{v, max, color}]
 
 /* ---------- 堆叠卡组 ---------- */
 /* items: [{key, cls, html}]；右滑 = onRight（完成），左滑 = onLeft（稍后/下一张） */
+/* 三张卡叠在同一个网格格子里，每张按自己的内容撑出尺寸：后面露出的卡就是下一张的真实大小，翻页不跳 */
+const promoted = {};
 function deck(id, items, emptyHtml, labels) {
   labels = labels || { r: '完成', l: '稍后' };
-  if (!items.length) return `<div class="deck-empty mat mat-thin">${emptyHtml || '没有了'}</div>`;
-  const top = items[0];
+  if (!items.length) { delete promoted[id]; return `<div class="deck-empty mat">${emptyHtml || '没有了'}</div>`; }
+  const top = items[0], anim = promoted[id]; delete promoted[id];
   let h = `<div class="deck" id="${id}">`;
-  items.slice(1, 3).forEach((it, i) => h += `<div class="dc behind b${i + 1} mat mat-thin ${it.cls || ''}" aria-hidden="true"></div>`);
-  h += `<div class="dc top mat mat-regular ${top.cls || ''}" data-key="${top.key}"><span class="swipe-tag r">${labels.r}</span><span class="swipe-tag l">${labels.l}</span>${top.html}</div>`;
+  h += `<div class="dc top mat ${top.cls || ''} ${anim ? 'promote' : ''}" data-key="${top.key}"><span class="swipe-tag r">${labels.r}</span><span class="swipe-tag l">${labels.l}</span>${top.html}</div>`;
+  items.slice(1, 3).forEach((it, i) => h += `<div class="dc behind b${i + 1} mat ${it.cls || ''} ${anim ? 'promote' : ''}" aria-hidden="true" inert>${it.html}</div>`);
   return h + '</div>';
 }
 function bindDeck(id, onRight, onLeft) {
@@ -109,7 +114,7 @@ function bindDeck(id, onRight, onLeft) {
     haptic(dir > 0 ? 'success' : 'light');
     if (reduce) { (dir > 0 ? onRight : onLeft)(key); return; }
     card.style.transform = `translateX(${dir * innerWidth * 1.2}px) rotate(${dir * 24}deg)`; card.style.opacity = '0';
-    setTimeout(() => (dir > 0 ? onRight : onLeft)(key), 260);
+    setTimeout(() => { promoted[id] = true; (dir > 0 ? onRight : onLeft)(key); }, 260);
   }
   root.flyRight = () => fly(1); root.flyLeft = () => onLeft && fly(-1);
 }

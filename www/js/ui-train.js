@@ -81,7 +81,7 @@ function bindTrain() {
   if (deckEl && d <= today()) {
     Kit.bindDeck('exDeck', v => { const it = items.find(x => x.v === v); for (let k = 0; k < it.sets; k++) setOf(d, v, k).done = true; ensureSession(d); save(d); afterSets(d, items); },
       v => { const l = S.exLater[d] = (S.exLater[d] || []).filter(x => x !== v); l.push(v); render(); });
-    bindSetInputs(deckEl, d, items);
+    bindSetInputs(deckEl.querySelector('.dc.top'), d, items);
   }
   const ed = $('[data-exdone]'); if (ed) ed.onclick = () => deckEl.flyRight();
   const sk = $('[data-skip]'); if (sk) sk.onclick = () => deckEl.flyLeft();

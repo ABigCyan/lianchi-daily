@@ -1,7 +1,8 @@
 /* 今天：圆环 + “接下来”堆叠卡组 + 全部安排（分组列表） */
 (() => {
 const { E, $, $$, esc, today, S, peek, rec, save, saveCustom, dayInfo, TYPE, tasksFor, scoreDay, pctOf, sessionItems, burnOf, intakeOf, targetOf,
-  badges, celebrate, toast, sheet, close, askScope, confetti, head, bindHead, render, uid, streaks } = C;
+  badges, celebrate, toast, sheet, close, askScope, confetti, head, bindHead, render, uid, streaks, setTaskTime } = C;
+S.editScope = S.editScope || 'day';
 const { I, KIND } = Kit;
 S.later = S.later || {};
 
@@ -61,11 +62,19 @@ function viewToday() {
   // 全部安排
   const liftLink = S.profile.lift !== false && !future && !S.edit ? (info.lift ? '<button class="link red" data-ov="rest">今天不练</button>' : '<button class="link" data-ov="lift">今天加练</button>') : '';
   h += `<section class="section"><div class="section-h"><h2>全部安排</h2><div style="display:flex;gap:14px">${liftLink}<button class="link" id="editTl">${S.edit ? '完成' : '编辑'}</button></div></div><div class="list mat">`;
-  tasks.forEach(t => {
-    const ck = !!(r.done && r.done[t.id]), k = KIND[kindOf(t)];
-    h += `<div class="row ${ck ? 'done' : ''}">${S.edit ? `<button class="hit" data-del="${esc(t.id)}" aria-label="删除 ${esc(t.title)}" style="margin:0;justify-items:start"><span class="del">−</span></button>` : `<span class="time">${t.time}</span>`}
+  if (S.edit) h += `<div class="row" style="grid-template-columns:1fr"><div class="segmented" style="justify-self:start"><button data-scope="day" aria-pressed="${S.editScope === 'day'}">只改今天</button><button data-scope="tpl" aria-pressed="${S.editScope === 'tpl'}">以后每个${TYPE[info.type][0]}</button></div></div>`;
+  tasks.forEach((t, i) => {
+    const ck = !!(r.done && r.done[t.id]);
+    if (S.edit) {
+      const prev = tasks[i - 1], next = tasks[i + 1];
+      h += `<div class="row" style="grid-template-columns:48px 1fr auto"><button class="hit" data-del="${esc(t.id)}" aria-label="删除 ${esc(t.title)}" style="margin:0;justify-items:start"><span class="del">−</span></button>
+        <span class="row-main"><span class="row-title">${esc(t.title)}</span><input class="time-in" type="time" data-time="${esc(t.id)}" value="${t.time}" aria-label="${esc(t.title)} 的时间" ${prev ? `data-min="${prev.time}"` : ''} ${next ? `data-max="${next.time}"` : ''}></span>
+        <span class="mover"><button data-mv="${esc(t.id)}|-1" aria-label="上移" ${prev ? '' : 'disabled'}>${I.up}</button><button data-mv="${esc(t.id)}|1" aria-label="下移" ${next ? '' : 'disabled'}>${I.down}</button></span></div>`;
+      return;
+    }
+    h += `<div class="row ${ck ? 'done' : ''}"><span class="time">${t.time}</span>
       <button class="row-main" data-open="${esc(t.id)}"><span class="row-title">${esc(t.title)}${t.optional ? ' <span class="t-cap l3">可选</span>' : ''}</span><span class="row-sub">${esc(subOf(t, r, d))}</span></button>
-      ${S.edit ? '<span></span>' : `<button class="hit" data-ck="${esc(t.id)}" aria-label="${ck ? '取消完成' : '完成'} ${esc(t.title)}" ${future ? 'disabled' : ''}>${Kit.chk(ck)}</button>`}</div>`;
+      <button class="hit" data-ck="${esc(t.id)}" aria-label="${ck ? '取消完成' : '完成'} ${esc(t.title)}" ${future ? 'disabled' : ''}>${Kit.chk(ck)}</button></div>`;
   });
   if (S.edit) h += `<button class="row add" id="addTl"><span class="plus">+</span><span class="row-title">添加卡片</span></button>`;
   h += `</div></section>`;
@@ -93,7 +102,7 @@ function bindToday() {
   const deckEl = $('#todayDeck');
   const right = key => { toggleDone(d, key, true); render(); };
   const left = key => { const l = S.later[d] = (S.later[d] || []).filter(x => x !== key); l.push(key); Kit.haptic('light'); render(); };
-  if (deckEl && d <= today()) { Kit.bindDeck('todayDeck', right, left); bindInputs(deckEl, d); }
+  if (deckEl && d <= today()) { Kit.bindDeck('todayDeck', right, left); bindInputs(deckEl.querySelector('.dc.top'), d); }
   const dn = $('[data-done]'); if (dn) dn.onclick = () => deckEl.flyRight();
   const lt = $('[data-later]'); if (lt) lt.onclick = () => deckEl.flyLeft();
   $('#editTl').onclick = () => { S.edit = !S.edit; render(); };
@@ -101,6 +110,9 @@ function bindToday() {
   $$('[data-ck]').forEach(b => b.onclick = () => { const on = !(r.done && r.done[b.dataset.ck]); toggleDone(d, b.dataset.ck, on); const y = scrollY; render(); scrollTo(0, y); });
   $$('[data-open]').forEach(b => b.onclick = () => { const t = tasks.find(x => x.id === b.dataset.open); if (!t) return; sheet(`<div class="${'k-' + kindOf(t)}" style="display:grid;gap:14px">${cardHtml(t, peek(d) || { done: {} }, d, d > today())}</div>`, m => bindInputs(m, d)); });
   $$('[data-del]').forEach(b => b.onclick = () => delCard(d, b.dataset.del));
+  $$('[data-scope]').forEach(b => b.onclick = () => { S.editScope = b.dataset.scope; Kit.haptic('light'); render(); });
+  $$('[data-time]').forEach(i => i.onchange = () => changeTime(d, i.dataset.time, i.value));
+  $$('[data-mv]').forEach(b => b.onclick = () => { const [id, dir] = b.dataset.mv.split('|'); moveTask(d, id, +dir); });
   const add = $('#addTl'); if (add) add.onclick = () => addCard(d);
   const bd = $('[data-body]'); if (bd) bd.onclick = () => bodySheet(d);
   $$('[data-burn]').forEach(b => b.onclick = () => burnSheet(d));
@@ -136,12 +148,28 @@ function burnSheet(d) {
   });
 }
 function delCard(d, id) {
-  const { info, tasks } = tasksFor(d), t = tasks.find(x => x.id === id);
-  askScope(`删除「${t ? t.title : ''}」`, scope => {
-    if (scope === 'tpl') { const m = S.custom.timeline[info.type] || (S.custom.timeline[info.type] = { hide: [], add: [] }); if (t && t.custom && t.tpl) m.add = m.add.filter(a => a.id !== id); else m.hide.push(id); saveCustom(); }
-    else { const r = rec(d); r.tl = r.tl || { hide: [], add: [] }; if (t && t.custom && !t.tpl) r.tl.add = r.tl.add.filter(a => a.id !== id); else r.tl.hide.push(id); }
-    scoreDay(d); render(); toast('已删除');
-  });
+  const { info, tasks } = tasksFor(d), t = tasks.find(x => x.id === id), scope = S.editScope;
+  if (scope === 'tpl') { const m = S.custom.timeline[info.type] || (S.custom.timeline[info.type] = { hide: [], add: [] }); if (t && t.custom && t.tpl) m.add = m.add.filter(a => a.id !== id); else m.hide.push(id); saveCustom(); }
+  else { const r = rec(d); r.tl = r.tl || { hide: [], add: [] }; if (t && t.custom && !t.tpl) r.tl.add = r.tl.add.filter(a => a.id !== id); else r.tl.hide.push(id); }
+  scoreDay(d); Kit.haptic('light'); render(); toast(scope === 'tpl' ? '已删除，以后也不再出现' : '已从今天删除');
+}
+/* 改时间：只能落在上一项和下一项之间 */
+function changeTime(d, id, val) {
+  const { tasks, key } = tasksFor(d), i = tasks.findIndex(x => x.id === id);
+  if (i < 0 || !/^\d\d:\d\d$/.test(val)) return;
+  const prev = tasks[i - 1], next = tasks[i + 1], k = key(val);
+  if ((prev && k < key(prev.time)) || (next && k > key(next.time))) { toast(`只能在 ${prev ? prev.time : '—'} 到 ${next ? next.time : '—'} 之间`); Kit.haptic('medium'); render(); return; }
+  setTaskTime(d, id, val, S.editScope); scoreDay(d); Kit.haptic('light'); render();
+}
+/* 上移 / 下移：和相邻一项交换时间 */
+function moveTask(d, id, dir) {
+  const { tasks, key } = tasksFor(d), i = tasks.findIndex(x => x.id === id), j = i + dir;
+  if (i < 0 || j < 0 || j >= tasks.length) return;
+  const a = tasks[i], b = tasks[j];
+  let ta = b.time, tb = a.time;
+  if (ta === tb) { const m = E.tm(ta) + (dir < 0 ? -1 : 1); ta = E.mt(m); }
+  setTaskTime(d, a.id, ta, S.editScope); setTaskTime(d, b.id, tb, S.editScope);
+  Kit.haptic('light'); render();
 }
 function addCard(d) {
   const { info } = tasksFor(d);

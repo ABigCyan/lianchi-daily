@@ -17,8 +17,9 @@ function viewMe() {
   if (S.sub && SUB[S.sub]) return SUB[S.sub].view();
   const p = S.profile, pl = S.plan, native = isNative();
   let h = Kit.largeTitle('我的', '');
-  h += `<section class="mat card"><div style="display:flex;gap:16px;align-items:center"><div class="avatar">${esc((p.name || '我').slice(0, 1))}</div><div style="display:grid;gap:2px"><span class="t-title3">${esc(p.name || '我')}</span><span class="t-foot l2">${p.sex === 'M' ? '男' : '女'} · ${p.age} 岁 · ${p.height} cm · ${p.weight} kg · BMI ${pl.bmi.toFixed(1)}</span></div></div>
+  h += `<section class="mat card"><div style="display:flex;gap:16px;align-items:center">${Look.avatarHtml(p.name)}<div style="display:grid;gap:2px"><span class="t-title3">${esc(p.name || '我')}</span><span class="t-foot l2">${p.sex === 'M' ? '男' : '女'} · ${p.age} 岁 · ${p.height} cm · ${p.weight} kg · BMI ${pl.bmi.toFixed(1)}</span></div></div>
     <div class="stats"><div><span class="k">目标</span><span class="v">${pl.goal === 'cut' ? '减脂' : '增肌'}</span></div><div><span class="k">应吃 kcal</span><span class="v">${pl.f1}</span></div><div><span class="k">蛋白质 g</span><span class="v">${pl.prot}</span></div></div></section>`;
+  h += `<section class="list mat">${item('settings', I.gear, 'var(--ink)', '设置', '外观、头像、更新')}</section>`;
   h += `<section class="list mat">${item('plan', I.calendar, 'var(--blue)', '我的计划', esc(pl.sheet.name))}${item('rules', I.doc, 'var(--indigo)', '规则与出处', 'Excel 表号')}</section>`;
   h += `<section class="list mat">${item('profile', I.person2, 'var(--green)', '编辑资料', '')}${item('profile', I.flame, 'var(--orange)', '基础代谢', pl.bmr + (pl.bmrManual ? ' · 手动' : ' · 公式'))}${item('ai', I.sparkles, 'var(--purple)', '大模型接口', esc(S.ai.model || '未设置'))}
     <div class="row">${ico(I.bell, 'var(--red)')}<span class="row-main"><span class="row-title">按时间线提醒</span>${native ? '' : '<span class="row-sub">只在手机 App 里有效</span>'}</span><input type="checkbox" class="switch" id="nt-on" ${S.notify.on ? 'checked' : ''} ${native ? '' : 'disabled'} aria-label="按时间线提醒"></div>
@@ -31,7 +32,7 @@ function bindMe() {
   if (S.sub && SUB[S.sub]) { $$('[data-back]').forEach(b => b.onclick = () => { S.sub = S.firstImport ? null : null; S.firstImport = false; render(); scrollTo(0, 0); }); return SUB[S.sub].bind && SUB[S.sub].bind(); }
   $$('[data-sub]').forEach(b => b.onclick = () => { S.sub = b.dataset.sub; render(); scrollTo(0, 0); });
   const nt = $('#nt-on'); if (nt) nt.onchange = async () => { Kit.haptic('light'); S.notify.on = nt.checked; LS.set('notify', S.notify); if (nt.checked) { const ok = await scheduleNotifs(true); if (!ok) { S.notify.on = false; LS.set('notify', S.notify); nt.checked = false; } } else cancelNotifs(); };
-  $('#up-check').onclick = checkUpdate;
+  $('#up-check').onclick = () => { $('#up-msg').textContent = '检查中…'; Updater.check(false).then(() => { const m = $('#up-msg'); if (m) m.textContent = APP_VERSION; }); };
 }
 
 /* ---------- 资料表单 ---------- */
@@ -222,16 +223,16 @@ function viewImport() {
   <section class="list mat"><div class="frow stack"><textarea class="field-in" id="im-text" style="height:120px;padding:10px 12px;font-size:12px" placeholder="或粘贴备份内容"></textarea></div><div class="frow"><label for="im-ai">导入大模型接口</label><input type="checkbox" class="switch" id="im-ai" checked></div></section>
   <button class="pill glass wide" id="im-ok">导入粘贴的内容</button><p class="err" id="im-err"></p>`;
 }
-function doImport(text) {
+function doImport(text, keepAIArg) {
   try {
     const obj = JSON.parse(text);
     if (!obj || obj.app !== 'lianchi-daily' || !obj.data) throw new Error('不是练吃日课的备份文件');
-    const keepAI = $('#im-ai').checked, entries = Object.entries(obj.data).filter(([k]) => k.startsWith('lcd:') && (keepAI || k !== 'lcd:ai'));
+    const keepAI = keepAIArg != null ? keepAIArg : $('#im-ai').checked, entries = Object.entries(obj.data).filter(([k]) => k.startsWith('lcd:') && (keepAI || k !== 'lcd:ai'));
     sheet(`<h2>确认导入</h2><div class="sheet-sub">备份时间 ${esc((obj.at || '').slice(0, 16).replace('T', ' '))} · ${obj.days || '若干'} 天记录${obj.includesAI ? ' · 含大模型接口' : ''}</div><p class="t-sub l2" style="text-align:center">会覆盖这台手机上的同名数据</p><button class="pill ink wide" id="im-go">导入</button><button class="pill glass wide" id="im-x">取消</button>`, m => {
       m.querySelector('#im-x').onclick = close;
-      m.querySelector('#im-go').onclick = () => { entries.forEach(([k, v]) => localStorage.setItem(k, v)); location.reload(); };
+      m.querySelector('#im-go').onclick = () => { entries.forEach(([k, v]) => localStorage.setItem(k, v)); localStorage.setItem('lcd:guideNext', 'false'); location.reload(); };
     });
-  } catch (e) { $('#im-err').textContent = '导入失败：' + e.message; }
+  } catch (e) { const el = $('#im-err'); if (el) el.textContent = '导入失败：' + e.message; else toast('导入失败：' + e.message); }
 }
 function bindImport() {
   $$('[data-back]').forEach(b => b.onclick = () => { S.sub = null; S.firstImport = false; render(); });
@@ -303,7 +304,51 @@ async function checkUpdate() {
   } catch (e) { msg.textContent = '检查失败'; toast('网络不稳定，稍后再试'); }
 }
 
+
+/* ---------- 设置：个人 / 外观 / 通用 ---------- */
+function viewSettings() {
+  const l = Look.get(), up = Updater.prefs(), p = S.profile;
+  const sw = (list, cur, attr, fn) => list.map(x => fn(x, x[0] === cur)).join('');
+  let h = back() + Kit.largeTitle('设置', '');
+  h += `<section class="fsec"><h3>个人</h3><div class="list mat"><div class="row" style="grid-template-columns:auto 1fr;gap:16px;padding-top:16px;padding-bottom:16px">${Look.avatarHtml(p.name, 64)}
+    <div style="display:grid;gap:8px;justify-items:start"><span class="t-headline">头像</span><div class="ghost-row"><button class="tbtn" id="av-pick">更换照片</button>${Look.avatar() ? '<button class="tbtn" id="av-clear">用文字</button>' : ''}</div></div></div>
+    <div class="frow"><label for="st-name">昵称</label><input id="st-name" value="${esc(p.name || '')}" placeholder="我" inputmode="text"></div></div><input type="file" id="av-file" accept="image/*" hidden></section>`;
+  h += `<section class="fsec"><h3>外观</h3><div class="list mat">
+    <div class="frow"><span class="lbl">模式</span><div class="segmented" style="justify-self:end" data-look="mode"><button data-v="system" aria-pressed="${l.mode === 'system'}">跟随系统</button><button data-v="light" aria-pressed="${l.mode === 'light'}">浅色</button><button data-v="dark" aria-pressed="${l.mode === 'dark'}">深色</button></div></div>
+    <div class="frow stack"><span class="lbl l2 t-foot">主题色</span><div class="swatches">${sw(Look.ACCENTS, l.accent, 'accent', (x, on) => `<button class="sw" data-accent="${x[0]}" aria-pressed="${on}" aria-label="${x[1]}"><span style="background:${x[2] === 'ink' ? 'var(--ink)' : x[2]}"></span><small>${x[1]}</small></button>`)}</div></div>
+    <div class="frow stack"><span class="lbl l2 t-foot">背景色调</span><div class="swatches">${sw(Look.TONES, l.tone, 'tone', (x, on) => `<button class="sw tone" data-tone="${x[0]}" aria-pressed="${on}" aria-label="${x[1]}"><span style="background:${Look.isDark(l) ? x[3] : x[2]}"></span><small>${x[1]}</small></button>`)}</div></div>
+    <div class="frow stack"><div class="range-h"><span>毛玻璃模糊</span><span class="num" id="rv-blur">${Math.round(l.blur)}</span></div><input type="range" class="range" id="rg-blur" min="0" max="48" step="1" value="${l.blur}" aria-label="毛玻璃模糊"></div>
+    <div class="frow stack"><div class="range-h"><span>玻璃不透明度</span><span class="num" id="rv-alpha">${Math.round(l.alpha * 100)}%</span></div><input type="range" class="range" id="rg-alpha" min="0.2" max="0.95" step="0.01" value="${l.alpha}" aria-label="玻璃不透明度"></div>
+    <div class="frow stack"><div class="look-preview"><div class="lp-bg" aria-hidden="true"><i></i><i></i><i></i></div><div class="mat card lp-card"><span class="eyebrow">预览</span><div class="fig" style="font-size:40px">1885<small>kcal</small></div><div class="progress"><i style="width:62%;background:var(--accent)"></i></div></div></div></div></div>
+    <div class="list-footer">模糊越大、不透明度越高，卡片越“实”；调低会更通透。<button class="link" id="look-reset" style="min-height:0;font-size:12px">恢复默认</button></div></section>`;
+  h += `<section class="fsec"><h3>通用</h3><div class="list mat">
+    <div class="frow"><label for="st-auto">自动检查更新</label><input type="checkbox" class="switch" id="st-auto" ${up.auto ? 'checked' : ''}></div>
+    <button class="row" id="st-check" style="grid-template-columns:1fr auto"><span class="row-main"><span class="row-title">现在检查更新</span></span><span class="row-val chev">${APP_VERSION}</span></button>
+    <div class="frow"><label for="st-guide">下次打开时显示新手引导</label><input type="checkbox" class="switch" id="st-guide" ${LS.get('guideNext') ? 'checked' : ''}></div>
+    <button class="row" id="st-guide-now" style="grid-template-columns:1fr auto"><span class="row-main"><span class="row-title">现在打开新手引导</span></span><span class="row-val chev"></span></button></div>
+    <div class="list-footer">应用内更新会从 GitHub 下载安装包，下载完成后打开系统安装界面，数据保留。</div></section>`;
+  return h;
+}
+function bindSettings() {
+  $$('[data-back]').forEach(b => b.onclick = () => { S.sub = null; render(); });
+  $('#av-pick').onclick = () => $('#av-file').click();
+  $('#av-file').onchange = async () => { const f = $('#av-file').files[0]; if (!f) return; try { Look.setAvatar(await Look.cropAvatar(f)); Kit.haptic('success'); render(); toast('头像已更换'); } catch (e) { toast(e.message); } };
+  const clr = $('#av-clear'); if (clr) clr.onclick = () => { Look.setAvatar(null); render(); };
+  $('#st-name').onchange = () => { S.profile.name = $('#st-name').value.trim(); LS.set('profile', S.profile); toast('已保存'); };
+  $$('[data-look="mode"] button').forEach(b => b.onclick = () => { Look.set({ mode: b.dataset.v }); Kit.haptic('light'); render(); });
+  $$('[data-accent]').forEach(b => b.onclick = () => { Look.set({ accent: b.dataset.accent }); Kit.haptic('light'); render(); });
+  $$('[data-tone]').forEach(b => b.onclick = () => { Look.set({ tone: b.dataset.tone }); Kit.haptic('light'); render(); });
+  $('#rg-blur').oninput = e => { Look.set({ blur: +e.target.value }); $('#rv-blur').textContent = e.target.value; };
+  $('#rg-alpha').oninput = e => { Look.set({ alpha: +e.target.value }); $('#rv-alpha').textContent = Math.round(e.target.value * 100) + '%'; };
+  $('#look-reset').onclick = () => { Look.reset(); Kit.haptic('light'); render(); toast('已恢复默认外观'); };
+  $('#st-auto').onchange = e => Updater.savePrefs({ auto: e.target.checked });
+  $('#st-check').onclick = () => Updater.check(false);
+  $('#st-guide').onchange = e => { LS.set('guideNext', e.target.checked); toast(e.target.checked ? '下次打开 App 时会显示引导' : '已关闭'); };
+  $('#st-guide-now').onclick = () => { S.sub = null; Guide.start(); render(); scrollTo(0, 0); };
+}
+
 const SUB = {
+  settings: { view: viewSettings, bind: bindSettings },
   profile: { view: () => back() + Kit.largeTitle('编辑资料', '') + profileForm(false), bind: () => { $$('[data-back]').forEach(b => b.onclick = () => { S.sub = null; render(); }); bindProfile(false); } },
   plan: { view: viewPlan, bind: () => $$('[data-pd]').forEach(b => b.onclick = () => { S.planDay = b.dataset.pd; render(); }) },
   rules: { view: viewRules }, ai: { view: viewAI, bind: bindAI }, export: { view: viewExport, bind: bindExport }, import: { view: viewImport, bind: bindImport },
@@ -314,5 +359,5 @@ function viewFirst() {
   return Kit.largeTitle('练吃日课', '按《健身Excel超级套表》生成你的饮食和训练计划') + `<section class="mat card"><p class="t-sub">填好资料就能生成计划。数据只保存在这台手机上。</p><button class="pill glass" id="importFirst" style="justify-self:start">${I.download}从备份导入</button></section>` + profileForm(true);
 }
 function bindFirst() { if (S.sub === 'import') { bindImport(); return; } bindProfile(true); }
-window.Me = { view: viewMe, bind: bindMe, viewFirst, bindFirst, DEF, scheduleNotifs };
+window.Me = { view: viewMe, bind: bindMe, viewFirst, bindFirst, DEF, scheduleNotifs, doImport };
 })();
