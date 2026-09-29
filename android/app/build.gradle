@@ -11,6 +11,9 @@ android {
         versionCode((project.findProperty("appVersionCode") ?: "1") as int)
         versionName((project.findProperty("appVersionName") ?: "1.0.0") as String)
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // 内置大模型只编 arm64（手机）；llama.cpp 用 Release 优化
+        ndk { abiFilters 'arm64-v8a' }
+        externalNativeBuild { cmake { arguments "-DCMAKE_BUILD_TYPE=Release", "-DANDROID_STL=c++_static" } }
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
@@ -28,6 +31,12 @@ android {
                 keyAlias System.getenv("ANDROID_KEY_ALIAS")
                 keyPassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
             }
+        }
+    }
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+            version "3.22.1"
         }
     }
     buildTypes {

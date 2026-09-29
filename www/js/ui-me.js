@@ -196,9 +196,42 @@ function viewAI() {
     <div class="frow"><label for="ai-manual">手动模型 ID</label><input id="ai-manual" placeholder="可选" inputmode="text"></div></section>
   <div class="list-footer">带“（图）”的模型能看照片；助手要用支持工具调用的文字模型，扫描时会自动选一个（如 qwen3-max）</div>
   <button class="pill ink wide" id="ai-save">保存</button>
-  <details class="mat card"><summary class="t-headline">内置的饮食识别提示词</summary><pre class="t-foot l2" style="white-space:pre-wrap;margin:0">${esc(AI.systemPrompt())}</pre></details>`;
+  <details class="mat card"><summary class="t-headline">内置的饮食识别提示词</summary><pre class="t-foot l2" style="white-space:pre-wrap;margin:0">${esc(AI.systemPrompt())}</pre></details>
+  <section class="fsec"><h3>内置模型（离线 · 测试版）</h3><div class="list mat" id="loc-box"><div class="row"><span class="row-title l3">检查中…</span></div></div>
+  <div class="list-footer">模型在手机上运行，没网也能按套表问答、做简单修改（改时间、今天不练、改目标）。拍照识别和复杂的安排调整仍需要上面的云端模型。模型文件较大，建议连 Wi-Fi 下载。</div></section>`;
+}
+/* 内置模型：状态、下载 / 删除、助手用哪个 */
+async function drawLocal() {
+  const box = $('#loc-box'); if (!box) return;
+  const inf = await LocalAI.info(), p = LocalAI.prefs(), mb = n => (n / 1048576).toFixed(0) + ' MB';
+  if (!inf.available) { box.innerHTML = `<div class="row" style="grid-template-columns:1fr"><span class="row-main"><span class="row-title">这台设备不能用</span><span class="row-sub">${esc(inf.reason || '')}</span></span></div>`; return; }
+  let h = '';
+  for (const m of LocalAI.MODELS) {
+    const have = inf.dev || await LocalAI.exists(m), on = p.model === m.id;
+    h += `<div class="row" style="grid-template-columns:auto 1fr auto"><button class="hit" data-loc-pick="${m.id}" aria-label="使用 ${esc(m.name)}" style="margin:0">${Kit.chk(on)}</button>
+      <span class="row-main"><span class="row-title">${esc(m.name)} <span class="t-cap l3">${esc(m.tag)} · ${mb(m.size)}</span></span><span class="row-sub" id="loc-sub-${m.id}">${esc(m.note)}</span></span>
+      ${inf.dev ? '<span class="row-val">电脑调试</span>' : have ? `<button class="tbtn" data-loc-del="${m.id}">删除</button>` : `<button class="tbtn" data-loc-dl="${m.id}">下载</button>`}</div>`;
+  }
+  h += `<div class="frow"><span class="lbl">助手使用</span><div class="segmented" style="justify-self:end" data-loc-use>${[['cloud', '云端'], ['local', '内置'], ['auto', '没网时内置']].map(([k, n]) => `<button data-v="${k}" aria-pressed="${p.use === k}">${n}</button>`).join('')}</div></div>`;
+  if (inf.ramMB) h += `<div class="list-footer" style="padding:4px 20px 12px">这台手机：${inf.cores} 核，内存 ${(inf.ramMB / 1024).toFixed(1)} GB（可用 ${(inf.availMB / 1024).toFixed(1)} GB）</div>`;
+  box.innerHTML = h;
+  box.querySelectorAll('[data-loc-pick]').forEach(b => b.onclick = () => { LocalAI.setPrefs({ model: b.dataset.locPick }); drawLocal(); });
+  box.querySelectorAll('[data-loc-use] button').forEach(b => b.onclick = async () => {
+    if (b.dataset.v !== 'cloud' && !inf.dev && !(await LocalAI.exists(LocalAI.current()))) { toast('先下载选中的内置模型'); return; }
+    LocalAI.setPrefs({ use: b.dataset.v }); Kit.haptic('light'); drawLocal();
+  });
+  box.querySelectorAll('[data-loc-del]').forEach(b => b.onclick = async () => { const m = LocalAI.MODELS.find(x => x.id === b.dataset.locDel); await LocalAI.remove(m); if (LocalAI.prefs().model === m.id && LocalAI.prefs().use !== 'cloud') LocalAI.setPrefs({ use: 'cloud' }); toast('已删除'); drawLocal(); });
+  box.querySelectorAll('[data-loc-dl]').forEach(b => b.onclick = async () => {
+    const m = LocalAI.MODELS.find(x => x.id === b.dataset.locDl), sub = $('#loc-sub-' + m.id);
+    box.querySelectorAll('[data-loc-dl]').forEach(x => x.disabled = true); b.textContent = '下载中';
+    try {
+      await LocalAI.download(m, (got, total) => { if (sub) sub.textContent = `已下载 ${mb(got)} / ${mb(total || m.size)}（${Math.round(got / (total || m.size) * 100)}%）`; });
+      LocalAI.setPrefs({ model: m.id }); Kit.haptic('success'); toast('下载完成'); drawLocal();
+    } catch (e) { toast('下载失败：' + (e.message || e)); drawLocal(); }
+  });
 }
 function bindAI() {
+  drawLocal();
   $('#ai-preset').onchange = () => { const pr = AI.PRESETS.find(x => x.id === $('#ai-preset').value); if (pr.base) $('#ai-base').value = pr.base; };
   const collect = () => { const pr = AI.PRESETS.find(x => x.id === $('#ai-preset').value); return { ...S.ai, preset: pr.id, type: pr.type, base: $('#ai-base').value.trim(), key: $('#ai-key').value.trim() }; };
   $('#ai-scan').onclick = async () => {

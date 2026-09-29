@@ -360,7 +360,7 @@ function itemHtml(v) {
 }
 const SUGGEST = ['我今天该吃多少碳水和蛋白质？出处在哪？', '减脂两周体重不掉怎么办？', '今天练什么？为什么是这些？', '我不想练腿了，帮我改一下', '食堂自助怎么吃才符合套表？', '有氧应该在力训前还是后做？'];
 function view() {
-  const cfg = S.ai, model = cfg.chatModel || cfg.model;
+  const cfg = S.ai, loc = useLocal(), model = loc ? `内置 ${LocalAI.current().name}（离线）` : (cfg.chatModel || cfg.model);
   let h = `<div class="chat-top"><button class="back" data-cback>${I.left}返回</button><div class="chat-title"><b>助手</b><span>${model ? esc(model) : '未设置模型'}</span></div><button class="gbtn" data-cclear aria-label="清空对话">${I.trash || '清空'}</button></div>`;
   h += '<div class="chat-list" id="chat-list">';
   if (!st.view.length) h += `<div class="chat-empty"><div class="guide-mark" style="width:52px;height:52px;border-radius:16px">${I.sparkles}</div><p class="t-sub l2">只按《健身Excel超级套表》回答，每条都标出处；套表没写的会直接说没有。也可以让我帮你改计划，改之前会先问你。</p><div class="chips">${SUGGEST.map(q => `<button class="sugg" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div></div>`;
@@ -393,8 +393,9 @@ async function ask(q) {
   if (!q && !img) return;
   if (!q) q = '这是什么？';
   const cfg = S.ai;
-  if (!cfg.key || !(cfg.chatModel || cfg.model)) { toast('先在“我的 → 大模型接口”里设置'); return; }
   if (st.busy) { stop(); await new Promise(r => setTimeout(r, 60)); }
+  if (useLocal()) return askLocal(q, img);
+  if (!cfg.key || !(cfg.chatModel || cfg.model)) { toast('先在“我的 → 大模型接口”里设置'); return; }
   setDraft(''); st.img = null;
   const ctl = st.ctl = new AbortController();
   st.busy = true; st.view.push({ k: 'user', t: q, img: img ? img.thumb : null });
@@ -421,6 +422,121 @@ async function ask(q) {
   }
   if (st.ctl === ctl) { st.busy = false; st.ctl = null; }
   persist(); draw();
+}
+/* ---------- 离线模式：内置小模型 ---------- */
+// 小模型不擅长自己多次调用工具：App 先检索套表、整理好“我的计划”，模型只负责组织语言；
+// 要改计划时，让模型只输出一个固定格式的 JSON 指令，再走和云端一样的确认卡。
+function useLocal() { const p = LocalAI.prefs(); return p.use === 'local' || (p.use === 'auto' && !navigator.onLine); }
+const EDIT_RE = /(改|调|换|删|去掉|不吃|不练|加练|推迟|提前|挪|目标|设成|设为|设置|取消|恢复|休息一天|别练)/;
+function planBrief(d) {
+  const pl = S.plan, info = dayInfo(d), { meals } = tasksFor(d);
+  return [
+    `今天 ${d}（周${DOW[E.dow(d)]}），${info.lift ? '力训日' : '休息日'}${info.h ? '，' + info.h.name : ''}`,
+    `目标：${pl.goal === 'cut' ? '减脂' : '增肌'}（${pl.goalWhy.reason}${pl.goalWhy.src ? '，' + pl.goalWhy.src : ''}）`,
+    `每天应吃：力训日 ${pl.f1} kcal、休息日 ${pl.f2} kcal；碳水 力训日 ${pl.carbT}g、休息日 ${pl.carbR}g；蛋白质 ${pl.prot}g；脂肪 ${pl.fat}g（表5 E22-L23）`,
+    `饮食表：${pl.sheet.sheet}《${pl.sheet.name}》`,
+    pl.training ? `训练：${pl.training.splitName}，${pl.training.days.map(x => x.name.replace(/ /g, '')).join(' / ')}（${pl.training.split.src}）` : '训练：不做力训（表8）',
+    `今天各餐：${meals.map(m => `${m.time} ${m.name} 碳水${m.c}g 蛋白质${m.p}g`).join('；')}`,
+  ].join('\n');
+}
+// 取出原文里和问题最相关的一小段，控制长度（小模型读得越少越快）
+function snippet(text, q) {
+  const ts = terms(q).filter(w => w.length >= 2).sort((a, b) => b.length - a.length);
+  const hit = ts.map(w => text.indexOf(w)).filter(i => i >= 0).sort((a, b) => a - b)[0];
+  if (hit == null || text.length <= 360) return text.slice(0, 360);
+  const a = Math.max(0, hit - 100); return (a ? '…' : '') + text.slice(a, a + 360) + '…';
+}
+function actionSys(d) {
+  const { tasks } = tasksFor(d), tm = E.addDays(d, 1);
+  return [
+    '把用户的要求转换成 JSON 指令数组，只输出 JSON，不要解释。可用指令：',
+    '{"action":"update_profile","changes":{...}}  changes 可以有：goal("cut"减脂/"bulk"增肌/"auto")、weight、targetWeight、waist、liftDays(数组，0=周一…6=周日)、liftTime("HH:MM")、parts({"chest","back","shoulder","arm","legs","abs"} 值为 true/false)、level("new"/"some"/"vet")、place("gym"/"home")',
+    '{"action":"set_day_training","date":"YYYY-MM-DD","type":"lift"|"rest"|"auto"}  这天加练/不练/按计划',
+    '{"action":"edit_timeline","date":"YYYY-MM-DD","op":"remove"|"restore"|"set_time","item_id":"…","time":"HH:MM"}',
+    '不是修改计划的要求就输出 []。',
+    `今天是 ${d}（周${DOW[E.dow(d)]}），明天是 ${tm}。今天的安排（item_id 名称 时间）：${tasks.map(t => `${t.id} ${t.title} ${t.time}`).join('；')}`,
+    '例子：',
+    `今天不练了 → [{"action":"set_day_training","date":"${d}","type":"rest"}]`,
+    `夜宵不吃了 → [{"action":"edit_timeline","date":"${d}","op":"remove","item_id":"meal-snack"}]`,
+    `晚饭改到九点 → [{"action":"edit_timeline","date":"${d}","op":"set_time","item_id":"meal-dinner","time":"21:00"}]`,
+    '目标体重改成68 → [{"action":"update_profile","changes":{"targetWeight":68}}]',
+    '我不想练腿了 → [{"action":"update_profile","changes":{"parts":{"legs":false}}}]',
+    `明天要加练 → [{"action":"set_day_training","date":"${tm}","type":"lift"}]`,
+  ].join('\n');
+}
+function parseActions(text) {
+  const t = LocalAI.clean(text).replace(/```json|```/g, '');
+  const a = t.indexOf('['), b = t.lastIndexOf(']');
+  try { if (a >= 0 && b > a) return JSON.parse(t.slice(a, b + 1)); } catch (e) { /* 再试单个对象 */ }
+  const c = t.indexOf('{'), e2 = t.lastIndexOf('}');
+  try { if (c >= 0 && e2 > c) return [JSON.parse(t.slice(c, e2 + 1))]; } catch (e) { /* 不是 JSON */ }
+  return null;
+}
+async function runActions(list, q) {
+  const out = [], reason = '离线助手按你的要求：' + q.slice(0, 40);
+  for (const x of list) {
+    if (!x || !x.action) continue;
+    let r;
+    if (x.action === 'update_profile') r = await runTool('update_profile', { changes: x.changes || {}, reason });
+    else if (x.action === 'set_day_training') r = await runTool('set_day_training', { date: x.date, type: x.type, reason });
+    else if (x.action === 'edit_timeline') r = await runTool('edit_timeline', { date: x.date, action: x.op || x.action_type, item_id: x.item_id, time: x.time, scope: 'day', reason });
+    else continue;
+    out.push(r.ok ? '✓ ' + (r.done || (r.changed || []).join('；') || (r.now ? `${r.date} 现在是${r.now}` : '已修改')) : '✗ ' + (r.error || '没有改'));
+  }
+  return out;
+}
+async function askLocal(q, img) {
+  const d = today(), ctl = st.ctl = new AbortController();
+  setDraft(''); st.img = null; st.busy = true;
+  st.view.push({ k: 'user', t: q, img: img ? img.thumb : null }); draw();
+  const live = { k: 'bot', t: '', live: true };
+  let raw = '', raf = 0;
+  const paint = () => { raf = 0; const el = [...document.querySelectorAll('.msg.bot')].pop(); if (el && live.t) el.innerHTML = md(live.t); const l = $('#chat-list'); if (l) l.scrollTop = l.scrollHeight; };
+  const onToken = t => { raw += t; live.t = LocalAI.clean(raw); if (!raf) raf = requestAnimationFrame(paint); };
+  try {
+    let question = q;
+    if (img) {
+      if (!(S.ai.key && S.ai.model) || !navigator.onLine) throw new Error('离线模式不能看图片：内置小模型不支持图片，联网并设置云端看图模型后再发');
+      st.view.push({ k: 'step', t: '看图片（云端看图模型）' }); draw();
+      question = `${q}\n（图片内容：${await AI.describeImage(S.ai, img.data, q, ctl.signal)}）`;
+    }
+    // 要改计划：先让模型输出指令
+    if (EDIT_RE.test(q)) {
+      st.view.push({ k: 'step', t: '理解要改什么' }); draw();
+      const r = await LocalAI.chat([{ role: 'system', content: actionSys(d) }, { role: 'user', content: q + ' /no_think' }], { signal: ctl.signal, maxTokens: 240, temperature: 0.1 });
+      const acts = parseActions(r.text);
+      if (acts && acts.length) {
+        const res = await runActions(acts, q);
+        st.view.push({ k: 'bot', t: res.length ? res.join('\n') : '没有听懂要改什么，可以说得具体一点，比如“今天不练了”“晚饭改到 21:00”' });
+        st.view.push({ k: 'step', t: statLine(r.stats) });
+        st.msgs.push({ role: 'user', content: q }, { role: 'assistant', content: res.join('\n') });
+        return;
+      }
+    }
+    // 回答问题：App 检索套表原文 + 我的计划，模型只根据这些回答
+    await loadKB();
+    const hits = searchExcel({ query: q }).results || [];
+    const src = hits.slice(0, 4).map(h => `[${h.src.replace(/（.*$/, '')}] ${snippet(h.text, q)}`).join('\n');
+    st.view.push({ k: 'step', t: `查套表：找到 ${Math.min(hits.length, 4)} 段` });
+    st.view.push(live); draw();
+    const sys = '你是“练吃日课”的离线助手。只根据下面给的【我的计划】和【资料】回答，不要用资料以外的知识。资料里没有的，就直接说“套表里没有写这个”。每个要点后面用括号写出处，出处只能照抄资料前面方括号里的内容，例如（表17 第32行）。用中文，先结论后理由，不超过 150 字。';
+    const user = `【我的计划】\n${planBrief(d)}\n\n【资料】\n${src || '（没有找到相关原文）'}\n\n【问题】${question} /no_think`;
+    const r = await LocalAI.chat([{ role: 'system', content: sys }, { role: 'user', content: user }], { signal: ctl.signal, onToken, maxTokens: 400, temperature: 0.3 });
+    live.t = LocalAI.clean(r.text) || '（没有回答）'; delete live.live;
+    st.view.push({ k: 'step', t: statLine(r.stats) });
+    st.msgs.push({ role: 'user', content: q }, { role: 'assistant', content: live.t });
+  } catch (e) {
+    if (live.live) { st.view = st.view.filter(v => v !== live || v.t); delete live.live; }
+    st.view.push({ k: 'err', t: e.stopped || ctl.signal.aborted ? '已停止' : (e.message || String(e)) });
+  } finally {
+    if (st.ctl === ctl) { st.busy = false; st.ctl = null; }
+    persist(); draw();
+  }
+}
+function statLine(s) {
+  if (!s) return '内置模型';
+  const sec = ms => (ms / 1000).toFixed(1) + ' 秒';
+  return `内置 ${LocalAI.current().name}${s.loadMs > 300 ? ` · 加载 ${sec(s.loadMs)}` : ''} · 读资料 ${sec(s.prefillMs || 0)}${s.promptTokens ? `（${s.promptTokens} 词元）` : ''} · 生成 ${sec(s.genMs || 0)}`;
 }
 async function pickImage(file) {
   try {
