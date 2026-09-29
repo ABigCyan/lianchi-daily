@@ -1,6 +1,6 @@
 /* 核心：存储、每天的卡片、训练、能量计算、奖励（界面文件共用） */
 window.C = (() => {
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.4.1';
 const REPO = 'ABigCyan/lianchi-daily';
 const E = window.Engine;
 const $ = s => document.querySelector(s);
@@ -90,15 +90,20 @@ function tasksFor(d) {
   let tasks = T.filter(t => !mods.hide.has(t.id));
   mods.add.forEach(a => { if (!mods.hide.has(a.id)) tasks.push({ ...a, custom: true, tpl: mods.tplAdd.has(a.id) }); });
   tasks.forEach(t => { if (mods.time[t.id]) { t.baseTime = t.time; t.time = mods.time[t.id]; } });
-  const wake = E.tm(S.profile.wake);
-  const key = t => { const m = E.tm(t); return m < wake - 60 ? m + 1440 : m; };
+  // 排序用的“一天”：从睡觉和起床的正中间开始。比这更早的时间（比如 00:30 的夜宵）算作前一天的深夜，排在最后
+  const wake = E.tm(S.profile.wake), sl = E.tm(S.profile.sleep || '23:30'), night = sl < wake ? sl : sl - 1440, cut = (night + wake) / 2;
+  const key = t => { const m = E.tm(t); return m < cut ? m + 1440 : m; };
   tasks.forEach((t, i) => t._i = i);
   tasks.sort((a, b) => key(a.time) - key(b.time) || (mods.time[b.id] ? 1 : 0) - (mods.time[a.id] ? 1 : 0) || a._i - b._i);
   return { info, tasks, meals, key };
 }
-function setTaskTime(d, id, time, scope) {
-  if (scope === 'tpl') { const type = dayInfo(d).type; const m = S.custom.timeline[type] || (S.custom.timeline[type] = { hide: [], add: [] }); m.time = m.time || {}; m.time[id] = time; saveCustom(); }
-  else { const r = rec(d); r.tl = r.tl || { hide: [], add: [] }; r.tl.time = r.tl.time || {}; r.tl.time[id] = time; save(d); }
+function setTaskTime(d, id, time, scope) { // time 为 null 时恢复默认
+  const set = o => { if (time) o[id] = time; else delete o[id]; };
+  if (scope === 'tpl') {
+    const type = dayInfo(d).type; const m = S.custom.timeline[type] || (S.custom.timeline[type] = { hide: [], add: [] }); m.time = m.time || {}; set(m.time); saveCustom();
+    // 这一天单独改过的时间会盖住“以后都这样”，所以一并清掉
+    const r = peek(d); if (r && r.tl && r.tl.time && id in r.tl.time) { delete r.tl.time[id]; save(d); }
+  } else { const r = rec(d); r.tl = r.tl || { hide: [], add: [] }; r.tl.time = r.tl.time || {}; set(r.tl.time); save(d); }
 }
 function scoreDay(d) {
   const r = rec(d), { tasks } = tasksFor(d);

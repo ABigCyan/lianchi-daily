@@ -110,5 +110,7 @@ function bind() {
   };
   const done = $('#g-done'); if (done) done.onclick = finish;
 }
-return { start, view, bind };
+/* 系统返回键：退回上一步；已经在第一页就返回 false */
+function back() { if (!S.guideOn || step === 0) return false; collect(); go(step - 1); return true; }
+return { start, view, bind, back };
 })();

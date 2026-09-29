@@ -24,6 +24,30 @@ $$('#tabs button').forEach(b => b.onclick = () => {
   S.tab = t; S.edit = false; if (['today', 'train', 'food'].includes(t)) S.day = today();
   render(); scrollTo(0, 0);
 });
+/* ---------- 安卓返回键：先关弹窗、退出子页面，回到“今天”后连按两次才回桌面 ---------- */
+function goBack() {
+  const m = $('#modal');
+  if (m && !m.hidden) { C.close(); return true; }
+  if (S.chatOn) { S.chatOn = false; if (window.visualViewport) visualViewport.onresize = null; render(); scrollTo(0, 0); return true; }
+  if (S.guideOn) return Guide.back();
+  if (S.sub) { S.sub = null; S.firstImport = false; render(); scrollTo(0, 0); return true; }
+  if (S.edit) { S.edit = false; render(); return true; }
+  if (!S.profile) return false;
+  if (S.tab !== 'today') { S.tab = 'today'; S.day = today(); render(); scrollTo(0, 0); return true; }
+  if (S.day !== today()) { S.day = today(); render(); scrollTo(0, 0); return true; }
+  return false;
+}
+let lastBack = 0;
+const AppPlugin = window.capacitorApp && window.capacitorApp.App;
+if (AppPlugin && window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()) {
+  AppPlugin.addListener('backButton', () => {
+    if (goBack()) { Kit.haptic('light'); lastBack = 0; return; }
+    const now = Date.now();
+    if (now - lastBack < 2000) { lastBack = 0; AppPlugin.minimizeApp(); return; }
+    lastBack = now; C.toast('再按一次返回桌面');
+  });
+}
+window.__goBack = goBack;
 (function boot() {
   const p = LS.get('profile');
   if (p) { S.profile = Object.assign({}, Me.DEF, p, { parts: Object.assign({}, Me.DEF.parts, p.parts || {}) }); S.plan = E.build(S.profile); }

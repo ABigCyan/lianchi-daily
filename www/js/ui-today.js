@@ -67,12 +67,12 @@ function viewToday() {
     const ck = !!(r.done && r.done[t.id]);
     if (S.edit) {
       const prev = tasks[i - 1], next = tasks[i + 1];
-      h += `<div class="row" style="grid-template-columns:48px 1fr auto"><button class="hit" data-del="${esc(t.id)}" aria-label="删除 ${esc(t.title)}" style="margin:0;justify-items:start"><span class="del">−</span></button>
-        <span class="row-main"><span class="row-title">${esc(t.title)}</span><input class="time-in" type="time" data-time="${esc(t.id)}" value="${t.time}" aria-label="${esc(t.title)} 的时间" ${prev ? `data-min="${prev.time}"` : ''} ${next ? `data-max="${next.time}"` : ''}></span>
+      h += `<div class="row ${S.flash === t.id ? 'flash' : ''}" style="grid-template-columns:48px 1fr auto"><button class="hit" data-del="${esc(t.id)}" aria-label="删除 ${esc(t.title)}" style="margin:0;justify-items:start"><span class="del">−</span></button>
+        <span class="row-main"><span class="row-title">${esc(t.title)}</span><input class="time-in" type="time" data-time="${esc(t.id)}" value="${t.time}" aria-label="${esc(t.title)} 的时间"></span>
         <span class="mover"><button data-mv="${esc(t.id)}|-1" aria-label="上移" ${prev ? '' : 'disabled'}>${I.up}</button><button data-mv="${esc(t.id)}|1" aria-label="下移" ${next ? '' : 'disabled'}>${I.down}</button></span></div>`;
       return;
     }
-    h += `<div class="row ${ck ? 'done' : ''}"><span class="time">${t.time}</span>
+    h += `<div class="row ${ck ? 'done' : ''} ${S.flash === t.id ? 'flash' : ''}"><button class="time" data-tedit="${esc(t.id)}" aria-label="改 ${esc(t.title)} 的时间">${t.time}</button>
       <button class="row-main" data-open="${esc(t.id)}"><span class="row-title">${esc(t.title)}${t.optional ? ' <span class="t-cap l3">可选</span>' : ''}</span><span class="row-sub">${esc(subOf(t, r, d))}</span></button>
       <button class="hit" data-ck="${esc(t.id)}" aria-label="${ck ? '取消完成' : '完成'} ${esc(t.title)}" ${future ? 'disabled' : ''}>${Kit.chk(ck)}</button></div>`;
   });
@@ -112,6 +112,8 @@ function bindToday() {
   $$('[data-del]').forEach(b => b.onclick = () => delCard(d, b.dataset.del));
   $$('[data-scope]').forEach(b => b.onclick = () => { S.editScope = b.dataset.scope; Kit.haptic('light'); render(); });
   $$('[data-time]').forEach(i => i.onchange = () => changeTime(d, i.dataset.time, i.value));
+  $$('[data-tedit]').forEach(b => b.onclick = () => { const t = tasks.find(x => x.id === b.dataset.tedit); if (t) timeSheet(d, t); });
+  if (S.flash) { const el = $('.row.flash'); if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); setTimeout(() => { S.flash = null; }, 0); }
   $$('[data-mv]').forEach(b => b.onclick = () => { const [id, dir] = b.dataset.mv.split('|'); moveTask(d, id, +dir); });
   const add = $('#addTl'); if (add) add.onclick = () => addCard(d);
   const bd = $('[data-body]'); if (bd) bd.onclick = () => bodySheet(d);
@@ -153,13 +155,27 @@ function delCard(d, id) {
   else { const r = rec(d); r.tl = r.tl || { hide: [], add: [] }; if (t && t.custom && !t.tpl) r.tl.add = r.tl.add.filter(a => a.id !== id); else r.tl.hide.push(id); }
   scoreDay(d); Kit.haptic('light'); render(); toast(scope === 'tpl' ? '已删除，以后也不再出现' : '已从今天删除');
 }
-/* 改时间：只能落在上一项和下一项之间 */
-function changeTime(d, id, val) {
-  const { tasks, key } = tasksFor(d), i = tasks.findIndex(x => x.id === id);
-  if (i < 0 || !/^\d\d:\d\d$/.test(val)) return;
-  const prev = tasks[i - 1], next = tasks[i + 1], k = key(val);
-  if ((prev && k < key(prev.time)) || (next && k > key(next.time))) { toast(`只能在 ${prev ? prev.time : '—'} 到 ${next ? next.time : '—'} 之间`); Kit.haptic('medium'); render(); return; }
-  setTaskTime(d, id, val, S.editScope); scoreDay(d); Kit.haptic('light'); render();
+/* 改时间：任意时间都可以，改完按时间自动排到对应位置，并闪一下提示新位置 */
+function changeTime(d, id, val, scope) {
+  if (!/^\d{1,2}:\d\d$/.test(val || '')) return;
+  val = val.padStart(5, '0');
+  const before = tasksFor(d).tasks.findIndex(x => x.id === id);
+  setTaskTime(d, id, val, scope || S.editScope); scoreDay(d); Kit.haptic('light');
+  const after = tasksFor(d).tasks.findIndex(x => x.id === id);
+  S.flash = id; render();
+  if (after !== before) toast(`已按时间排到第 ${after + 1} 项`);
+  if (window.Me && Me.scheduleNotifs) Me.scheduleNotifs();
+}
+/* 点时间：弹出改时间面板（不用进编辑模式） */
+function timeSheet(d, t) {
+  const info = dayInfo(d);
+  sheet(`<h2>${esc(t.title)}</h2><div class="sheet-sub">改好后会按时间自动排到对应位置</div>
+    <div class="list" style="background:var(--fill3)"><div class="frow"><label for="te-t">时间</label><input type="time" id="te-t" value="${t.time}"></div></div>
+    <button class="pill glass wide" data-te="day">只改这一天</button><button class="pill ink wide" data-te="tpl">以后每个${TYPE[info.type][0]}都这样</button>
+    ${t.baseTime ? `<button class="link" id="te-reset" style="justify-self:center">恢复默认时间 ${t.baseTime}</button>` : ''}`, m => {
+    m.querySelectorAll('[data-te]').forEach(b => b.onclick = () => { const v = m.querySelector('#te-t').value; close(); changeTime(d, t.id, v, b.dataset.te); });
+    const rs = m.querySelector('#te-reset'); if (rs) rs.onclick = () => { setTaskTime(d, t.id, null, 'day'); setTaskTime(d, t.id, null, 'tpl'); close(); scoreDay(d); S.flash = t.id; render(); toast('已恢复默认时间'); };
+  });
 }
 /* 上移 / 下移：和相邻一项交换时间 */
 function moveTask(d, id, dir) {

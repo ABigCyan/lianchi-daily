@@ -188,7 +188,10 @@ body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;ba
 .list{border-radius:24px;overflow:hidden}
 .row{text-align:left;display:grid;grid-template-columns:48px 1fr auto;gap:12px;align-items:center;min-height:60px;padding:10px 16px 10px 20px;position:relative;width:100%;text-align:left}
 .row + .row::before{content:"";position:absolute;top:0;right:0;left:20px;border-top:1px solid var(--hair)}
-.row .time{font-size:13px;color:var(--ink3);font-variant-numeric:tabular-nums;letter-spacing:.01em}
+.row .time{font-size:13px;color:var(--ink3);font-variant-numeric:tabular-nums;letter-spacing:.01em;min-height:44px;margin:-10px 0;padding:0 4px 0 0;text-align:left}
+.row .time:active{color:var(--accent)}
+.row.flash{animation:flash 1.4s ease-out}
+@keyframes flash{0%,30%{background:color-mix(in srgb,var(--accent) 14%,transparent)}100%{background:transparent}}
 .row-ico{width:24px;height:24px;display:grid;place-items:center;color:var(--ink2);background:none!important}
 .row-ico svg{width:20px;height:20px}
 .row-ico b{font-size:13px;color:var(--ink2)}
