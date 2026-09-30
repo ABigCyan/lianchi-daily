@@ -1,12 +1,16 @@
 /* 核心：存储、每天的卡片、训练、能量计算、奖励（界面文件共用） */
 window.C = (() => {
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.7.1';
 const REPO = 'ABigCyan/lianchi-daily';
 const E = window.Engine;
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const today = () => E.ds(new Date());
+/* 一天从凌晨 4 点开始：0:00-3:59 仍算前一天（熬夜、夜宵、半夜的提醒都归到前一天） */
+const DAY_START = 4 * 60;
+const today = () => E.ds(new Date(Date.now() - DAY_START * 60000));
+/* 一天之内排序用的分钟数：4 点以前的时间排到最后 */
+const dayMin = t => { const m = E.tm(t); return m < DAY_START ? m + 1440 : m; };
 const DOW = ['一', '二', '三', '四', '五', '六', '日'];
 const uid = () => Math.random().toString(36).slice(2, 9);
 const src = (s, app) => s ? `<span class="src${app ? ' app' : ''}">${esc(s)}</span>` : '';
@@ -90,9 +94,8 @@ function tasksFor(d) {
   let tasks = T.filter(t => !mods.hide.has(t.id));
   mods.add.forEach(a => { if (!mods.hide.has(a.id)) tasks.push({ ...a, custom: true, tpl: mods.tplAdd.has(a.id) }); });
   tasks.forEach(t => { if (mods.time[t.id]) { t.baseTime = t.time; t.time = mods.time[t.id]; } });
-  // 排序用的“一天”：从睡觉和起床的正中间开始。比这更早的时间（比如 00:30 的夜宵）算作前一天的深夜，排在最后
-  const wake = E.tm(S.profile.wake), sl = E.tm(S.profile.sleep || '23:30'), night = sl < wake ? sl : sl - 1440, cut = (night + wake) / 2;
-  const key = t => { const m = E.tm(t); return m < cut ? m + 1440 : m; };
+  // 排序：一天从凌晨 4 点开始，00:30 的夜宵算前一天的深夜，排在最后
+  const key = dayMin;
   tasks.forEach((t, i) => t._i = i);
   tasks.sort((a, b) => key(a.time) - key(b.time) || (mods.time[b.id] ? 1 : 0) - (mods.time[a.id] ? 1 : 0) || a._i - b._i);
   // 饮食页和时间线用同一份餐次：删掉的餐不出现，改过的时间同步，分量按下面的规则调整
@@ -310,7 +313,7 @@ function head(title, d, trailing) {
 function bindHead() { $$('[data-ai]').forEach(b => b.onclick = () => { Kit.haptic('light'); Assistant.open(); }); $$('[data-nav]').forEach(b => b.onclick = () => { S.day = E.addDays(S.day, +b.dataset.nav); S.edit = false; Kit.haptic('light'); render(); scrollTo(0, 0); }); }
 function render() { window.__render(); }
 
-return { APP_VERSION, REPO, E, $, $$, esc, today, DOW, uid, src, LS, S, month, peek, rec, save, saveCustom, allDays, ICON, holiday, dayInfo, TYPE,
+return { APP_VERSION, REPO, E, $, $$, esc, today, DAY_START, dayMin, DOW, uid, src, LS, S, month, peek, rec, save, saveCustom, allDays, ICON, holiday, dayInfo, TYPE,
   tasksFor, setTaskTime, scoreDay, pctOf, training, sessionInfo, sessionItems, weekOf, LIB, extraItem, burnOf, intakeOf, targetOf, streaks, totals, weights,
   badges, levelOf, celebrate, toast, sheet, close, askScope, confetti, imgUrl, dateLabel, head, bindHead, render };
 })();

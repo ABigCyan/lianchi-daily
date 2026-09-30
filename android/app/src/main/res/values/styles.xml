@@ -13,6 +13,8 @@
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
         <item name="android:background">@null</item>
+        <!-- 系统栏后面露出的窗口底色：和页面底色一致（深色见 values-night），页面加载后再由 AppChrome 按主题更新 -->
+        <item name="android:windowBackground">@color/app_window_bg</item>
     </style>
 
 

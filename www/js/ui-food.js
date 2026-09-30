@@ -24,7 +24,7 @@ function foodOptions() {
 }
 function mealsOf(d) { return tasksFor(d).meals; }
 function mealOf(d, key) { return mealsOf(d).find(m => m.key === key) || { key: 'extra', name: '加餐', c: 0, p: 0 }; }
-function nearestMeal(d) { const meals = mealsOf(d), nm = new Date().getHours() * 60 + new Date().getMinutes(); let b = meals[0]; meals.forEach(m => { if (Math.abs(E.tm(m.time) - nm) < Math.abs(E.tm(b.time) - nm)) b = m; }); return b; }
+function nearestMeal(d) { const meals = mealsOf(d), nm = C.dayMin(E.mt(new Date().getHours() * 60 + new Date().getMinutes())); let b = meals[0]; meals.forEach(m => { if (Math.abs(C.dayMin(m.time) - nm) < Math.abs(C.dayMin(b.time) - nm)) b = m; }); return b; }
 
 function viewFood() {
   const d = S.day, r = peek(d) || {}, e = intakeOf(d), t = targetOf(d), b = burnOf(d), future = d > today();

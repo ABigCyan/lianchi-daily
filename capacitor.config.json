@@ -12,6 +12,9 @@
     },
     "LocalNotifications": {
       "iconColor": "#285C8C"
+    },
+    "SystemBars": {
+      "initialViewportFitValueHint": "cover"
     }
   },
   "backgroundColor": "#E9EBEF"

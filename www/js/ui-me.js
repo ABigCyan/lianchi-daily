@@ -295,7 +295,7 @@ async function scheduleNotifs(ask) {
       tasks.forEach((t, k) => {
         if (t.optional || (r.done && r.done[t.id])) return;
         const [hh, mm] = t.time.split(':').map(Number); const at = E.pd(d); at.setHours(hh, mm, 0, 0);
-        if (E.tm(t.time) < E.tm(S.profile.wake) - 60) at.setDate(at.getDate() + 1);
+        if (E.tm(t.time) < C.DAY_START) at.setDate(at.getDate() + 1); // 凌晨 4 点前的安排在日历上是第二天
         if (at.getTime() <= now + 30000) return;
         list.push({ id: (i + 1) * 100 + k, title: t.title, body: String(t.kind === 'food' && t.meal ? `${t.meal.foods.c[0] || ''}；${t.meal.foods.p[0] || ''}` : (t.sub || t.note || '')).slice(0, 160), schedule: { at, allowWhileIdle: true } });
       });
@@ -332,13 +332,15 @@ function viewSettings() {
     <div class="frow"><label for="st-name">昵称</label><input id="st-name" value="${esc(p.name || '')}" placeholder="我" inputmode="text"></div></div><input type="file" id="av-file" accept="image/*" hidden></section>`;
   h += `<section class="fsec"><h3>外观</h3><div class="list mat">
     <div class="frow"><span class="lbl">模式</span><div class="segmented" style="justify-self:end" data-look="mode"><button data-v="system" aria-pressed="${l.mode === 'system'}">跟随系统</button><button data-v="light" aria-pressed="${l.mode === 'light'}">浅色</button><button data-v="dark" aria-pressed="${l.mode === 'dark'}">深色</button></div></div>
+    <div class="frow stack"><span class="lbl l2 t-foot">卡片风格 <span class="tag-exp">实验</span></span><div class="styles">${Look.STYLES.map(([k, n]) => `<button class="st-tile" data-style="${k}" aria-pressed="${(l.style || 'glass') === k}" aria-label="${n}"><span class="st-prev st-${k}"><i></i><b></b></span><small>${n}</small></button>`).join('')}</div>
+      <div class="t-foot l3">${esc((Look.STYLES.find(x => x[0] === (l.style || 'glass')) || Look.STYLES[0])[2])}</div></div>
     <div class="frow stack"><span class="lbl l2 t-foot">主题色</span><div class="swatches">${sw(Look.ACCENTS, l.accent, 'accent', (x, on) => `<button class="sw" data-accent="${x[0]}" aria-pressed="${on}" aria-label="${x[1]}"><span style="background:${x[2] === 'ink' ? 'var(--ink)' : x[2]}"></span><small>${x[1]}</small></button>`)}</div></div>
     <div class="frow stack"><span class="lbl l2 t-foot">背景色调</span><div class="swatches">${sw(Look.TONES, l.tone, 'tone', (x, on) => `<button class="sw tone" data-tone="${x[0]}" aria-pressed="${on}" aria-label="${x[1]}"><span style="background:${Look.isDark(l) ? x[3] : x[2]}"></span><small>${x[1]}</small></button>`)}</div></div>
     <div class="frow stack"><div class="range-h"><span>毛玻璃模糊</span><span class="num" id="rv-blur">${Math.round(l.blur)}</span></div><input type="range" class="range" id="rg-blur" min="0" max="48" step="1" value="${l.blur}" aria-label="毛玻璃模糊"></div>
-    <div class="frow stack"><div class="range-h"><span>玻璃不透明度</span><span class="num" id="rv-alpha">${Math.round(l.alpha * 100)}%</span></div><input type="range" class="range" id="rg-alpha" min="0.2" max="0.95" step="0.01" value="${l.alpha}" aria-label="玻璃不透明度"></div>
+    <div class="frow stack"><div class="range-h"><span>卡片不透明度</span><span class="num" id="rv-alpha">${Math.round(l.alpha * 100)}%</span></div><input type="range" class="range" id="rg-alpha" min="0.3" max="1" step="0.01" value="${l.alpha}" aria-label="卡片不透明度"></div>
     <div class="frow"><label for="st-lite">省电模式</label><input type="checkbox" class="switch" id="st-lite" ${l.lite ? 'checked' : ''}></div>
     <div class="frow stack"><div class="look-preview"><div class="lp-bg" aria-hidden="true"><i></i><i></i><i></i></div><div class="mat card lp-card"><span class="eyebrow">预览</span><div class="fig" style="font-size:40px">1885<small>kcal</small></div><div class="progress"><i style="width:62%;background:var(--accent)"></i></div></div></div></div></div>
-    <div class="list-footer">模糊只用在标签栏、顶部导航和弹出面板上；手机发热或卡顿时可以打开省电模式。<button class="link" id="look-reset" style="min-height:0;font-size:12px">恢复默认</button></div></section>`;
+    <div class="list-footer">卡片默认不透明；堆叠卡组最上面一张总是不透明。模糊只用在标签栏、顶部导航和弹出面板上；手机发热或卡顿时可以打开省电模式。<button class="link" id="look-reset" style="min-height:0;font-size:12px">恢复默认</button></div></section>`;
   h += `<section class="fsec"><h3>通用</h3><div class="list mat">
     <div class="frow"><span class="lbl">震动</span><div class="segmented" style="justify-self:end" data-hap>${[['all', '开'], ['long', '仅长按'], ['off', '关']].map(([k, n]) => `<button data-v="${k}" aria-pressed="${Kit.hapticMode() === k}">${n}</button>`).join('')}</div></div>
     <div class="frow"><label for="st-auto">自动检查更新</label><input type="checkbox" class="switch" id="st-auto" ${up.auto ? 'checked' : ''}></div>
@@ -356,6 +358,7 @@ function bindSettings() {
   $('#st-name').onchange = () => { S.profile.name = $('#st-name').value.trim(); LS.set('profile', S.profile); toast('已保存'); };
   $$('[data-look="mode"] button').forEach(b => b.onclick = () => { Look.set({ mode: b.dataset.v }); Kit.haptic('light'); render(); });
   $$('[data-accent]').forEach(b => b.onclick = () => { Look.set({ accent: b.dataset.accent }); Kit.haptic('light'); render(); });
+  $$('.st-tile[data-style]').forEach(b => b.onclick = () => { Look.set({ style: b.dataset.style }); Kit.haptic('light'); render(); });
   $$('[data-tone]').forEach(b => b.onclick = () => { Look.set({ tone: b.dataset.tone }); Kit.haptic('light'); render(); });
   $('#rg-blur').oninput = e => { Look.set({ blur: +e.target.value }); $('#rv-blur').textContent = e.target.value; };
   $('#rg-alpha').oninput = e => { Look.set({ alpha: +e.target.value }); $('#rv-alpha').textContent = Math.round(e.target.value * 100) + '%'; };
