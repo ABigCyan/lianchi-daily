@@ -1,6 +1,6 @@
 /* 训练：动作卡组 + 全部动作列表 */
 (() => {
-const { E, $, $$, esc, today, S, LS, peek, rec, save, saveCustom, dayInfo, scoreDay, training, sessionInfo, sessionItems, LIB,
+const { E, $, $$, esc, src, today, S, LS, peek, rec, save, saveCustom, dayInfo, scoreDay, training, sessionInfo, sessionItems, LIB,
   badges, celebrate, toast, sheet, close, askScope, confetti, imgUrl, head, bindHead, render, allDays } = C;
 const { I } = Kit;
 S.exLater = S.exLater || {};
@@ -38,28 +38,30 @@ function allStretchSheet() {
   sheet(`<h2>拉伸图谱</h2><div class="sheet-sub">表26 上身、表27 下身</div><div class="libgrid">${window.STRETCH.map((x, i) => `<button class="libitem" data-str="${i}"><img src="${x.img}" alt="" loading="lazy"><span>${esc(x.m)}</span><small>${esc(x.src)}</small></button>`).join('')}</div>`,
     m => m.querySelectorAll('[data-str]').forEach(b => b.onclick = () => stretchSheet(+b.dataset.str)));
 }
+const nAlts = it => it.alts.length + (it.extAlts || []).length;
 const doneSets = (r, it) => ((r.sets || {})[it.v] || []).slice(0, it.sets).filter(x => x && x.done).length;
 function exBody(it, idx, n, r, d, future) {
   const ex = it.ex, sets = ((r.sets || {})[it.v]) || [], last = lastLift(it.v, d);
   return `<div class="ex-hero"><img data-anim="${esc(ex.img)}" src="${imgUrl(ex, 0)}" alt="${esc(ex.n)}"><span class="badge">${idx + 1} / ${n} · ${esc(it.group.name)}</span></div>
-    <div><div class="dc-title" style="font-size:24px">${esc(ex.n)}</div><div class="dc-sub">${it.sets} 组 × ${esc(it.reps)} 次 · 组间休息 ${esc(it.rest)}</div></div>
-    <div class="t-foot l2">${esc(ex.eq)} · ${esc(it.fail)}${last ? ` · 上次 <span class="num">${esc(last)}</span>` : ''}</div>${rmLine(it, r, d)}
+    <div><div class="dc-title" style="font-size:24px">${esc(ex.n)}</div><div class="dc-sub">${it.sets} 组 × ${esc(it.reps)}${ex.timed ? '' : ' 次'} · 组间休息 ${esc(it.rest)}</div></div>
+    <div class="t-foot l2">${esc(ex.eq)} · ${esc(it.fail)}${last ? ` · 上次 <span class="num">${esc(last)}</span>` : ''}</div>${ex.ext ? `<div class="t-foot l2">${src('补充 · ' + ex.kindName, 1)} ${esc(ex.basis)}</div>` : ''}${it.note ? `<div class="t-foot l2">${esc(it.note)}</div>` : ''}${rmLine(it, r, d)}
     <div class="sets">${[...Array(it.sets)].map((_, i) => { const s = sets[i] || {}; return `<div class="set"><span class="n">${i + 1}</span><input class="field-in" data-set="${it.v}|${i}|w" value="${esc(s.w || '')}" placeholder="kg" inputmode="decimal" aria-label="第${i + 1}组重量" ${future ? 'disabled' : ''}><input class="field-in" data-set="${it.v}|${i}|r" value="${esc(s.r || '')}" placeholder="次数" inputmode="numeric" aria-label="第${i + 1}组次数" ${future ? 'disabled' : ''}><button class="hit" data-sd="${it.v}|${i}" aria-label="第${i + 1}组完成" ${future ? 'disabled' : ''}>${Kit.chk(!!s.done)}</button></div>`; }).join('')}</div>
-    <div class="ghost-row">${it.alts.length ? `<button class="tbtn" data-swap="${it.v}">换动作（${it.alts.length}）</button>` : ''}<button class="tbtn" data-big="${it.v}">动作图</button></div>`;
+    <div class="ghost-row">${nAlts(it) ? `<button class="tbtn" data-swap="${it.v}">换动作（${nAlts(it)}）</button>` : ''}<button class="tbtn" data-big="${it.v}">动作图</button></div>`;
 }
 /* 为什么是这个安排：分化怎么选的、今天为什么练这些、和原表有什么不同 */
 function whyLine(tr, si) {
-  if (si.custom) return '自选部位：从当前分化的肌群里挑，组数按原表';
+  if (si.custom) return tr.ext ? '自选部位：从当前分化的肌群里挑' : '自选部位：从当前分化的肌群里挑，组数按原表';
   const d = si.day, parts = [`${tr.split.why}${tr.split.src ? '（' + tr.split.src + '）' : ''}`];
   parts.push(si.recommended ? '接着上次练到的往下排，休息日自己安排（表21 C8）' : '你选的这一天');
-  parts.push(d.changed ? `原表这天是“${d.tableName.replace(/\s/g, '')}”（${d.src}），你没选${tr.removed.join('、') || '部分肌群'}，所以按你保留的肌群改成现在这样` : `原表 ${d.src}`);
+  if (tr.ext) parts.push(`${d.changed ? `你没选${tr.removed.join('、') || '部分肌群'}，这天只练保留的肌群；` : ''}肌群和动作来自表21-24 + 补充动作，组数为应用补充（依据见“规则与出处”）`);
+  else parts.push(d.changed ? `原表这天是“${d.tableName.replace(/\s/g, '')}”（${d.src}），你没选${tr.removed.join('、') || '部分肌群'}，所以按你保留的肌群改成现在这样` : `原表 ${d.src}`);
   return parts.join(' · ');
 }
 function viewTrain() {
   const p = S.profile, d = S.day;
   if (p.lift === false) return head('训练') + '<section class="mat card"><div class="t-headline">没有安排力量训练</div><p class="t-sub l2">你设置了不做力训，饮食按表8《无力训者》。想开始力训，到“我的 → 编辑资料”打开。</p></section>';
   const tr = training(), info = dayInfo(d), r = peek(d) || {};
-  const { si, items, femaleSkip, optionalGroups } = sessionItems(d);
+  const { si, items, femaleSkip, optionalGroups, trimNote, skipped } = sessionItems(d);
   const future = d > today(), doneLift = r.done && r.done.lift;
   const total = items.reduce((s, x) => s + x.sets, 0), setsDone = items.reduce((s, it) => s + doneSets(r, it), 0);
   let h = head('训练', d, tr.splitName.replace('健身房', ''));
@@ -67,7 +69,9 @@ function viewTrain() {
   h += `<p class="plan-why">${esc(whyLine(tr, si))}</p>`;
   if (!info.lift && !doneLift) h += `<section class="note mat">${info.h && info.h.off ? `今天是${esc(info.h.name)}，力训已自动跳过。` : '今天没有安排力训。'} <button class="link" data-ov="lift">今天加练</button></section>`;
   if (femaleSkip) h += '<section class="note warn mat">女性每两轮三分化跳过一次胸日，这次可以换别的部位（表21 C14）</section>';
-  h += `<section class="mat card hero"><div class="hero-top"><div class="fig hero-fig">${setsDone}<small>/ ${total} 组</small></div><div class="hero-cap">${doneLift ? '今天练完了' : '约 ' + Math.round(total * 3.2) + ' 分钟'}<br><span class="l3">${items.length} 个动作</span></div></div><div class="progress ok"><i style="width:${total ? Math.round(setsDone / total * 100) : 0}%"></i></div></section>`;
+  if (skipped.length) h += `<section class="note warn mat">${esc(skipped.join('、'))}：按你设置的器械和伤病，没有能做的动作，这次先不练。可以在“我的 → 编辑资料 → 定制”里调整。</section>`;
+  if (trimNote) h += `<section class="note mat">${esc(trimNote)}</section>`;
+  h += `<section class="mat card hero"><div class="hero-top"><div class="fig hero-fig">${setsDone}<small>/ ${total} 组</small></div><div class="hero-cap">${doneLift ? '今天练完了' : '约 ' + E.estMinutes(items) + ' 分钟'}<br><span class="l3">${items.length} 个动作</span></div></div><div class="progress ok"><i style="width:${total ? Math.round(setsDone / total * 100) : 0}%"></i></div></section>`;
   // 卡组：没做完的动作
   const later = S.exLater[d] || [];
   const open = items.map((it, i) => ({ it, i })).filter(x => doneSets(r, x.it) < x.it.sets);
@@ -89,7 +93,7 @@ function viewTrain() {
   h += '</section>';
   h += stretchSection(items);
   h += `<button class="pill ${doneLift ? 'glass' : 'ink'} wide" id="finish" ${future ? 'disabled' : ''}>${doneLift ? '已完成 · 撤销' : '完成训练'}</button>`;
-  h += '<p class="t-cap l3" style="text-align:center">动作、组数、次数来自表21-24，出处见“我的 → 规则与出处”</p>';
+  h += `<p class="t-cap l3" style="text-align:center">${tr.ext ? '补充分化：肌群和动作来自表21-24 + 补充动作，组数为应用补充' : '动作、组数、次数来自表21-24'}，出处见“我的 → 规则与出处”</p>`;
   return h;
 }
 function setOf(d, v, k) { const r = rec(d); r.sets = r.sets || {}; r.sets[v] = r.sets[v] || []; return r.sets[v][k] || (r.sets[v][k] = {}); }
@@ -131,7 +135,7 @@ function bindTrain() {
   $$('[data-day]').forEach(b => b.onclick = () => { Kit.haptic('light'); if (b.dataset.day === 'custom') return pickCustom(); rec(d).session = { split: tr.split.key, dayIdx: +b.dataset.day }; save(d); render(); });
   $$('[data-extra]').forEach(b => b.onclick = () => { const r = rec(d); r.extra = r.extra || {}; r.extra[b.dataset.extra] = true; save(d); render(); });
   // 长按动作：有备选就换动作，没有就看大图
-  $$('[data-exopen]').forEach(b => { const i = items.findIndex(x => x.v === b.dataset.exopen), row = b.closest('.row'); if (row && i >= 0) Kit.longPress(row, () => items[i].alts.length ? swap(items, i) : bigImage(items[i].ex)); });
+  $$('[data-exopen]').forEach(b => { const i = items.findIndex(x => x.v === b.dataset.exopen), row = b.closest('.row'); if (row && i >= 0) Kit.longPress(row, () => nAlts(items[i]) ? swap(items, i) : bigImage(items[i].ex)); });
   $$('[data-exopen]').forEach(b => b.onclick = () => { const i = items.findIndex(x => x.v === b.dataset.exopen); sheet(`<div class="k-train" style="display:grid;gap:14px;padding-top:16px">${exBody(items[i], i, items.length, peek(d) || {}, d, d > today())}</div>`, m => { bindSetInputs(m, d, items); m.onclick = e => { if (e.target === m) { close(); render(); } }; }); });
   $$('[data-exdel]').forEach(b => b.onclick = () => { const v = b.dataset.exdel; askScope(`删除「${window.EX[v].n}」`, sc => { modsOf(d, si.key, sc, m => { m.hide = (m.hide || []).concat(v); m.add = (m.add || []).filter(a => a.v !== v); }); render(); toast('已删除'); }); });
   $$('[data-st]').forEach(b => b.onclick = () => { const [v, dir] = b.dataset.st.split('|'); const it = items.find(x => x.v === v); modsOf(d, si.key, 'tpl', m => { m.sets = m.sets || {}; m.sets[v] = Math.max(1, Math.min(10, it.sets + +dir)); }); Kit.haptic('light'); render(); });
@@ -157,9 +161,12 @@ function pickCustom() {
     };
   });
 }
+const libItem = (v, attr, sub) => { const ex = window.EX[v]; return `<button class="libitem" ${attr}="${v}"><img src="${imgUrl(ex, 0)}" alt="" loading="lazy"><span>${esc(ex.n)}</span><small>${esc(sub || ex.eq)}</small>${ex.ext ? `<em class="lib-tag">${esc(ex.kindName)}</em>` : ''}</button>`; };
 function swap(items, idx) {
-  const it = items[idx], g = it.group;
-  sheet(`<h2>替换动作</h2><div class="sheet-sub">${esc(it.ex.n)} 的备选，来自原表同一肌群</div><div class="libgrid">${it.alts.map(v => { const ex = window.EX[v]; return `<button class="libitem" data-alt="${v}"><img src="${imgUrl(ex, 0)}" alt="" loading="lazy"><span>${esc(ex.n)}</span><small>${esc(ex.eq)}</small></button>`; }).join('')}</div><p class="t-cap l3" style="text-align:center">${esc(g.src)}</p>`, m => {
+  const it = items[idx], g = it.group, ext = it.extAlts || [];
+  const orig = it.alts.length ? `<div class="t-foot l2">原表同一肌群${g.ext ? '' : `（${esc(g.src)}）`}</div><div class="libgrid">${it.alts.map(v => libItem(v, 'data-alt')).join('')}</div>` : '';
+  const more = ext.length ? `<div class="t-foot l2">补充备选（非套表训练计划，依据见每个动作的标签）</div><div class="libgrid">${ext.map(v => libItem(v, 'data-alt')).join('')}</div>` : '';
+  sheet(`<h2>替换动作</h2><div class="sheet-sub">${esc(it.ex.n)} 的备选</div>${orig}${more}`, m => {
     m.querySelectorAll('[data-alt]').forEach(b => b.onclick = () => {
       const key = g.sheet + ':' + g.id, nv = b.dataset.alt;
       S.choices[key] = items.filter(x => x.group === g).map(x => x.v === it.v ? nv : x.v).filter((v, i, a) => a.indexOf(v) === i);
@@ -167,19 +174,25 @@ function swap(items, idx) {
     });
   });
 }
+/* 动作库：按部位分；只列你的器械能做、没被伤病设置排除的动作（没设器械时按场地默认：健身房全部，居家哑铃/凳/弹力带/单杠） */
 function library(onPick) {
+  const p = S.profile, equip = p.equip && p.equip.length ? p.equip : window.EQUIP_DEFAULT[p.place === 'home' ? 'home' : 'gym'];
   const byPart = {};
-  Object.values(LIB).forEach(x => { if (S.profile.place === 'home' && !/徒手|哑铃|弹力带|单杠|瑜伽垫/.test(x.ex.eq)) return; (byPart[x.part] = byPart[x.part] || []).push(x); });
-  const parts = Object.keys(byPart); let cur = parts[0];
-  const draw = () => sheet(`<h2>动作库</h2><div class="segmented">${parts.map(p => `<button data-pt="${esc(p)}" aria-pressed="${p === cur}">${esc(p)}</button>`).join('')}</div>
-    <div class="libgrid">${byPart[cur].map(x => `<button class="libitem" data-add="${x.v}"><img src="${imgUrl(x.ex, 0)}" alt="" loading="lazy"><span>${esc(x.ex.n)}</span><small>${esc(x.group)} · ${esc(x.ex.eq)}</small></button>`).join('')}</div>`, m => {
+  let showExt = S.libExt !== false;
+  Object.values(LIB).forEach(x => { if (!window.exUsable(x.ex, equip, p.avoid || [])) return; (byPart[x.part] = byPart[x.part] || []).push(x); });
+  const parts = window.PARTS.map(pt => pt.name).filter(n => byPart[n]); let cur = parts[0];
+  const draw = () => sheet(`<h2>动作库</h2><div class="segmented">${parts.map(n => `<button data-pt="${esc(n)}" aria-pressed="${n === cur}">${esc(n)}</button>`).join('')}</div>
+    <div class="chips"><button data-libext aria-pressed="${showExt}">显示补充动作</button></div>
+    <div class="libgrid">${byPart[cur].filter(x => showExt || !x.ext).map(x => libItem(x.v, 'data-add', `${x.group} · ${x.ex.eq}`)).join('')}</div>
+    <p class="t-cap l3" style="text-align:center">没有标签的是表21-24 原表动作；带标签的是补充动作</p>`, m => {
+    m.querySelector('[data-libext]').onclick = () => { showExt = S.libExt = !showExt; draw(); };
     m.querySelectorAll('[data-pt]').forEach(b => b.onclick = () => { cur = b.dataset.pt; draw(); });
     m.querySelectorAll('[data-add]').forEach(b => b.onclick = () => { close(); onPick(b.dataset.add); });
   });
   draw();
 }
 function bigImage(ex) {
-  sheet(`<h2>${esc(ex.n)}</h2><img class="bigimg" src="${imgUrl(ex, 0)}" alt="起始动作"><img class="bigimg" src="${imgUrl(ex, 1)}" alt="结束动作"><p class="t-foot l2">器械：${esc(ex.eq)}。图片来自 free-exercise-db（公有领域）${ex.approx ? '，这是相近动作的示意' : ''}。</p>`);
+  sheet(`<h2>${esc(ex.n)}</h2><img class="bigimg" src="${imgUrl(ex, 0)}" alt="起始动作"><img class="bigimg" src="${imgUrl(ex, 1)}" alt="结束动作"><p class="t-foot l2">器械：${esc(ex.eq)}。${ex.ext ? `补充动作（${esc(ex.kindName)}）：${esc(ex.basis)}。` : ''}图片来自 free-exercise-db（公有领域）${ex.approx ? '，这是相近动作的示意' : ''}。</p>`);
 }
 let animT;
 function animate() {

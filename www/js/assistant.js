@@ -1,5 +1,6 @@
 /*
- * 助手：只按《健身Excel超级套表》回答，可以查表、看你的计划和记录，也可以帮你改计划（每次修改都要你点确认）。
+ * 助手：以《健身Excel超级套表》为准回答，套表没写的再查补充资料（data-kb-ext.js：国际指南、立场声明、Meta 分析的共识，标明出处和与套表的关系）。
+ * 可以查表、看你的计划和记录，也可以帮你改计划、按你的情况定制分化（每次修改都要你点确认）。
  * 知识库 data-kb.js 由 tools/build-kb.py 从原表生成，第一次打开助手时才加载。
  */
 window.Assistant = (() => {
@@ -39,6 +40,20 @@ function searchExcel({ query, sheet }) {
   if (!scored.length) return { results: [], note: '套表里没有找到相关内容，换个说法再搜一次；还是没有就告诉用户套表里没有写' };
   return { results: scored.map(({ r }) => ({ src: srcOf(r), sheet: `表${r.s} ${sheetName(r.s)}`, row: r.r, text: r.t.length > 700 ? r.t.slice(0, 700) + '…（用 read_excel_rows 读全文）' : r.t })) };
 }
+/* 补充资料（非套表）：同样按关键词打分；结果带上和套表的关系、套表对应出处、来源全称 */
+function searchRefs({ query }) {
+  const K = window.KB_EXT, ts = terms(query);
+  if (!K) return { error: '补充资料没有加载' };
+  if (!ts.length) return { error: '请给关键词' };
+  const scored = K.rows.map(r => {
+    const t = (r.topic + ' ' + r.t + ' ' + r.excel).toLowerCase(); let sc = 0;
+    ts.forEach(w => { if (t.includes(w)) sc += (w.length >= 3 ? w.length * 2 : w.length) * (r.topic.toLowerCase().includes(w) ? 2 : 1); });
+    return { r, sc };
+  }).filter(x => x.sc > 0).sort((a, b) => b.sc - a.sc).slice(0, 5);
+  if (!scored.length) return { results: [], note: '补充资料里也没有，告诉用户套表和补充资料都没有写' };
+  return { results: scored.map(({ r }) => ({ id: r.id, relation_to_excel: r.rel, excel: r.excel, text: r.t,
+    sources: r.refs.map(k => `${K.sources[k].short}：${K.sources[k].cite}`) })), note: '引用时写成（补充：来源简称），和套表有差异时两边都说，默认按套表' };
+}
 function readRows({ sheet, from_row, to_row }) {
   const s = String(sheet).replace(/[^\d]/g, ''), a = +from_row || 1, b = Math.min(+to_row || a + 10, a + 40);
   const rows = window.KB.rows.filter(r => (r.s === s || (r.o || '').split(',').includes(s)) && r.r >= a && r.r <= b);
@@ -52,14 +67,19 @@ function myPlan() {
     profile: { sex: p.sex === 'F' ? '女' : '男', age: p.age, height_cm: p.height, weight_kg: p.weight, waist_cm: p.waist || null, target_weight_kg: p.targetWeight || null,
       level: { new: '新手', some: '有基础', vet: '老手' }[p.level || 'new'], place: p.place === 'home' ? '居家' : '健身房', lift_days: (p.liftDays || []).map(i => '周' + DOW[i]), lift_time: p.liftTime,
       parts: window.PARTS.map(pt => `${pt.name}${(p.parts || {})[pt.id] === false ? '（不练）' : ''}`).join('、'), cardio: (p.cardio || []).filter(c => c.kind && c.kind !== '无').map(c => `${c.kind} ${c.minutes || ''}分钟 周${(c.days || []).map(i => DOW[i]).join('')}`),
-      budget_mode: !!p.budget, goal_setting: p.goal, split_setting: p.split || 'auto', bmr_manual: p.bmrOverride || null },
+      budget_mode: !!p.budget, goal_setting: p.goal, split_setting: p.split || 'auto', bmr_manual: p.bmrOverride || null,
+      plan_mode: p.planMode === 'smart' ? '套表为主 + 补充' : '只按套表', session_max_minutes: +p.sessionMin || null,
+      equipment: p.equip && p.equip.length ? p.equip.map(k => (window.EQUIP.find(e => e[0] === k) || [k, k])[1]) : '没设置（不按器械筛选）',
+      focus_parts: (p.focusParts || []).map(id => (window.PARTS.find(pt => pt.id === id) || {}).name), avoid_joints: (p.avoid || []).map(j => (window.JOINTS.find(x => x[0] === j) || [j, j])[1]),
+      custom_split: p.customSplit ? p.customSplit.name : null },
     goal: { value: pl.goal === 'cut' ? '减脂' : '增肌', reason: pl.goalWhy.reason, src: pl.goalWhy.src },
     energy: { bmr: pl.bmr, no_exercise_burn: pl.b, lift_burn: pl.c, cardio_burn_per_day: pl.d, eat_on_lift_day_kcal: pl.f1, eat_on_rest_day_kcal: pl.f2, src: '表5 G13-G19（增肌为表13）' },
     macros: { carbs_lift_day_g: pl.carbT, carbs_rest_day_g: pl.carbR, protein_g: pl.prot, fat_g: pl.fat, src: '表5 E22-L23' },
     diet_sheet: pl.sheet,
     meals_lift_day: (pl.meals.lift || []).map(m => `${m.time} ${m.name} 碳水${m.c}g 蛋白质${m.p}g`),
     meals_rest_day: pl.meals.rest.map(m => `${m.time} ${m.name} 碳水${m.c}g 蛋白质${m.p}g`),
-    training: tr ? { split: tr.splitName, why: tr.split.why, src: tr.split.src, per_week: pl.perWeek, removed_parts: tr.removed,
+    training: tr ? { split: tr.splitName, split_key: tr.split.key, supplementary: !!tr.ext, why: tr.split.why, src: tr.split.src, per_week: pl.perWeek, removed_parts: tr.removed,
+      relation_to_excel: tr.splitMeta.rel || null, weekly_volume: Object.values(pl.volume || {}).filter(x => x.sets).map(x => `${x.name} 每周约${x.sets}组/${x.freq}次`),
       days: tr.days.map((d, i) => ({ day_index: i, name: d.name, table_title: d.tableName, src: d.src, groups: d.groups.map(g => ({ group_id: g.id, name: g.name, rule: g.text, src: g.src })) })) } : '不做力训（表8）',
     warnings: (pl.warnings || []).map(w => `${w.text}（${w.src}）`),
   };
@@ -88,20 +108,36 @@ function history({ days }) {
   return { days: list.map(d => { const r = peek(d) || { done: {} }, i = intakeOf(d); return { date: d, weight: r.weight ? +r.weight : null, intake_kcal: Math.round(i.kcal), carbs: Math.round(i.c), protein: Math.round(i.p), burn_kcal: burnOf(d).total, lifted: !!(r.done && r.done.lift) }; }),
     note: '体重只比较 1-2 周的平均值（表17 B91）；减脂期记录到的摄入本来就会低于实际' };
 }
-function listExercises({ part }) {
-  const all = Object.values(LIB).filter(x => !part || x.part === part);
-  return { exercises: all.slice(0, 80).map(x => ({ exercise_id: x.v, name: x.ex.n, group: x.group, part: x.part, equipment: x.ex.eq, src: x.src })) };
+function listExercises({ part, group_id, source, only_usable }) {
+  const p = S.profile, eq = p.equip && p.equip.length ? p.equip : null;
+  const all = Object.values(LIB).filter(x => (!part || x.part === part) && (!group_id || x.gid === group_id || (x.ex.groups || []).includes(group_id))
+    && (!source || source === 'all' || (source === 'excel') === !x.ext) && (!only_usable || window.exUsable(x.ex, eq, p.avoid || [])));
+  return { exercises: all.slice(0, 120).map(x => ({ exercise_id: x.v, name: x.ex.n, group: x.group, part: x.part, equipment: x.ex.eq, source: x.ext ? '补充：' + x.ex.kindName : '套表', src: x.src,
+    usable_for_user: window.exUsable(x.ex, eq, p.avoid || []) })), note: '套表动作优先；补充动作要说明是补充' };
+}
+/* 肌群模板（定制分化用） */
+function listGroups({ place }) {
+  return { groups: Object.values(window.GROUP_TPL).filter(t => !place || t.place === place).map(t => ({ tpl: t.key, name: t.name, part: (window.PARTS.find(pt => pt.groups.includes(t.id)) || {}).name,
+    excel_rule: t.from ? `${t.text}（${t.src}）` : '套表没有单列，只有补充动作', excel_exercises: t.entries.map(e => window.ENTRY[e].map(v => window.EX[v].n).join('/')), extra_exercises: t.ext.map(v => window.EX[v].n) })),
+    note: '定制分化时：每周每个主要部位总组数尽量接近套表（胸约10、背12-16、腿12-16组），每次总组数 20 组上下、不超过约 30 组（表21 C10）；sets 写成 [下限, 上限]，新手前4周用下限' };
 }
 
 /* ---------- 修改（都要用户确认） ---------- */
 const PARTS_IDS = ['chest', 'back', 'shoulder', 'arm', 'legs', 'abs'];
-const LABEL = { goal: '目标', weight: '体重', targetWeight: '目标体重', waist: '腰围', level: '训练经验', place: '训练地点', split: '分化', focus: '四分化重点', liftDays: '力训日', liftTime: '开始训练时间', parts: '想练的部位', lift: '做力训', budget: '省钱模式', bmrOverride: '手动基础代谢' };
+const LABEL = { goal: '目标', weight: '体重', targetWeight: '目标体重', waist: '腰围', level: '训练经验', place: '训练地点', split: '分化', focus: '四分化重点', liftDays: '力训日', liftTime: '开始训练时间', parts: '想练的部位', lift: '做力训', budget: '省钱模式', bmrOverride: '手动基础代谢',
+  planMode: '计划依据', sessionMin: '每次最多', equip: '器械', focusParts: '重点部位', avoid: '伤病避开' };
 function show(k, v) {
+  if (k === 'equip' && !(v && v.length)) return '不筛选';
   if (v == null || v === '') return '（空）';
   if (k === 'goal') return { auto: '自动判断', cut: '减脂', bulk: '增肌' }[v] || v;
   if (k === 'level') return { new: '新手', some: '有基础', vet: '老手' }[v] || v;
   if (k === 'place') return v === 'home' ? '居家' : '健身房';
-  if (k === 'split') return { auto: '自动', three: '三分化', four_sh: '四分化（肩单练）', four_arm: '四分化（手臂单练）', home: '居家三分化' }[v] || v;
+  if (k === 'split') return v === 'mine' ? (S.profile.customSplit ? S.profile.customSplit.name : '我的分化') + '（定制）' : (window.SPLIT_CHOICES.find(x => x[0] === v) || [v, v])[1];
+  if (k === 'planMode') return v === 'smart' ? '套表为主 + 补充' : '只按套表';
+  if (k === 'sessionMin') return +v ? v + ' 分钟' : '不限';
+  if (k === 'equip') return v && v.length ? v.map(x => (window.EQUIP.find(e => e[0] === x) || [x, x])[1]).join('、') : '不筛选';
+  if (k === 'focusParts') return v.length ? v.map(id => (window.PARTS.find(pt => pt.id === id) || {}).name).join('、') : '无';
+  if (k === 'avoid') return v.length ? v.map(j => (window.JOINTS.find(x => x[0] === j) || [j, j])[1]).join('、') : '无';
   if (k === 'focus') return v === 'arm' ? '手臂' : '肩';
   if (k === 'liftDays') return v.map(i => '周' + DOW[i]).join('、');
   if (k === 'parts') return window.PARTS.filter(pt => v[pt.id] !== false).map(pt => pt.name).join('、');
@@ -115,7 +151,12 @@ function cleanChanges(ch) {
   num('weight', 35, 200); num('targetWeight', 35, 200); num('waist', 40, 160); num('bmrOverride', 800, 4000);
   if (ch.level != null) { if (['new', 'some', 'vet'].includes(ch.level)) out.level = ch.level; else errs.push('经验只能是 new/some/vet'); }
   if (ch.place != null) { if (['gym', 'home'].includes(ch.place)) out.place = ch.place; else errs.push('地点只能是 gym/home'); }
-  if (ch.split != null) { if (['auto', 'three', 'four_sh', 'four_arm', 'home'].includes(ch.split)) out.split = ch.split; else errs.push('分化不认识'); }
+  if (ch.split != null) { if (window.SPLIT_CHOICES.some(x => x[0] === ch.split) || (ch.split === 'mine' && S.profile.customSplit)) out.split = ch.split; else errs.push('分化不认识（定制分化用 create_custom_split）'); }
+  if (ch.planMode != null) out.planMode = ch.planMode === 'smart' ? 'smart' : 'excel';
+  if (ch.sessionMin != null) { const v = +ch.sessionMin; if (v === 0 || (v >= 30 && v <= 120)) out.sessionMin = Math.round(v); else errs.push('每次最多要在 30-120 分钟，0 表示不限'); }
+  if (ch.equip !== undefined) { if (ch.equip === null || (Array.isArray(ch.equip) && !ch.equip.length)) out.equip = null; else { const v = [...new Set(ch.equip.filter(k => window.EQUIP.some(e => e[0] === k)))]; if (v.length) out.equip = v; else errs.push('器械代号不认识'); } }
+  if (ch.focusParts != null) out.focusParts = [...new Set((ch.focusParts || []).filter(id => PARTS_IDS.includes(id)))];
+  if (ch.avoid != null) out.avoid = [...new Set((ch.avoid || []).filter(j => window.JOINTS.some(x => x[0] === j)))];
   if (ch.focus != null) out.focus = ch.focus === 'arm' ? 'arm' : 'auto';
   if (ch.liftDays != null) { const v = [...new Set((ch.liftDays || []).map(Number).filter(i => i >= 0 && i <= 6))].sort(); if (v.length) out.liftDays = v; else errs.push('至少一天力训'); }
   if (ch.liftTime != null) { if (/^\d{1,2}:\d{2}$/.test(ch.liftTime)) out.liftTime = ch.liftTime.padStart(5, '0'); else errs.push('时间格式要是 HH:MM'); }
@@ -136,14 +177,25 @@ function applyProfile(out) {
 const TOOLS = [
   { name: 'search_excel', description: '在《健身Excel超级套表》原文里搜索（饮食表、减脂/增肌问答、有氧消耗、食物营养率、训练计划、解剖总结）。回答任何方法、原则问题前都要先搜。返回原文和出处。', parameters: { type: 'object', properties: { query: { type: 'string', description: '关键词，空格分开，例如“体重不掉 调整”“蛋白质 鸡蛋”' }, sheet: { type: 'string', description: '可选，只搜某张表，填表号，例如 "17"' } }, required: ['query'] } },
   { name: 'read_excel_rows', description: '读套表某张表的连续几行原文（最多 40 行），用来看问答的完整回答或上下文。', parameters: { type: 'object', properties: { sheet: { type: 'string', description: '表号，例如 "17"' }, from_row: { type: 'integer' }, to_row: { type: 'integer' } }, required: ['sheet', 'from_row', 'to_row'] } },
+  { name: 'search_refs', description: '在补充资料（非套表）里搜索：WHO/ACSM/中国指南、立场声明、Meta 分析、NSCA 教材的共识，例如热身、动作速度、老年人、睡眠、每周组数、频率、蛋白质 g/kg。只有套表没写、用户要求对照、或要定制计划时才用；每条结果带和套表的关系（一致/补充/有差异）。', parameters: { type: 'object', properties: { query: { type: 'string', description: '关键词，空格分开' } }, required: ['query'] } },
   { name: 'get_my_plan', description: '读取用户资料和 App 按套表算出的计划：减脂/增肌及理由、热量、碳水蛋白质脂肪、饮食表、每餐分量、训练分化和每天练的肌群（含 group_id、day_index）、警告。', parameters: { type: 'object', properties: {} } },
   { name: 'get_today', description: '读取某一天（默认今天）的安排：是否力训日、时间线、训练动作（含 exercise_id）、已吃的碳水蛋白质热量、目标、消耗。', parameters: { type: 'object', properties: { date: { type: 'string', description: 'YYYY-MM-DD，可选' } } } },
   { name: 'get_history', description: '读取最近几天的体重、摄入、消耗、是否力训。', parameters: { type: 'object', properties: { days: { type: 'integer', description: '天数，默认 14，最多 60' } } } },
-  { name: 'list_exercises', description: '列出套表训练计划里的动作（exercise_id、名称、肌群、器械、出处），可按部位筛选。', parameters: { type: 'object', properties: { part: { type: 'string', enum: ['胸', '背', '肩', '手臂', '腿臀', '腹'] } } } },
+  { name: 'list_exercises', description: '列出动作库：套表表21-24 的动作 + 补充动作（标明依据）。可按部位、肌群、来源筛选，usable_for_user 表示按用户的器械和伤病设置能不能做。', parameters: { type: 'object', properties: {
+    part: { type: 'string', enum: ['胸', '背', '肩', '手臂', '腿臀', '腹'] }, group_id: { type: 'string', description: '肌群 id，如 pull、row、mid_chest、quad、calf、core' }, source: { type: 'string', enum: ['all', 'excel', 'extra'] }, only_usable: { type: 'boolean' } } } },
+  { name: 'list_groups', description: '列出可以用来定制分化的肌群模板（tpl），每个模板带套表规则和动作。用 create_custom_split 之前先调用。', parameters: { type: 'object', properties: { place: { type: 'string', enum: ['gym', 'home'] } } } },
+  { name: 'create_custom_split', description: '按用户情况定制训练分化（套表的 4 种分化和补充分化都不合适时才用）。days 里每天列出肌群模板 tpl（来自 list_groups）、组数 sets=[下限,上限]、动作数 pick=[下限,上限]。App 会算出每周每个部位的组数给用户看，用户确认后改用这个分化。会先让用户确认。', parameters: { type: 'object', properties: {
+    name: { type: 'string', description: '分化名称，例如“上下肢+手臂”' },
+    days: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, groups: { type: 'array', items: { type: 'object', properties: { tpl: { type: 'string' }, sets: { type: 'array', items: { type: 'integer' } }, pick: { type: 'array', items: { type: 'integer' } }, optional: { type: 'boolean' } }, required: ['tpl', 'sets'] } } }, required: ['name', 'groups'] } },
+    reason: { type: 'string', description: '为什么这样排：用户的情况 + 依据（套表出处 / 补充资料出处）' } }, required: ['name', 'days', 'reason'] } },
   { name: 'update_profile', description: '修改用户资料或训练目标，改完会按套表重新计算整套计划。会先让用户确认。liftDays 用 0=周一 … 6=周日。parts 的键：chest 胸、back 背、shoulder 肩、arm 手臂、legs 腿臀、abs 腹。', parameters: { type: 'object', properties: {
     changes: { type: 'object', properties: {
       goal: { type: 'string', enum: ['auto', 'cut', 'bulk'] }, weight: { type: 'number' }, targetWeight: { type: 'number' }, waist: { type: 'number' },
-      level: { type: 'string', enum: ['new', 'some', 'vet'] }, place: { type: 'string', enum: ['gym', 'home'] }, split: { type: 'string', enum: ['auto', 'three', 'four_sh', 'four_arm', 'home'] },
+      level: { type: 'string', enum: ['new', 'some', 'vet'] }, place: { type: 'string', enum: ['gym', 'home'] },
+      split: { type: 'string', enum: ['auto', 'three', 'four_sh', 'four_arm', 'home', 'full2', 'full3', 'ul4', 'five', 'home_full', 'home_ul', 'mine'], description: '前 5 个是套表；full2/full3/ul4/five/home_full/home_ul 是补充分化；mine 是已定制的分化' },
+      planMode: { type: 'string', enum: ['excel', 'smart'], description: 'smart：每周只能练 1-2 次时自动用全身训练，其余按套表' }, sessionMin: { type: 'integer', description: '每次最多练多少分钟，0 不限' },
+      equip: { type: 'array', items: { type: 'string', enum: ['bb', 'db', 'bench', 'cable', 'machine', 'smith', 'bar', 'dip', 'band', 'kb', 'ball', 'roller'] }, description: '用户有的器械：bb 杠铃 db 哑铃 bench 训练凳 cable 龙门架 machine 固定器械 smith 史密斯 bar 单杠 dip 双杠 band 弹力带 kb 壶铃 ball 瑜伽球 roller 健腹轮；空数组表示不按器械筛选' },
+      focusParts: { type: 'array', items: { type: 'string', enum: ['chest', 'back', 'shoulder', 'arm', 'legs', 'abs'] } }, avoid: { type: 'array', items: { type: 'string', enum: ['shoulder', 'elbow', 'wrist', 'lowback', 'knee'] }, description: '伤病避开的关节' },
       focus: { type: 'string', enum: ['auto', 'arm'] }, liftDays: { type: 'array', items: { type: 'integer' } }, liftTime: { type: 'string' },
       parts: { type: 'object', properties: { chest: { type: 'boolean' }, back: { type: 'boolean' }, shoulder: { type: 'boolean' }, arm: { type: 'boolean' }, legs: { type: 'boolean' }, abs: { type: 'boolean' } } },
       lift: { type: 'boolean' }, budget: { type: 'boolean' }, bmrOverride: { type: 'number' } } },
@@ -161,8 +213,8 @@ const TOOLS = [
   { name: 'video_links', description: '给出教程视频链接：套表里提到的 B站 视频（带出处），以及按关键词搜 B站 的链接（表21 C4：动作教程在 B站 搜动作名称即可）。', parameters: { type: 'object', properties: { topic: { type: 'string', description: '动作名或主题，例如“高位下拉”“饮食定量”' } }, required: ['topic'] } },
   { name: 'set_today_training', description: '换今天练哪一天（day_index 来自 get_my_plan），或者用 group_ids 自选几个肌群。会先让用户确认。', parameters: { type: 'object', properties: { day_index: { type: 'integer' }, group_ids: { type: 'array', items: { type: 'string' } }, reason: { type: 'string' } } } },
 ];
-const WRITE = new Set(['update_profile', 'edit_training', 'set_today_training', 'edit_timeline', 'set_meal_amounts', 'set_day_training']);
-const STEP_TEXT = { search_excel: a => `查套表：${a.query || ''}${a.sheet ? '（表' + a.sheet + '）' : ''}`, read_excel_rows: a => `读原文：表${a.sheet} 第${a.from_row}-${a.to_row}行`, get_my_plan: () => '看你的计划', get_today: a => `看${a.date || '今天'}的安排`, get_history: a => `看最近 ${a.days || 14} 天记录`, list_exercises: a => `查动作库${a.part ? '：' + a.part : ''}`, update_profile: () => '准备修改计划', edit_training: () => '准备修改训练动作', set_today_training: () => '准备换今天的训练', edit_timeline: a => `准备修改${a.date || '今天'}的安排`, set_meal_amounts: a => `准备调整${a.date || '今天'}各餐分量`, set_day_training: a => `准备设置 ${a.date} 练不练`, exercise_info: a => `查动作：${a.name || a.exercise_id || ''}`, video_links: a => `找视频：${a.topic || ''}`, describe_image: () => '看图片' };
+const WRITE = new Set(['update_profile', 'edit_training', 'set_today_training', 'edit_timeline', 'set_meal_amounts', 'set_day_training', 'create_custom_split']);
+const STEP_TEXT = { search_refs: a => `查补充资料：${a.query || ''}`, list_groups: () => '查肌群模板', create_custom_split: a => `准备定制分化：${a.name || ''}`, search_excel: a => `查套表：${a.query || ''}${a.sheet ? '（表' + a.sheet + '）' : ''}`, read_excel_rows: a => `读原文：表${a.sheet} 第${a.from_row}-${a.to_row}行`, get_my_plan: () => '看你的计划', get_today: a => `看${a.date || '今天'}的安排`, get_history: a => `看最近 ${a.days || 14} 天记录`, list_exercises: a => `查动作库${a.part ? '：' + a.part : ''}`, update_profile: () => '准备修改计划', edit_training: () => '准备修改训练动作', set_today_training: () => '准备换今天的训练', edit_timeline: a => `准备修改${a.date || '今天'}的安排`, set_meal_amounts: a => `准备调整${a.date || '今天'}各餐分量`, set_day_training: a => `准备设置 ${a.date} 练不练`, exercise_info: a => `查动作：${a.name || a.exercise_id || ''}`, video_links: a => `找视频：${a.topic || ''}`, describe_image: () => '看图片' };
 
 /* ---------- 对话状态 ---------- */
 const st = { busy: false, view: [], msgs: [], pending: {}, ctl: null, img: null, draft: LS.get('chatDraft') || '' };
@@ -177,18 +229,20 @@ function persist() {
 function sysPrompt() {
   const p = S.profile, pl = S.plan;
   return [
-    '你是“练吃日课”App 里的助手，只依据《健身Excel超级套表》（B站好人松松）回答健身、饮食、训练问题，也能帮用户修改计划。',
+    '你是“练吃日课”App 里的助手，以《健身Excel超级套表》（B站好人松松）为准回答健身、饮食、训练问题；套表没写的，可以查补充资料（国际指南、立场声明、Meta 分析的共识）。也能帮用户修改计划、按用户情况定制训练。',
     '规则：',
     '1. 先查再答。涉及用户自己的数字（热量、碳水、蛋白质、今天练什么）用 get_my_plan / get_today / get_history；涉及方法、原则、常见问题用 search_excel，必要时用 read_excel_rows 读完整回答。',
     '2. 只转述工具返回的原文和 App 算出的数字。不要自己推断后果或补充理由（比如“会导致失衡”“影响体态”“更安全”），原文没写的一律不说。每个要点后面用括号标出处，照抄工具给的 src，例如（表17 第32行）。',
-    '3. 搜了两三次仍查不到，就直接说“套表里没有写这个”，不要编，也不要换成通用健身知识来回答。',
+    '3. 套表搜了两三次仍查不到，再用 search_refs 查补充资料；查到了要说明“套表没有写，以下是补充资料”，出处写成（补充：来源简称）。两边都没有，就说“套表和补充资料都没有写”，不要编，也不要用没有出处的通用知识回答。',
+    '10. 套表和补充资料有差异时：先说套表怎么说（标表号），再说补充资料怎么说（标来源），说明 App 默认按套表，由用户决定。不要用补充资料否定套表。',
+    '11. 定制计划：先 get_my_plan 了解用户（经验、每周几次、地点、器械、伤病、重点部位、每次多久）。能用设置解决的用 update_profile（planMode、sessionMin、equip、focusParts、avoid、split 选补充分化）；套表分化和补充分化都不合适时，先 list_groups，再 create_custom_split。定制时肌群和动作仍来自套表模板，每周每个主要部位总组数尽量接近套表、每次约 20 组；把依据写进 reason。伤病只做“避开动作”，不做诊断，提醒就医。',
     '4. 不做医疗诊断；伤病、疾病、用药问题提醒就医。',
     '7. 安排当天或以后的日子（节假日回来、今天有事、聚餐、加班）：先 get_today 看那一天，再按套表规则用 edit_timeline（删/加/改时间）、set_meal_amounts（挪各餐分量，全天合计保持配额）、set_day_training（这天练不练）。不吃零食/夜宵时分量并到其他餐（表5 B89）；练前餐只垫碳水（表5 I44）；休息日自己安排，不必一轮练完才休息（表21 C8）。',
     '8. 用户发了照片时，消息里会附上“图片识别”的文字。识别器械、说明器械怎么调这类套表没写的操作常识可以用常识回答，但要在句末标“（常识，非套表）”；组数、次数、重量、饮食分量、计划安排仍然只按套表。',
     '9. 需要教程视频时用 video_links 或 exercise_info，把链接原样给用户（Markdown 链接格式 [文字](网址)），不要自己编视频号。',
     '5. 用户要改计划（目标、目标体重、训练日、部位、分化、动作、组数、今天练什么）：直接调用 update_profile / edit_training / set_today_training，App 会弹出确认卡，由用户决定改不改，你不用再口头问“要不要改”。和套表建议冲突时，把冲突和出处写进 reason，照样调用工具。一次请求里有几项修改，就都放进同一次调用。',
     '6. 中文回答，先结论后理由，一般不超过 250 字。可以用“- ”列要点、用 **粗体** 强调，不要用表格和标题。',
-    `今天是 ${today()}（周${DOW[E.dow(today())]}）。用户：${p.sex === 'F' ? '女' : '男'}，${p.age} 岁，${p.height}cm，${p.weight}kg，当前${pl.goal === 'cut' ? '减脂' : '增肌'}，饮食按${pl.sheet.sheet}《${pl.sheet.name}》，训练${pl.training ? pl.training.splitName : '不做力训'}。`,
+    `补充动作和补充分化都要说明“补充”。今天是 ${today()}（周${DOW[E.dow(today())]}）。用户：${p.sex === 'F' ? '女' : '男'}，${p.age} 岁，${p.height}cm，${p.weight}kg，当前${pl.goal === 'cut' ? '减脂' : '增肌'}，饮食按${pl.sheet.sheet}《${pl.sheet.name}》，训练${pl.training ? pl.training.splitName : '不做力训'}。`,
   ].join('\n');
 }
 
@@ -208,6 +262,21 @@ async function runTool(name, a) {
   if (name === 'get_today') return todayInfo(a);
   if (name === 'get_history') return history(a);
   if (name === 'list_exercises') return listExercises(a);
+  if (name === 'search_refs') return searchRefs(a);
+  if (name === 'list_groups') return listGroups(a);
+  if (name === 'create_custom_split') {
+    if (S.profile.lift === false) return { ok: false, error: '现在设置的是不做力训' };
+    const spec = { name: String(a.name || '我的分化'), why: String(a.reason || '').slice(0, 200), days: (a.days || []).map(d => ({ name: d.name, groups: (d.groups || []).map(g => ({ tpl: g.tpl, sets: g.sets, pick: g.pick, optional: !!g.optional })) })) };
+    const c = window.customSplit(spec);
+    if (c.errs.length) return { ok: false, error: c.errs.join('；') };
+    const np = Object.assign({}, S.profile, { split: 'mine', customSplit: spec }), plan = E.build(np);
+    const vol = Object.values(plan.volume).filter(x => x.sets).map(x => `${x.name}${x.sets}组/${x.freq}次`).join('、');
+    const lines = c.split.days.map(d => `${d.name}：${d.groups.map(g => `${g.name} ${g.sets[0] === g.sets[1] ? g.sets[0] : g.sets.join('-')}组`).join('、')}`)
+      .concat([`每周（按每周 ${plan.perWeek} 次）：${vol}`]).concat(plan.warnings.filter(w => w.app).map(w => w.text));
+    if (!await confirmCard('定制分化：' + c.split.name, lines, a.reason)) return { ok: false, error: '用户取消了' };
+    applyProfile({ split: 'mine', customSplit: spec });
+    return { ok: true, split: S.plan.training.splitName, days: S.plan.training.days.map(d => d.name), weekly_volume: vol, warnings: S.plan.warnings.map(w => w.text) };
+  }
   if (name === 'update_profile') {
     const { out, errs } = cleanChanges(a.changes || {});
     if (errs.length) return { ok: false, error: errs.join('；') };
@@ -263,8 +332,11 @@ async function runTool(name, a) {
     if (!v && a.name) { const q = String(a.name); v = Object.keys(window.EX).find(k => window.EX[k].n === q) || Object.keys(window.EX).find(k => window.EX[k].n.includes(q) || q.includes(window.EX[k].n)); }
     if (!v) return { error: '动作库里没有找到，先用 list_exercises 看有哪些' };
     const ex = window.EX[v], lib = LIB[v] || {};
+    const extra = ex.ext ? { source: `补充动作（${ex.kindName}）`, basis: ex.basis } : { source: '套表' };
+    const usableNow = window.exUsable(ex, S.profile.equip && S.profile.equip.length ? S.profile.equip : null, S.profile.avoid || []);
     const alts = Object.values(window.ENTRY || {}).find(list => list.includes(v)) || [];
-    return { exercise_id: v, name: ex.n, equipment: ex.eq, multi_joint: !!ex.multi, avoid_failure: !!ex.noFail, group: lib.group, part: lib.part, src: lib.src,
+    return { exercise_id: v, name: ex.n, ...extra, usable_for_user: usableNow, equipment: ex.eq, multi_joint: !!ex.multi, avoid_failure: !!ex.noFail, group: lib.group, part: lib.part, src: lib.src,
+      extra_alternatives: (window.EXT_ALTS[lib.gid] || []).filter(x => x !== v).map(x => window.EX[x].n),
       alternatives_same_entry: alts.filter(x => x !== v).map(x => window.EX[x] ? window.EX[x].n : x),
       rest_rule: ex.multi ? '多关节动作组间休息 2-3 分钟（表21 C11）' : '单关节动作组间休息 1-1.5 分钟（表21 C11）',
       failure_rule: ex.noFail ? '自由卧推/深蹲/推举这类可能砸伤的动作不追求完全力竭，提前一两个停（表21 C13）' : '无危险动作可以做到力竭（表21 C13）',
@@ -347,7 +419,8 @@ function md(t) {
   if (inList) h += '</ul>';
   return h.replace(/\[([^\]]{1,60})\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
     .replace(/(^|[\s（(：:])(https?:\/\/[^\s<)）]+)/g, '$1<a href="$2" target="_blank" rel="noopener">$2</a>')
-    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/（(表[\d０-９][^）]{0,40})）/g, '<span class="cite">$1</span>');
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/（(表[\d０-９][^）]{0,40})）/g, '<span class="cite">$1</span>')
+    .replace(/（(补充[：:][^）]{1,60})）/g, '<span class="cite ext">$1</span>');
 }
 function itemHtml(v) {
   if (v.k === 'user') return `<div class="msg me">${v.img ? `<img class="msg-img" src="${v.img}" alt="发送的图片">` : ''}${esc(v.t)}</div>`;
@@ -358,12 +431,12 @@ function itemHtml(v) {
     ${v.state === 'wait' ? `<div class="deck-ctrl" style="margin:4px 0 0"><button class="pill glass" data-cf="${v.id}|0">取消</button><button class="pill ink" data-cf="${v.id}|1">确认修改</button></div>` : `<div class="t-foot" style="color:${v.state === 'ok' ? 'var(--ok)' : 'var(--ink3)'}">${v.state === 'ok' ? '已修改' : '已取消'}</div>`}</div>`;
   return '';
 }
-const SUGGEST = ['我今天该吃多少碳水和蛋白质？出处在哪？', '减脂两周体重不掉怎么办？', '今天练什么？为什么是这些？', '我不想练腿了，帮我改一下', '食堂自助怎么吃才符合套表？', '有氧应该在力训前还是后做？'];
+const SUGGEST = ['我今天该吃多少碳水和蛋白质？出处在哪？', '减脂两周体重不掉怎么办？', '今天练什么？为什么是这些？', '我每周只能练两次，怎么安排？', '我只有哑铃和凳子，膝盖不太好，帮我改计划', '练前要怎么热身？'];
 function view() {
   const cfg = S.ai, model = cfg.chatModel || cfg.model;
   let h = `<div class="chat-top"><button class="back" data-cback>${I.left}返回</button><div class="chat-title"><b>助手</b><span>${model ? esc(model) : '未设置模型'}</span></div><button class="gbtn" data-cclear aria-label="清空对话">${I.trash || '清空'}</button></div>`;
   h += '<div class="chat-list" id="chat-list">';
-  if (!st.view.length) h += `<div class="chat-empty"><div class="guide-mark" style="width:52px;height:52px;border-radius:16px">${I.sparkles}</div><p class="t-sub l2">只按《健身Excel超级套表》回答，每条都标出处；套表没写的会直接说没有。也可以让我帮你改计划，改之前会先问你。</p><div class="chips">${SUGGEST.map(q => `<button class="sugg" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div></div>`;
+  if (!st.view.length) h += `<div class="chat-empty"><div class="guide-mark" style="width:52px;height:52px;border-radius:16px">${I.sparkles}</div><p class="t-sub l2">以《健身Excel超级套表》为准回答，每条都标出处；套表没写的再查补充资料（国际指南和研究共识），会标明“补充”。也可以让我按你的情况改计划、定制分化，改之前会先问你。</p><div class="chips">${SUGGEST.map(q => `<button class="sugg" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div></div>`;
   h += st.view.map(itemHtml).join('');
   if (st.busy) h += '<div class="typing"><i></i><i></i><i></i></div>';
   h += '</div>';

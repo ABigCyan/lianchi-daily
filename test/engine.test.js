@@ -2,7 +2,7 @@
 const fs = require('fs'), vm = require('vm'), assert = require('assert');
 const ctx = { window: {}, console };
 ctx.window = ctx; vm.createContext(ctx);
-for (const f of ['data-tables.js', 'data-rules.js', 'data-training.js', 'holidays.js', 'engine.js']) vm.runInContext(fs.readFileSync(__dirname + '/../www/js/' + f, 'utf8'), ctx);
+for (const f of ['data-tables.js', 'data-rules.js', 'data-training.js', 'data-training-ext.js', 'data-splits-ext.js', 'holidays.js', 'engine.js']) vm.runInContext(fs.readFileSync(__dirname + '/../www/js/' + f, 'utf8'), ctx);
 const E = ctx.Engine;
 const base = { sex: 'M', age: 24, height: 172, weight: 80, waist: 80, goal: 'auto', lift: true, level: 'new', place: 'gym', split: 'auto',
   parts: { chest: true, back: true, shoulder: true, arm: true, legs: false, abs: true }, schedMode: 'weekly', liftDays: [0, 2, 4], skipHolidays: true,
