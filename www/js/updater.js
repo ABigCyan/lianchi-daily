@@ -12,15 +12,24 @@ function newer(a, b) {
   const parse = v => { const [n, pre] = String(v).replace(/^v/, '').split('-'); return { n: n.split('.').map(k => +k || 0), pre: pre || '' }; };
   const x = parse(a), y = parse(b);
   for (let i = 0; i < 3; i++) if ((x.n[i] || 0) !== (y.n[i] || 0)) return (x.n[i] || 0) > (y.n[i] || 0);
+  if (x.pre && y.pre) { // 都是预览版（如 ai.3 和 ai.2）：逐段比较，数字按大小
+    const p = x.pre.split('.'), q = y.pre.split('.');
+    for (let i = 0; i < Math.max(p.length, q.length); i++) { const a = p[i] || '', b = q[i] || ''; if (a === b) continue; return /^\d+$/.test(a) && /^\d+$/.test(b) ? +a > +b : a > b; }
+    return false;
+  }
   return !x.pre && !!y.pre; // 同号：正式版比预览版新
 }
 function prefs() { return Object.assign({ auto: true, last: 0, skip: '' }, LS.get('update') || {}); }
 function savePrefs(p) { LS.set('update', Object.assign(prefs(), p)); }
 
+// 内置模型分支（版本号带 -ai）只跟着 -ai 的预览版更新，不会被“更新”回没有内置模型的正式版
+const CHANNEL = /-ai\./.test(APP_VERSION) ? 'ai' : 'stable';
 async function latest() {
-  const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json' } });
+  const url = CHANNEL === 'ai' ? `https://api.github.com/repos/${REPO}/releases?per_page=30` : `https://api.github.com/repos/${REPO}/releases/latest`;
+  const res = await fetch(url, { headers: { Accept: 'application/vnd.github+json' } });
   if (!res.ok) throw new Error('GitHub 返回 ' + res.status);
-  const rel = await res.json();
+  let rel = await res.json();
+  if (CHANNEL === 'ai') rel = rel.filter(r => /-ai\./.test(r.tag_name) && !r.draft).sort((a, b) => (newer(a.tag_name, b.tag_name) ? -1 : 1))[0] || {};
   const apk = (rel.assets || []).find(a => /\.apk$/i.test(a.name));
   return { tag: rel.tag_name || '', notes: rel.body || '', apk, page: rel.html_url };
 }
