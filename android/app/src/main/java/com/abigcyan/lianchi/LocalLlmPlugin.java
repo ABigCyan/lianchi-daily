@@ -42,7 +42,7 @@ public class LocalLlmPlugin extends Plugin {
     }
 
     private static native long nativeLoad(String path, int nCtx, int threads);
-    private static native byte[] nativeGenerate(long handle, byte[][] roles, byte[][] contents, int maxTokens, float temp, Callback cb);
+    private static native byte[] nativeGenerate(long handle, byte[][] roles, byte[][] contents, int maxTokens, float temp, boolean noThink, Callback cb);
     private static native void nativeStop(long handle);
     private static native void nativeFree(long handle);
 
@@ -126,6 +126,7 @@ public class LocalLlmPlugin extends Plugin {
         JSArray msgs = call.getArray("messages");
         final int maxTokens = call.getInt("maxTokens", 512);
         final float temp = call.getFloat("temperature", 0.3f);
+        final boolean noThink = call.getBoolean("noThink", true);
         final byte[][] roles, contents;
         try {
             int n = msgs.length();
@@ -145,7 +146,7 @@ public class LocalLlmPlugin extends Plugin {
             final long[] prefillAt = {0};
             final int[] counts = {0, 0};  // 提示词 token 数、生成的段数
             try {
-                byte[] out = nativeGenerate(handle, roles, contents, maxTokens, temp, new Callback() {
+                byte[] out = nativeGenerate(handle, roles, contents, maxTokens, temp, noThink, new Callback() {
                     @Override
                     public void onToken(byte[] text) {
                         counts[1]++;

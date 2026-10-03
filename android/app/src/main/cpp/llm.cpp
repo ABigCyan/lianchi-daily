@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <cstring>
 #include "llama.h"
 
 #define TAG "lianchi-llm"
@@ -101,7 +102,7 @@ Java_com_abigcyan_lianchi_LocalLlmPlugin_nativeLoad(JNIEnv *env, jclass, jstring
 // 提示词读完时回调 cb.onPrefill(int 提示词 token 数)。返回完整文字；出错时见 err()。
 JNIEXPORT jbyteArray JNICALL
 Java_com_abigcyan_lianchi_LocalLlmPlugin_nativeGenerate(JNIEnv *env, jclass, jlong handle, jobjectArray roles,
-                                                       jobjectArray contents, jint max_tokens, jfloat temp, jobject cb) {
+                                                       jobjectArray contents, jint max_tokens, jfloat temp, jboolean no_think, jobject cb) {
     auto *e = reinterpret_cast<Engine *>(handle);
     if (!e) return err(env, "模型没有加载");
     e->stop = false;
@@ -133,7 +134,13 @@ Java_com_abigcyan_lianchi_LocalLlmPlugin_nativeGenerate(JNIEnv *env, jclass, jlo
         len = llama_chat_apply_template(tmpl, msgs.data(), msgs.size(), true, buf.data(), (int32_t) buf.size());
     }
     if (len < 0) return err(env, "模型的对话模板不支持");
-    const std::string prompt(buf.data(), len);
+    std::string prompt(buf.data(), len);
+    // 关掉思考：和 Qwen3 / Qwen3.5 模板在 enable_thinking=false 时渲染的一样，在助手开头接一个空的思考块
+    auto ends = [&prompt](const char *t) { const size_t n = strlen(t); return prompt.size() >= n && prompt.compare(prompt.size() - n, n, t) == 0; };
+    if (no_think) {
+        if (ends("assistant\n<think>\n")) prompt += "\n</think>\n\n";      // 模板已经开了思考块：直接合上
+        else if (ends("assistant\n")) prompt += "<think>\n\n</think>\n\n";  // ChatML（手机上 llama.cpp 内置模板走这里）
+    }
 
     int nt = -llama_tokenize(e->vocab, prompt.c_str(), (int32_t) prompt.size(), nullptr, 0, true, true);
     std::vector<llama_token> toks(std::max(nt, 1));

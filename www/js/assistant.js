@@ -426,6 +426,7 @@ function itemHtml(v) {
   if (v.k === 'user') return `<div class="msg me">${v.img ? `<img class="msg-img" src="${v.img}" alt="发送的图片">` : ''}${esc(v.t)}</div>`;
   if (v.k === 'bot') return `<div class="msg bot">${md(v.t)}</div>`;
   if (v.k === 'step') return `<div class="step">${I.search || ''}<span>${esc(v.t)}</span></div>`;
+  if (v.k === 'srcs') return `<details class="srcs"><summary>原文 · ${v.items.map(x => esc(x.src)).join('、')}</summary>${v.items.map(x => `<div class="src-item"><b>${esc(x.src)}${x.title ? ' · ' + esc(x.title) : ''}</b><p>${esc(x.text)}</p></div>`).join('')}</details>`;
   if (v.k === 'err') return `<div class="msg err">${esc(v.t)}</div>`;
   if (v.k === 'confirm') return `<div class="confirm mat"><div class="eyebrow">${esc(v.title)}</div>${v.lines.map(l => `<div class="t-headline" style="font-weight:600">${esc(l)}</div>`).join('')}${v.reason ? `<div class="t-foot l2">${esc(v.reason)}</div>` : ''}
     ${v.state === 'wait' ? `<div class="deck-ctrl" style="margin:4px 0 0"><button class="pill glass" data-cf="${v.id}|0">取消</button><button class="pill ink" data-cf="${v.id}|1">确认修改</button></div>` : `<div class="t-foot" style="color:${v.state === 'ok' ? 'var(--ok)' : 'var(--ink3)'}">${v.state === 'ok' ? '已修改' : '已取消'}</div>`}</div>`;
@@ -502,43 +503,90 @@ async function ask(q) {
 function useLocal() { const p = LocalAI.prefs(); return p.enabled && (p.use === 'local' || (p.use === 'auto' && !navigator.onLine)); }
 const EDIT_RE = /(改|调|换|删|去掉|不吃|不练|加练|推迟|提前|挪|目标|设成|设为|设置|取消|恢复|休息一天|别练)/;
 function planBrief(d) {
-  const pl = S.plan, info = dayInfo(d), { meals } = tasksFor(d);
+  const pl = S.plan, info = dayInfo(d), { meals } = tasksFor(d), t = targetOf(d);
+  const tr = pl.training && info.lift ? sessionItems(d) : null;
   return [
-    `今天 ${d}（周${DOW[E.dow(d)]}），${info.lift ? '力训日' : '休息日'}${info.h ? '，' + info.h.name : ''}`,
-    `目标：${pl.goal === 'cut' ? '减脂' : '增肌'}（${pl.goalWhy.reason}${pl.goalWhy.src ? '，' + pl.goalWhy.src : ''}）`,
-    `每天应吃：力训日 ${pl.f1} kcal、休息日 ${pl.f2} kcal；碳水 力训日 ${pl.carbT}g、休息日 ${pl.carbR}g；蛋白质 ${pl.prot}g；脂肪 ${pl.fat}g（表5 E22-L23）`,
-    `饮食表：${pl.sheet.sheet}《${pl.sheet.name}》`,
-    pl.training ? `训练：${pl.training.splitName}，${pl.training.days.map(x => x.name.replace(/ /g, '')).join(' / ')}（${pl.training.split.src}）` : '训练：不做力训（表8）',
-    `今天各餐：${meals.map(m => `${m.time} ${m.name} 碳水${m.c}g 蛋白质${m.p}g`).join('；')}`,
-  ].join('\n');
+    `今天 ${d}（周${DOW[E.dow(d)]}）是${info.lift ? '力训日' : '休息日'}${info.h ? '（' + info.h.name + '）' : ''}；目标：${pl.goal === 'cut' ? '减脂' : '增肌'}。`,
+    `今天应吃：${t.kcal} kcal，碳水 ${t.c}g，蛋白质 ${t.p}g，脂肪 ${t.f}g（表5 E22-L23）。`,
+    `今天各餐：${meals.map(m => `${m.time} ${m.name} 碳水${m.c}g 蛋白质${m.p}g`).join('；')}。`,
+    tr ? `今天练：${tr.si.custom ? '自选部位' : tr.si.day.name.replace(/ /g, '')}，${tr.items.map(it => `${it.ex.n} ${it.sets}组×${it.reps}`).join('、')}。` : (info.lift ? '' : '今天不练力训。'),
+    `饮食表：${pl.sheet.sheet}《${pl.sheet.name}》；训练：${pl.training ? pl.training.splitName : '不做力训'}。`,
+  ].filter(Boolean).join('\n');
 }
-// 长原文取“开头 + 结尾”：套表的问答一般先讲原因、最后给办法（如表17 第32行结尾的“才考虑……二选一”）
-function snippet(text) {
-  if (text.length <= 620) return text;
-  return text.slice(0, 220) + ' …… ' + text.slice(-400);
+/* ---------- 离线检索：先找套表问答的题目，再找正文；按用户自己的饮食表标出处 ---------- */
+// 口语 → 套表里的说法（只扩展检索词，不改用户的问题）
+const SYN = [
+  [/自助|食堂|工作餐|单位饭/, ['食堂', '工作餐']], [/外卖/, ['外卖']], [/聚餐|下馆子|饭局|在外面吃|外食/, ['在外就餐', '外食']],
+  [/平台期|不掉秤|体重不掉|瘦不下|不降/, ['体重不掉', '2周']], [/跑步|慢跑|快走|有氧/, ['有氧']], [/撸铁|力量训练|健身房练|力训/, ['力训']],
+  [/喝酒|啤酒|白酒|红酒/, ['喝酒', '酒']], [/零食|夜宵|宵夜/, ['零食', '夜宵']], [/水果/, ['水果']], [/蛋白粉/, ['蛋白粉']],
+  [/减肥|减重|瘦身/, ['减脂']], [/饿|饥饿/, ['饥饿', '饿']], [/熬夜|睡眠|睡不好/, ['睡眠']], [/月经|经期|姨妈/, ['经期']],
+  [/肌酸/, ['肌酸']], [/便秘/, ['便秘']], [/停滞|不长肉|增不了/, ['增重', '不长']], [/作弊餐|欺骗餐|放纵/, ['欺骗餐', '放纵']],
+];
+// 太常见、不能说明问题主题的词：只靠这些词命中的，不算找到
+const GENERIC = new Set('减脂 增肌 减肥 怎么 怎么办 什么 可以 能不 能吗 帮助 需要 应该 一下 如果 这个 那个 套表 吃什 吃的 吃吗 有用 我的 今天 训练 健身 好吗 多少'.split(' '));
+// 虚词、口语字：含这些字的二字片段（如“能帮”“素能”）不拿来检索，免得“褪黑素能帮助减肥吗”误中“能帮助抗饿”
+const STOP_CH = new Set('能帮助吗吃的了是有会要怎么样该可以我你他她在和与就都还也做用想让给对把呢吧啊哪些这那个么什为'.split(''));
+function qTerms(q) {
+  const base = terms(q).filter(w => w.length !== 2 || ![...w].some(ch => STOP_CH.has(ch))), extra = [];
+  SYN.forEach(([re, ws]) => { if (re.test(q)) extra.push(...ws); });
+  return [...new Set(base.concat(extra))];
 }
-// 离线检索：命中的如果只是问题标题（问答表的目录行、题目行），换成紧跟着的回答行；同一段只留一次
-function localSources(q) {
-  const res = searchExcel({ query: q }).results || [], rows = window.KB.rows, out = [], seen = new Set();
-  for (const h of res) {
-    let r = rows.find(x => x.s === String(h.sheet).replace(/^表(\d+).*/, '$1') && x.r === h.row);
-    if (!r) continue;
-    if (r.t.length < 80 && /[？?]\s*\/?\s*$/.test(r.t)) {
-      // 目录里的题目 → 正文里的同名标题 → 标题后面的第一段长文字就是回答
-      const title = r.t.replace(/^[A-Z]+:[\s/]*/, '').replace(/[\s/]*$/, '').slice(0, 14);
-      const sheet = rows.filter(x => x.s === r.s);
-      const head = sheet.find(x => x.r > r.r && x.t.includes(title)) || r;
-      const ans = sheet.find(x => x.r > head.r && x.t.length >= 80);
-      if (ans) r = ans;
-    }
-    const key = r.s + ':' + r.r;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({ src: `表${r.s} 第${r.r}行`, text: r.t });
-    if (out.length >= 3) break;
-  }
+const isHead = t => /^B:\s*\/?\s*\d+\.[^｜]{2,60}[？?]\s*\/?\s*$/.test(t);   // 问答的题目行（目录或正文标题）
+const qTitle = t => t.replace(/^B:\s*\/?\s*\d+\./, '').replace(/[？?]\s*\/?\s*$/, '');
+// 一问的完整回答：标题之后、下一个标题之前的所有行
+function answerOf(sheet, headRow) {
+  const rows = window.KB.rows.filter(x => x.s === sheet && x.r > headRow).sort((a, b) => a.r - b.r), out = [];
+  for (const x of rows) { if (isHead(x.t)) break; out.push(x); if (out.length >= 4) break; }
   return out;
 }
+const srcLabel = r => srcOf(r).replace(/（.*$/, '');
+function localRetrieve(q) {
+  const ts = qTerms(q), key = ts.filter(w => !GENERIC.has(w) && w.length >= 2);
+  const score = (text, ws) => ws.reduce((n, w) => n + (text.includes(w) ? (w.length >= 3 ? w.length * 2 : w.length) : 0), 0);
+  const rows = window.KB.rows;
+  // 1. 套表问答（表17、表18）的正文标题：题目和问题最像的那一问，整段回答都给模型
+  let best = null;
+  rows.filter(r => (r.s === '17' || r.s === '18') && isHead(r.t)).forEach(r => {
+    const sc = score(qTitle(r.t), key);
+    if (sc > 0 && (!best || sc > best.sc)) best = { r, sc };
+  });
+  const out = [], seen = new Set();
+  if (best && best.sc >= 3) {
+    // 目录里也有同样的题目：取正文里的那一个（后面才有回答）
+    const heads = rows.filter(x => x.s === best.r.s && isHead(x.t) && qTitle(x.t) === qTitle(best.r.t)).sort((a, b) => b.r - a.r);
+    const h = heads[0], ans = answerOf(h.s, h.r);
+    if (ans.length) {
+      const text = ans.map(x => x.t.replace(/^[A-Z]:\s*\/?\s*/, '')).join(' ');
+      out.push({ src: `表${h.s} 第${ans[0].r}行`, title: qTitle(h.t), text: text.length > 1500 ? text.slice(0, 600) + ' …… ' + text.slice(-800) : text, main: true });
+      ans.forEach(x => seen.add(x.s + ':' + x.r));
+    }
+  }
+  // 2. 正文：只用有区分度的词打分；问答回答、训练计划说明、用户自己的饮食表加权
+  const mine = S.plan && S.plan.sheet ? String(S.plan.sheet.sheet).replace('表', '') : '';
+  const hits = rows.map(r => {
+    if (seen.has(r.s + ':' + r.r) || r.t.length < 40 || isHead(r.t) || r.s === '0') return null;
+    let sc = score(r.t.toLowerCase(), key);
+    if (!sc) return null;
+    if (r.s === '17' || r.s === '18') sc *= 1.3;
+    if (['21', '22', '23', '24'].includes(r.s)) sc *= 1.2;
+    if (mine && (r.s === mine || (r.o || '').split(',').includes(mine))) sc *= 1.2;
+    return { r, sc };
+  }).filter(Boolean).sort((a, b) => b.sc - a.sc);
+  for (const { r } of hits) {
+    if (out.length >= 3) break;
+    const t = r.t.replace(/^[A-Z]:\s*\/?\s*/, '');
+    out.push({ src: srcLabel(r), text: t.length > 520 ? windowAround(t, key) : t });
+  }
+  return { sources: out, found: out.length > 0, key };
+}
+// 长段落取关键词最密的一段（约 500 字）
+function windowAround(t, key) {
+  let bestA = 0, bestS = -1;
+  for (let a = 0; a < t.length; a += 60) { const seg = t.slice(a, a + 500); const sc = key.reduce((n, w) => n + (seg.split(w).length - 1) * w.length, 0); if (sc > bestS) { bestS = sc; bestA = a; } }
+  return (bestA ? '…' : '') + t.slice(bestA, bestA + 500) + (bestA + 500 < t.length ? '…' : '');
+}
+// 问的是自己的数字或安排时，才把“我的计划”给模型（否则小模型容易整段复述计划）
+const PERSONAL_RE = /(今天|明天|昨天|这周|吃多少|该吃|几点|我的计划|我的目标|热量|卡路里|大卡|碳水|蛋白|脂肪|练什么|练哪|安排|摄入|消耗|几组|几次|体重多少|目标体重|分化|几天)/;
 function actionSys(d) {
   const { tasks } = tasksFor(d), tm = E.addDays(d, 1);
   return [
@@ -596,7 +644,7 @@ async function askLocal(q, img) {
     // 要改计划：先让模型输出指令
     if (EDIT_RE.test(q)) {
       st.view.push({ k: 'step', t: '理解要改什么' }); draw();
-      const r = await LocalAI.chat([{ role: 'system', content: actionSys(d) }, { role: 'user', content: q + ' /no_think' }], { signal: ctl.signal, maxTokens: 240, temperature: 0.1 });
+      const r = await LocalAI.chat([{ role: 'system', content: actionSys(d) }, { role: 'user', content: q }], { signal: ctl.signal, maxTokens: 240, temperature: 0.1 });
       const acts = parseActions(r.text);
       if (acts && acts.length) {
         const res = await runActions(acts, q);
@@ -606,16 +654,34 @@ async function askLocal(q, img) {
         return;
       }
     }
-    // 回答问题：App 检索套表原文 + 我的计划，模型只根据这些回答
+    // 回答问题：App 先检索套表原文；问自己的数字时再带上“我的计划”；模型只根据这些回答
     await loadKB();
-    const hits = localSources(q);
-    const src = hits.map(h => `[${h.src}] ${snippet(h.text)}`).join('\n');
-    st.view.push({ k: 'step', t: hits.length ? `查套表：${hits.map(h => h.src).join('、')}` : '查套表：没有找到相关原文' });
+    const personal = PERSONAL_RE.test(q);
+    const R = localRetrieve(question);
+    if (personal) R.sources = R.sources.slice(0, 1); // 问自己的数字：以“我的计划”为主，原文最多一段，免得混淆
+    if (!R.found && !personal) {
+      // 套表里找不到这个主题：直接说没写，不让模型自己发挥
+      const ans = '套表里没有写这个。可以换个说法再问，或者联网后问云端助手（它会查补充资料，并标明“补充”）。';
+      st.view.push({ k: 'step', t: '查套表：没有找到相关原文' }, { k: 'bot', t: ans });
+      st.msgs.push({ role: 'user', content: q }, { role: 'assistant', content: ans });
+      return;
+    }
+    st.view.push({ k: 'step', t: R.sources.length ? `查套表：${R.sources.map(h => h.src + (h.title ? `「${h.title}」` : '')).join('、')}` : '用你的计划回答' });
     st.view.push(live); draw();
-    const sys = '你是“练吃日课”的离线助手。只复述下面【我的计划】和【资料】里写了的内容，不要加任何资料里没有的建议或理由（比如休息、训练强度、多喝水这类，资料没写就不要说）。资料里没有答案，就直接说“套表里没有写这个”。每个要点后面用括号写出处，出处只能照抄资料前面方括号里的内容，例如（表17 第32行）。用中文，先说结论和具体做法，不超过 150 字。';
-    const user = `【我的计划】\n${planBrief(d)}\n\n【资料】\n${src || '（没有找到相关原文）'}\n\n【问题】${question} /no_think`;
-    const r = await LocalAI.chat([{ role: 'system', content: sys }, { role: 'user', content: user }], { signal: ctl.signal, onToken, maxTokens: 400, temperature: 0.2 });
+    const sys = [
+      '你是“练吃日课”的离线助手，回答健身和饮食问题。规则：',
+      '1. 第一句直接回答问题（结论），然后列 2-4 条具体做法；不要复述和问题无关的内容。',
+      '2. 只能用【资料】' + (personal ? '和【我的计划】' : '') + '里写了的内容；资料没提到的，就说“套表里没有写这个”，不要自己补充建议或理由。',
+      '3. 资料里有具体数字和做法（克数、大卡、分钟、组数、“二选一”的办法），要原样写出来。',
+      '4. 最后一行写“出处：”，只能照抄资料方括号里的出处或“我的计划”，不用每条都写。',
+      '5. 用中文，挑最重要的内容，不超过 200 字。',
+    ].join('\n');
+    const srcText = R.sources.map(h => `[${h.src}]${h.title ? `（问答：${h.title}）` : ''} ${h.text}`).join('\n\n');
+    const user = (personal ? `【我的计划】\n${planBrief(d)}\n\n` : '') + `【资料】\n${srcText || '（没有找到相关原文）'}\n\n【问题】${question}`;
+    const r = await LocalAI.chat([{ role: 'system', content: sys }, { role: 'user', content: user }], { signal: ctl.signal, onToken, maxTokens: LocalAI.current().maxTokens || 500, temperature: 0.2 });
     live.t = LocalAI.clean(r.text) || '（没有回答）'; delete live.live;
+    // 原文附在回答下面，可以自己核对
+    if (R.sources.length) st.view.push({ k: 'srcs', items: R.sources.map(h => ({ src: h.src, title: h.title || '', text: h.text.slice(0, 1600) })) });
     st.view.push({ k: 'step', t: statLine(r.stats) });
     st.msgs.push({ role: 'user', content: q }, { role: 'assistant', content: live.t });
   } catch (e) {

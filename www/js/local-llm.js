@@ -4,13 +4,16 @@
  */
 window.LocalAI = (() => {
 const MODELS = [
-  { id: 'qwen3-1.7b', name: 'Qwen3 1.7B', tag: '推荐', file: 'Qwen3-1.7B-Q4_0.gguf', size: 1056782912,
-    url: 'https://modelscope.cn/models/unsloth/Qwen3-1.7B-GGUF/resolve/master/Qwen3-1.7B-Q4_0.gguf', note: '回答更稳；运行时约占 1.5GB 内存' },
-  { id: 'qwen3-0.6b', name: 'Qwen3 0.6B', tag: '轻量', file: 'Qwen3-0.6B-Q4_0.gguf', size: 382156480,
-    url: 'https://modelscope.cn/models/unsloth/Qwen3-0.6B-GGUF/resolve/master/Qwen3-0.6B-Q4_0.gguf', note: '更快、更省电，回答质量差一些' },
+  // Qwen3.5：只有 1/4 的层是完整注意力，上下文开到 8K 也只多占几十 MB；思考模式在原生层关掉（等同 enable_thinking=false）
+  { id: 'qwen35-2b', name: 'Qwen3.5 2B', tag: '推荐', file: 'Qwen3.5-2B-Q4_0.gguf', size: 1214873856, nCtx: 8192, maxTokens: 500,
+    url: 'https://modelscope.cn/models/unsloth/Qwen3.5-2B-GGUF/resolve/master/Qwen3.5-2B-Q4_0.gguf', note: '回答最完整；运行时约占 1.6GB 内存' },
+  { id: 'qwen35-0.8b', name: 'Qwen3.5 0.8B', tag: '轻量', file: 'Qwen3.5-0.8B-Q4_0.gguf', size: 507154688, nCtx: 8192, maxTokens: 500,
+    url: 'https://modelscope.cn/models/unsloth/Qwen3.5-0.8B-GGUF/resolve/master/Qwen3.5-0.8B-Q4_0.gguf', note: '更快、更省电，回答质量差一些' },
+  { id: 'qwen3-1.7b', name: 'Qwen3 1.7B', tag: '上一版', file: 'Qwen3-1.7B-Q4_0.gguf', size: 1056782912, nCtx: 4096, maxTokens: 450,
+    url: 'https://modelscope.cn/models/unsloth/Qwen3-1.7B-GGUF/resolve/master/Qwen3-1.7B-Q4_0.gguf', note: '1.7 版本用的模型，已经下载过可以继续用' },
 ];
 const DIR = 'models';
-const store = { get: () => Object.assign({ enabled: false, model: 'qwen3-1.7b', use: 'cloud', have: {}, threads: 4 }, C.LS.get('local') || {}), set: v => C.LS.set('local', v) };
+const store = { get: () => Object.assign({ enabled: false, model: 'qwen35-2b', use: 'cloud', have: {}, threads: 4 }, C.LS.get('local') || {}), set: v => C.LS.set('local', v) };
 const native = () => !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
 let plugin = null;
 const P = () => plugin || (plugin = window.capacitorExports && window.capacitorExports.registerPlugin('LocalLlm'));
@@ -70,13 +73,14 @@ async function chat(messages, { onToken, onPrefill, signal, maxTokens = 512, tem
   const m = current();
   if (!(await exists(m))) throw new Error('还没有下载内置模型，到“我的 → 大模型接口 → 内置模型”下载');
   const t0 = Date.now();
-  await P().load({ path: await pathOf(m), nCtx: 4096, threads: prefs().threads || 4 });
+  await P().load({ path: await pathOf(m), nCtx: m.nCtx || 4096, threads: prefs().threads || 4 });
   const loadMs = Date.now() - t0;
   const subs = [await P().addListener('token', e => onToken && onToken(e.text)), await P().addListener('prefill', e => onPrefill && onPrefill(e))];
   const abort = () => P().stop();
   if (signal) signal.addEventListener('abort', abort, { once: true });
   try {
-    const r = await P().generate({ messages, maxTokens, temperature });
+    // noThink：在对话模板后面接一个空的思考块，等同 chat_template_kwargs.enable_thinking=false
+    const r = await P().generate({ messages, maxTokens, temperature, noThink: true });
     if (signal && signal.aborted) { const err = new Error('已停止'); err.stopped = true; throw err; }
     return { text: r.text, stats: { loadMs, prefillMs: r.prefillMs, genMs: r.genMs, promptTokens: r.promptTokens, pieces: r.pieces } };
   } finally {
@@ -88,7 +92,7 @@ async function chat(messages, { onToken, onPrefill, signal, maxTokens = 512, tem
 async function chatDev(messages, { onToken, signal, maxTokens, temperature }) {
   const t0 = Date.now();
   const res = await fetch(String(dev()).replace(/\/+$/, '') + '/v1/chat/completions', { method: 'POST', signal, headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ messages, stream: true, max_tokens: maxTokens, temperature, top_k: 20, top_p: 0.8, cache_prompt: false }) });
+    body: JSON.stringify({ messages, stream: true, max_tokens: maxTokens, temperature, top_k: 20, top_p: 0.8, cache_prompt: false, chat_template_kwargs: { enable_thinking: false } }) });
   if (!res.ok) throw new Error('llama-server 返回 ' + res.status);
   const rd = res.body.getReader(), dec = new TextDecoder();
   let buf = '', text = '', first = 0;
