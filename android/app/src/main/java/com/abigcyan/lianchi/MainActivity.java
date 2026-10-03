@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
         // 本地插件：应用内更新时调起系统安装器
         registerPlugin(ApkInstallerPlugin.class);
         registerPlugin(AppChromePlugin.class);
+        registerPlugin(LocalLlmPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
