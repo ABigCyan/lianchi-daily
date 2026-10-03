@@ -8,6 +8,7 @@ const DEF = {
   schedMode: 'weekly', liftDays: [0, 2, 4], skipHolidays: true, cardioSkipHolidays: false, liftTime: '18:00',
   cardio: [], cardioTime: '18:30', wake: '07:30', breakfast: '08:00', lunch: '12:00', dinner: '19:00', sleep: '23:30', sheet: 'auto',
   eggsMilk: true, budget: false, lunchCost: 30, gout: false, diabetes: false,
+  planMode: 'excel', sessionMin: 0, equip: null, focusParts: [], avoid: [],
 };
 const back = (t = '我的') => `<button class="back" data-back>${I.left}${t}</button>`;
 const ico = (svg, color) => `<span class="row-ico" style="background:${color}">${svg}</span>`;
@@ -45,6 +46,7 @@ function profileForm(first) {
   const tog = (id, label, on) => `<div class="frow"><label for="f-${id}">${label}</label><input type="checkbox" class="switch" id="f-${id}" ${on ? 'checked' : ''}></div>`;
   const days = (id, arr, cls) => `<div class="days ${cls || ''}" data-dows="${id}">${DOW.map((x, i) => `<button type="button" data-i="${i}" aria-pressed="${(arr || []).includes(i)}">${x}</button>`).join('')}</div>`;
   const formula = p.weight && p.height && p.age ? Math.round(p.weight * 9.99 + p.height * 6.25 - p.age * 4.92 + (p.sex === 'M' ? 5 : -161)) : '';
+  const eqSel = p.equip && p.equip.length ? p.equip : window.EQUIP_DEFAULT[p.place === 'home' ? 'home' : 'gym'];
   const sheets = [['auto', '按训练时间自动']].concat(Object.entries(E.SHEETS).map(([k, v]) => [k, v.name]));
   const cardio = [0, 1, 2].map(i => { const a = p.cardio[i] || { kind: '无', minutes: 45, pace: 8, days: [] };
     return `<section class="fsec"><h3>有氧 ${i + 1}</h3><div class="list mat"><div class="frow"><label>项目</label><select data-c="${i}|kind">${CARDIO_KINDS.map(k => `<option ${k === (a.kind === '跑步' || a.kind === '无' || !a.kind ? a.kind : E.findCardio(a.kind).label) ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select></div>
@@ -66,13 +68,21 @@ function profileForm(first) {
     ${tog('lift', '做力量训练', p.lift !== false)}
     <div class="frow"><label for="f-level">经验</label>${sel('level', [['new', '新手'], ['some', '有基础'], ['vet', '老手']], p.level)}</div>
     <div class="frow"><label for="f-place">地点</label>${sel('place', [['gym', '健身房'], ['home', '家里']], p.place)}</div>
-    <div class="frow"><label for="f-split">分化</label>${sel('split', [['auto', '自动'], ['three', '三分化 表21'], ['four_sh', '四分化·肩 表22'], ['four_arm', '四分化·手臂 表23'], ['home', '居家 表24']], p.split)}</div>
+    <div class="frow"><label for="f-split">分化</label>${sel('split', window.SPLIT_CHOICES.concat(p.customSplit ? [['mine', (p.customSplit.name || '我的分化') + '（定制）']] : []), p.split)}</div>
     <div class="frow"><label for="f-focus">四分化重点</label>${sel('focus', [['auto', '肩'], ['arm', '手臂']], p.focus)}</div>
     ${time('liftTime', '开始时间', p.liftTime)}
     <div class="frow"><label for="f-schedMode">训练日</label>${sel('schedMode', [['weekly', '固定星期几'], ['workdays', '所有工作日'], ['free', '不固定']], p.schedMode)}</div>
     <div class="frow stack">${days('liftDays', p.liftDays)}</div>
     <div class="frow stack"><span class="lbl l2 t-foot">想练的部位</span><div class="chips">${window.PARTS.map(pt => `<button type="button" data-part="${pt.id}" aria-pressed="${p.parts[pt.id] !== false}">${pt.name}</button>`).join('')}</div></div>
     ${tog('skipHolidays', '节假日跳过力训', p.skipHolidays !== false)}${tog('cardioSkipHolidays', '节假日也跳过有氧', p.cardioSkipHolidays)}</div></section>
+  <section class="fsec"><h3>定制</h3><div class="list mat">
+    <div class="frow"><label for="f-planMode">计划依据</label>${sel('planMode', [['excel', '只按套表'], ['smart', '套表为主 + 补充']], p.planMode || 'excel')}</div>
+    <div class="frow"><label for="f-sessionMin">每次最多</label>${sel('sessionMin', [['0', '不限'], ['45', '约 45 分钟'], ['60', '约 60 分钟'], ['75', '约 75 分钟'], ['90', '约 90 分钟']], p.sessionMin || 0)}</div>
+    ${tog('equipOn', '按我有的器械筛选', !!(p.equip && p.equip.length))}
+    <div class="frow stack" id="equipRow" ${p.equip && p.equip.length ? '' : 'hidden'}><div class="chips">${window.EQUIP.map(([k, n]) => `<button type="button" data-eq="${k}" aria-pressed="${eqSel.includes(k)}">${esc(n)}</button>`).join('')}</div></div>
+    <div class="frow stack"><span class="lbl l2 t-foot">重点部位：排在前面、组数取上限</span><div class="chips">${window.PARTS.map(pt => `<button type="button" data-focus="${pt.id}" aria-pressed="${(p.focusParts || []).includes(pt.id)}">${pt.name}</button>`).join('')}</div></div>
+    <div class="frow stack"><span class="lbl l2 t-foot">伤病避开：去掉对这些关节负担大的动作</span><div class="chips">${window.JOINTS.map(([k, n]) => `<button type="button" data-avoid="${k}" aria-pressed="${(p.avoid || []).includes(k)}">${esc(n)}</button>`).join('')}</div></div></div>
+    <div class="list-footer">“套表为主 + 补充”只在每周只能练 1-2 次时改用全身训练，其余仍按套表。器械、重点、时长、伤病都是应用补充，依据见“规则与出处 → 补充资料”；伤病请以医生意见为准。还可以让助手按你的情况定制分化。</div></section>
   ${cardio}
   <section class="fsec"><h3>有氧时间</h3><div class="list mat">${time('cardioTime', '非力训日开始', p.cardioTime)}</div></section>
   <section class="fsec"><h3>作息和吃饭</h3><div class="list mat">
@@ -83,19 +93,23 @@ function profileForm(first) {
   <button class="pill ink wide" type="submit">${first ? '生成我的计划' : '保存'}</button><p class="err" id="ferr" role="alert"></p></form>`;
 }
 function bindProfile(first) {
-  $$('[data-dows] button,[data-part]').forEach(b => b.onclick = () => { b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') !== 'true'); Kit.haptic('light'); });
+  $$('[data-dows] button,[data-part],[data-eq],[data-focus],[data-avoid]').forEach(b => b.onclick = () => { b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') !== 'true'); Kit.haptic('light'); });
+  $('#f-equipOn').onchange = () => { $('#equipRow').hidden = !$('#f-equipOn').checked; };
   const imp = $('#importFirst'); if (imp) imp.onclick = () => { S.sub = 'import'; S.firstImport = true; render(); };
   $('#pform').onsubmit = e => {
     e.preventDefault();
     const v = id => $('#f-' + id).value.trim(), ck = id => $('#f-' + id).checked;
     const days = id => $$(`[data-dows="${id}"] button`).filter(b => b.getAttribute('aria-pressed') === 'true').map(b => +b.dataset.i);
     const parts = {}; $$('[data-part]').forEach(b => parts[b.dataset.part] = b.getAttribute('aria-pressed') === 'true');
+    const on = sel => $$(sel).filter(b => b.getAttribute('aria-pressed') === 'true');
     const cardio = [0, 1, 2].map(i => { const g = f => ($(`[data-c="${i}|${f}"]`) || {}).value; return { kind: g('kind'), minutes: +g('minutes') || 0, pace: +g('pace') || 8, hr: +g('hr') || '', rhr: +g('rhr') || '', days: days('cd' + i) }; }).filter(a => a.kind !== '无' && a.minutes > 0 && a.days.length);
     const p = Object.assign({}, S.profile || {}, {
       name: v('name'), sex: v('sex'), age: +v('age'), height: +v('height'), weight: +v('weight'), waist: +v('waist') || '', targetWeight: +v('targetWeight') || '', bmrOverride: +v('bmrOverride') || '',
       goal: v('goal'), gout: ck('gout'), diabetes: ck('diabetes'), lift: ck('lift'), level: v('level'), place: v('place'), split: v('split'), focus: v('focus'),
       liftTime: v('liftTime'), schedMode: v('schedMode'), liftDays: days('liftDays'), skipHolidays: ck('skipHolidays'), cardioSkipHolidays: ck('cardioSkipHolidays'), parts, cardio, cardioTime: v('cardioTime'),
       wake: v('wake'), breakfast: v('breakfast'), lunch: v('lunch'), dinner: v('dinner'), sleep: v('sleep'), lunchCost: +v('lunchCost') || 30, sheet: v('sheet'), eggsMilk: ck('eggsMilk'), budget: ck('budget'),
+      planMode: v('planMode'), sessionMin: +v('sessionMin') || 0, equip: ck('equipOn') ? on('[data-eq]').map(b => b.dataset.eq) : null,
+      focusParts: on('[data-focus]').map(b => b.dataset.focus), avoid: on('[data-avoid]').map(b => b.dataset.avoid),
     });
     const errs = [];
     if (!(p.age >= 14 && p.age <= 80)) errs.push('年龄'); if (!(p.height >= 130 && p.height <= 220)) errs.push('身高'); if (!(p.weight >= 35 && p.weight <= 200)) errs.push('体重');
@@ -103,6 +117,7 @@ function bindProfile(first) {
     if (p.lift && p.schedMode === 'weekly' && !p.liftDays.length) errs.push('至少选一天力训');
     if (p.lift && !Object.values(parts).some(Boolean)) errs.push('至少选一个部位');
     if (p.goal === 'bulk' && !p.lift) errs.push('增肌必须做力训（表13 E24）');
+    if (p.equip && !p.equip.length) errs.push('至少选一种器械，或关掉器械筛选');
     if (errs.length) { $('#ferr').textContent = '请检查：' + errs.join('、'); Kit.haptic('medium'); return; }
     p.startDate = p.startDate || today(); p.startWeight = p.startWeight || p.weight;
     S.profile = p; LS.set('profile', p); S.plan = E.build(p);
@@ -151,6 +166,7 @@ const COVER = [
   ['表26-27 拉伸', '图谱', '14 张拉伸图，训练页按练到的肌群显示'],
   ['表28 解剖总结（文字）', '助手', '全文助手可查'],
   ['表29-30 解剖图示', '未收录', '是表28 的图示版（约 38MB 图片），文字内容已在表28'],
+  ['补充资料（非套表）', '助手 + 补充', '国际指南、立场声明和 Meta 分析的共识；补充动作和补充分化。见下面第 8 节'],
 ];
 function viewRules() {
   const p = S.profile, pl = S.plan, R = window.RULES;
@@ -179,8 +195,27 @@ function viewRules() {
       <p class="t-sub">新手前 4 周组数取下限、第 1-2 周用 12-15 次；每个动作不超过 4 组；新手先排器械动作；有基础者下胸隔次做；加重用双进阶 ${src('应用补充', 1)}</p></section>`;
   }
   h += `<section class="mat card"><span class="t-title3">6. 调整与停止</span>${para(['cutSpeed', 'cutAdjust', 'cut10kg', 'cutStop', 'bulkSpeed', 'bulkAdjust', 'bulkStop', 'scale', 'diabetes', 'gout'])}<p class="t-sub">热量分析里的每周体重变化按 1kg 脂肪约 7700 kcal 估算 ${src('应用补充', 1)}</p></section>`;
+  h += extSection(pl);
   h += `<section class="mat card"><span class="t-title3">7. 界面设计</span><p class="t-sub">中性底色的玻璃风格，颜色只用于“可点击”和“完成”；设计规则见仓库 DESIGN.md。</p></section>`;
   return h;
+}
+
+/* 第 8 节：补充资料（非套表）—— 每周训练量对照、补充分化依据、共识条目和来源 */
+function extSection(pl) {
+  const K = window.KB_EXT, tr = pl.training;
+  if (!K) return '';
+  const relCls = r => r === '有差异' ? ' app' : '';
+  let h = `<section class="mat card"><span class="t-title3">8. 补充资料（非套表）</span>
+    <p class="t-sub">以套表为准。补充资料只用于套表没写的地方、你选的补充分化/动作/定制，或你要求对照时；每条都写了和套表的关系（一致 / 补充 / 有差异）。有差异时 App 默认仍按套表。</p>`;
+  if (tr && pl.volume) {
+    h += `<div class="tbl"><table><thead><tr><th>部位（按你的计划估算）</th><th class="n">每周组数</th><th class="n">每周次数</th></tr></thead><tbody>${window.PARTS.filter(pt => pl.volume[pt.id].sets).map(pt => `<tr><td>${esc(pt.name)}</td><td class="n">${pl.volume[pt.id].sets}</td><td class="n">${pl.volume[pt.id].freq}</td></tr>`).join('')}</tbody></table></div>
+      <p class="t-foot l2">按第 5 周以后的组数估算，腿日轮换、下胸隔次取平均 ${src('应用补充', 1)}。对照：增肌约每周每个部位 10 组以上（${esc(K.sources.SCH2017V.short)}、${esc(K.sources.ACSM2026.short)}）；每个部位每周练 2 次更稳妥（${esc(K.sources.SCH2016F.short)}）。</p>`;
+    if (tr.ext && tr.splitMeta.rel) h += `<p class="t-sub"><b>${esc(tr.splitName)}</b>：${esc(tr.splitMeta.rel)} ${tr.splitMeta.refs.map(r => src(K.sources[r] ? K.sources[r].short : r, 1)).join('')}</p>`;
+    if (tr.split.key === 'mine' && tr.splitMeta.why) h += `<p class="t-sub"><b>定制理由</b>：${esc(tr.splitMeta.why)}</p>`;
+  }
+  h += K.rows.map(r => `<details class="ref"><summary><span class="src${relCls(r.rel)}">${esc(r.rel)}</span> ${esc(r.topic.split(' ')[0])}</summary><p class="t-sub">${esc(r.t)}</p><p class="t-foot l2">套表：${esc(r.excel)}</p>${r.refs.length ? `<p class="t-foot l3">来源：${r.refs.map(k => esc(K.sources[k].short)).join('；')}</p>` : ''}</details>`).join('');
+  h += `<details class="ref"><summary>全部来源（${Object.keys(K.sources).length}）</summary>${Object.values(K.sources).map(x => `<p class="t-foot l2">${esc(x.short)}（${esc(x.kind)}）：${esc(x.cite)}</p>`).join('')}</details>`;
+  return h + '</section>';
 }
 
 /* ---------- 大模型接口 ---------- */

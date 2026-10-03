@@ -233,9 +233,22 @@ window.Engine = (() => {
     if (p.schedMode === 'free') return +p.freeCount || 3;
     return (p.liftDays || []).length;
   }
+  /* 分化：套表的 4 种 + 补充分化（data-splits-ext.js）+ 助手定制的 mine */
+  function splitOf(p, key) {
+    if (key === 'mine') { const c = p.customSplit && window.customSplit ? window.customSplit(p.customSplit) : null; return c && !c.errs.length ? c.split : null; }
+    return window.SPLITS[key] || null;
+  }
   function pickSplit(p) {
     const n = sessionsPerWeek(p);
-    if (p.split && p.split !== 'auto' && window.SPLITS[p.split]) return { key: p.split, why: '你手动选择', src: '' };
+    if (p.split === 'mine' && splitOf(p, 'mine')) return { key: 'mine', why: '助手按你的情况定制', src: '应用补充', app: true };
+    if (p.split && p.split !== 'auto' && p.split !== 'mine' && window.SPLITS[p.split]) {
+      const ext = window.SPLITS[p.split].ext;
+      return { key: p.split, why: '你手动选择', src: ext ? '应用补充' : '', app: !!ext };
+    }
+    // “智能”模式：只在套表没有好办法的情况下换分化——每周只能练 1-2 次时，三分化每个部位要 10 天以上才轮到一次
+    if (p.planMode === 'smart' && n > 0 && n <= 2) {
+      return { key: p.place === 'home' ? 'home_full' : 'full2', why: `每周只练 ${n} 次，用全身训练让每个部位每周都练到 ${n} 次`, src: '套表表21 C8 认为每周 1-2 次增肌难有进步；补充依据 WHO 2020、ACSM 2026', app: true };
+    }
     if (p.place === 'home') return { key: 'home', why: '居家训练', src: '表5 E97，表24' };
     if ((p.level || 'new') === 'new') return { key: 'three', why: '完全新手用三分化', src: '表5 E96' };
     if (n >= 4) {
@@ -253,7 +266,7 @@ window.Engine = (() => {
   }
   function buildDays(p) {
     const sp = pickSplit(p);
-    const split = window.SPLITS[sp.key];
+    const split = splitOf(p, sp.key);
     const ok = allowedGroups(p);
     let moved = null;
     let days = split.days.map((d, i) => {
@@ -261,7 +274,7 @@ window.Engine = (() => {
       return { ...d, idx: i, groups };
     });
     // 去掉腿日后，原来和腿一起练的腹移到剩余最后一天（应用补充）
-    days.forEach(d => {
+    if (!split.ext) days.forEach(d => {
       const hasLeg = d.groups.some(gp => ['quad', 'ham', 'glute', 'comp'].includes(gp.id));
       const onlyAbs = d.groups.length && d.groups.every(gp => gp.id === 'abs');
       if (onlyAbs && !hasLeg) { moved = d.groups; d.groups = []; }
@@ -272,8 +285,15 @@ window.Engine = (() => {
       last.groups = last.groups.concat(moved.map(gp => ({ ...gp, movedNote: '原本和腿一起练，你不练腿，所以移到这一天（应用补充）' })));
     }
     // 名称按你实际保留的肌群生成；原表的标题留在 tableName 里（去掉部位后名称会跟着变）
-    days.forEach(d => { d.tableName = d.name; d.name = dayName(d.groups); d.changed = d.name.replace(/\s/g, '') !== d.tableName.replace(/\s/g, ''); });
-    return { split: sp, splitName: split.name, days, removed: window.PARTS.filter(pt => (p.parts || {})[pt.id] === false).map(pt => pt.name) };
+    // 补充分化的名称（全身 A、上肢 B…）在没删部位时保留
+    days.forEach(d => {
+      const full = split.days[d.idx].groups.length;
+      d.tableName = d.name;
+      d.name = split.ext && d.groups.length === full ? d.name : dayName(d.groups);
+      d.changed = split.ext ? d.groups.length !== full : d.name.replace(/\s/g, '') !== d.tableName.replace(/\s/g, '');
+    });
+    return { split: sp, splitName: split.name, ext: !!split.ext, splitMeta: { refs: split.refs || [], rel: split.rel || '', fit: split.fit || '', why: split.why || '' },
+      days, removed: window.PARTS.filter(pt => (p.parts || {})[pt.id] === false).map(pt => pt.name) };
   }
   /* 由肌群得出这天练什么：胸 / 背 / 肩（前中后束）/ 肱二头、肱三头 / 腿臀 / 腹，按原表顺序 */
   function dayName(groups) {
@@ -289,14 +309,28 @@ window.Engine = (() => {
       else if (g.id === 'bi') n = arm || '肱二头';
       else if (g.id === 'tri') n = arm || '肱三头';
       else if (['quad', 'ham', 'glute', 'comp'].includes(g.id)) n = '腿臀';
-      else if (g.id === 'abs') n = '腹';
+      else if (g.id === 'calf') n = '小腿';
+      else if (g.id === 'trap') n = '斜方';
+      else if (g.id === 'lowback') n = '下背';
+      else if (g.id === 'forearm') n = '前臂';
+      else if (g.id === 'abs' || g.id === 'core') n = '腹';
       if (n && !out.includes(n)) out.push(n);
     });
     return out.join(' + ');
   }
 
   /* 新手不太容易上手、默认往后排的动作（应用补充，仍可手动换回来） */
-  const HARD = new Set(['pullup', 'bb_row', 'tbar_row', 'dip', 'hang_raise', 'pullup_band']);
+  const HARD = new Set(['pullup', 'bb_row', 'tbar_row', 'dip', 'hang_raise', 'pullup_band', 'chinup', 'dip_tri', 'ghr', 'front_squat', 'bb_ohp', 'ab_roller', 'kb_swing', 'sl_rdl']);
+  const partOfGroup = gid => (window.PARTS.find(pt => pt.groups.includes(gid)) || {}).id;
+  /* 器械筛选：用户在资料里勾了器械才筛（没勾时套表动作照原样排，补充备选按场地默认器械显示） */
+  const equipOf = p => Array.isArray(p.equip) && p.equip.length ? p.equip : null;
+  const shownEquip = p => equipOf(p) || (window.EQUIP_DEFAULT ? window.EQUIP_DEFAULT[p.place === 'home' ? 'home' : 'gym'] : null);
+  const usable = (v, p) => !window.exUsable || window.exUsable(window.EX[v], equipOf(p), p.avoid || []);
+  /* 时间估算【应用补充】：多关节每组约 3 分钟（含 2-3 分钟休息，表21 C11），单关节约 2 分钟（休息 1-1.5 分钟），加 5 分钟热身。
+     按这个估算，套表三分化一次 20-30 组约 1-1.5 小时，和表21 C10 一致 */
+  function estMinutes(items) {
+    return Math.round(5 + items.reduce((s, it) => s + it.sets * (it.ex.multi ? 3 : 2), 0));
+  }
   /* 一次训练的具体安排 */
   function sessionPlan(p, day, ctx) {
     const novice = (p.level || 'new') === 'new';
@@ -304,51 +338,116 @@ window.Engine = (() => {
     const firstTwo = novice && ctx.week <= 2;
     const F = p.sex === 'F';
     const legRound = ctx.legRound || 0;
+    const focus = new Set(p.focusParts || []);
     let groups = day.groups.slice();
-    // 腿日轮换（表21 B74 / 表24 B71）
-    if (groups.some(gp => ['quad', 'ham', 'glute'].includes(gp.id))) {
+    // 腿日轮换（表21 B74 / 表24 B71）：只用于套表分化的腿臀日；补充分化每天已经排好了腿的肌群
+    if (groups.some(gp => !gp.ext && ['quad', 'ham', 'glute'].includes(gp.id))) {
       let keep;
       if (p.place === 'home') keep = F ? ['glute', 'ham'] : ['quad', 'ham'];
       else keep = F ? (legRound % 2 === 0 ? ['glute', 'comp'] : ['ham', 'comp']) : (legRound % 2 === 0 ? ['quad', 'comp'] : ['ham', 'comp']);
       if (p.place === 'home' && F) keep = ['glute'];
-      groups = groups.filter(gp => !['quad', 'ham', 'glute', 'comp'].includes(gp.id) || keep.includes(gp.id));
+      groups = groups.filter(gp => gp.ext || !['quad', 'ham', 'glute', 'comp'].includes(gp.id) || keep.includes(gp.id));
     }
-    const out = [];
+    // 重点部位排在前面（补充：先练的动作表现更好，Simão 2012）
+    if (focus.size) groups = groups.filter(gp => focus.has(partOfGroup(gp.id))).concat(groups.filter(gp => !focus.has(partOfGroup(gp.id))));
+    const out = [], skipped = [];
     groups.forEach(gp => {
+      const pri = focus.has(partOfGroup(gp.id));
       let optional = false;
-      if (gp.optionalNovice) {
+      if (gp.optionalNovice && !pri) {
         if (novice) optional = true; // 新手偶尔加做：默认不做，可手动加
         else if (gp.id === 'low_chest' && (ctx.chestRound || 0) % 2 === 1) optional = true; // 有基础：上胸每次、下胸隔次（应用补充）
       }
-      const sets = early ? gp.sets[0] : gp.sets[1];
-      // 应用补充：每个动作不超过 4 组（在原表“选 N 个动作”范围内取够数量）；新手先排器械/易上手的动作
-      let entries = gp.entries.slice();
+      // 组数：新手前 4 周取下限；重点部位取上限；补充分化里女性股四取下限（表21 C14 ②）
+      let sets = pri ? gp.sets[1] : early ? gp.sets[0] : gp.sets[1];
+      if (gp.ext && F && gp.id === 'quad' && !pri) sets = gp.sets[0];
+      // 能做的动作：器械齐、不在要避开的关节里；套表动作都不能做时换成补充动作
+      let entries = gp.entries.filter(e => window.ENTRY[e].some(v => usable(v, p)));
+      if (!entries.length) {
+        entries = (window.EXT_ALTS && window.EXT_ALTS[gp.id] || []).filter(v => usable(v, p) && !gp.entries.includes(v));
+        // 器械或伤病设置下这个肌群一个能做的动作都没有：这次不练，不硬排（避免给膝伤的人排深蹲）
+        if (!entries.length) { skipped.push(gp.name); return; }
+      }
+      // 筛掉一些动作后不够“每个动作不超过 4 组”时，用能做的补充动作补上
+      if (entries.length < Math.ceil(sets / 4) && entries.length < gp.pick[1]) {
+        const more = (window.EXT_ALTS && window.EXT_ALTS[gp.id] || []).filter(v => usable(v, p) && !entries.includes(v) && !gp.entries.includes(v));
+        entries = entries.concat(more.slice(0, Math.min(gp.pick[1], Math.ceil(sets / 4)) - entries.length));
+      }
       if (novice) entries = entries.filter(e => !HARD.has(window.ENTRY[e][0])).concat(entries.filter(e => HARD.has(window.ENTRY[e][0])));
+      // 应用补充：每个动作不超过 4 组（在原表“选 N 个动作”范围内取够数量）；新手先排器械/易上手的动作
       const count = clamp(Math.max(gp.pick[0], Math.ceil(sets / 4)), 1, Math.min(gp.pick[1], entries.length));
       const chosen = [];
       const pref = (ctx.choices || {})[gp.sheet + ':' + gp.id] || [];
-      pref.forEach(v => { const e = gp.entries.find(en => window.ENTRY[en].includes(v)); if (e && chosen.length < count && !chosen.some(c => c.entry === e)) chosen.push({ entry: e, v }); });
+      const extOk = v => window.EX[v] && window.EX[v].ext && (window.EXT_ALTS[gp.id] || []).includes(v);
+      pref.forEach(v => {
+        if (chosen.length >= count || !usable(v, p)) return;
+        const e = gp.entries.find(en => window.ENTRY[en].includes(v)) || (extOk(v) ? v : null);
+        if (e && !chosen.some(c => c.entry === e)) chosen.push({ entry: e, v });
+      });
       entries.forEach(e => {
         if (chosen.length >= count || chosen.some(c => c.entry === e)) return;
-        const vs = window.ENTRY[e];
-        chosen.push({ entry: e, v: p.place === 'home' ? vs[0] : vs[0] });
+        const vs = window.ENTRY[e], ok = vs.filter(v => usable(v, p));
+        chosen.push({ entry: e, v: (ok.length ? ok : vs)[0] });
       });
       const base = Math.floor(sets / chosen.length), extra = sets % chosen.length;
+      const taken = v => chosen.some(cc => cc.v === v);
       chosen.forEach((c, i) => {
         const ex = window.EX[c.v];
-        const alts = [];
-        gp.entries.forEach(e => window.ENTRY[e].forEach(v => { if (v !== c.v) alts.push(v); }));
+        const alts = [], extAlts = [];
+        gp.entries.forEach(e => window.ENTRY[e].forEach(v => { if (v === c.v || taken(v) || !usable(v, p)) return; (window.EX[v].ext ? extAlts : alts).push(v); }));
+        (window.EXT_ALTS && window.EXT_ALTS[gp.id] || []).forEach(v => {
+          if (v !== c.v && !taken(v) && !extAlts.includes(v) && window.exUsable(window.EX[v], shownEquip(p), p.avoid || [])) extAlts.push(v);
+        });
         out.push({
           group: gp, entry: c.entry, v: c.v, ex, sets: base + (i < extra ? 1 : 0),
-          reps: firstTwo ? '12-15' : (F ? '10-15' : '8-12'),
-          repsSrc: firstTwo ? '表21 C12（适应新动作用更轻的重量）' : (F ? '表21 C14' : '表21 C12'),
+          reps: ex.timed ? '30-60 秒' : firstTwo ? '12-15' : (F ? '10-15' : '8-12'),
+          repsSrc: ex.timed ? '计时动作（应用补充）' : firstTwo ? '表21 C12（适应新动作用更轻的重量）' : (F ? '表21 C14' : '表21 C12'),
           rest: ex.multi ? (['quad', 'ham', 'comp'].includes(gp.id) ? '2-3 分钟或更长' : '2-3 分钟') : '1-1.5 分钟',
           fail: ex.noFail ? '不追求完全力竭，提前 1-2 次停' : '可以做到力竭',
-          alts: alts.filter(v => !chosen.some(cc => cc.v === v)),
-          optional,
+          alts, extAlts, optional, focus: pri,
+          note: !gp.ext && ex.ext ? '原表动作和你的器械/伤病设置不符，用了补充动作' : '',
         });
       });
     });
+    const cap = +p.sessionMin || 0;
+    out.trimNote = cap ? fitTime(out, cap) : '';
+    out.skipped = skipped;
+    return out;
+  }
+  /* 按“每次最多练多久”压缩【应用补充】：先把组数多的非重点动作每个减到不少于 2 组，还超时再去掉非重点的单关节动作。
+     依据：表21 C10“组数偏多，可以酌减”；ACSM 2026：坚持比完美的计划更重要 */
+  function fitTime(items, cap) {
+    const req = () => items.filter(it => !it.optional && !it.dropped);
+    if (estMinutes(req()) <= cap) return '';
+    const before = req().reduce((s, it) => s + it.sets, 0);
+    for (let guard = 0; guard < 200 && estMinutes(req()) > cap; guard++) {
+      const c = req().filter(it => it.sets > 2).sort((a, b) => (a.focus - b.focus) || (b.sets - a.sets))[0];
+      if (!c) break;
+      c.sets--; c.trim = true;
+    }
+    const dropped = [];
+    for (let guard = 0; guard < 50 && estMinutes(req()) > cap && req().length > 1; guard++) {
+      const r = req(), c = r.slice().reverse().find(it => !it.focus && !it.ex.multi) || r.slice().reverse().find(it => !it.focus);
+      if (!c) break;
+      c.dropped = true; dropped.push(c.ex.n);
+    }
+    for (let i = items.length - 1; i >= 0; i--) if (items[i].dropped) items.splice(i, 1);
+    const after = req().reduce((s, it) => s + it.sets, 0);
+    return `按每次最多 ${cap} 分钟，组数从 ${before} 减到 ${after}${dropped.length ? '，去掉了' + dropped.join('、') : ''}（表21 C10：组数可以酌减）`;
+  }
+  /* 每周每个部位大约练几组、几次（用于和共识资料对照，应用补充）：按第 5 周以后的组数，腿日轮换、下胸隔次取平均 */
+  function weeklyVolume(p, training, perWeek) {
+    const out = {};
+    window.PARTS.forEach(pt => out[pt.id] = { name: pt.name, sets: 0, freq: 0 });
+    if (!training || !training.days.length) return out;
+    const k = (perWeek || sessionsPerWeek(p) || 3) / training.days.length;
+    training.days.forEach(d => {
+      const runs = [0, 1].map(r => sessionPlan({ ...p, sessionMin: 0 }, d, { week: 10, legRound: r, chestRound: r, choices: {} }).filter(it => !it.optional));
+      const parts = new Set();
+      runs.forEach(items => items.forEach(it => { const pt = partOfGroup(it.group.id); if (pt) { out[pt].sets += it.sets / 2 * k; parts.add(pt); } }));
+      parts.forEach(pt => out[pt].freq += k);
+    });
+    Object.values(out).forEach(x => { x.sets = Math.round(x.sets); x.freq = Math.round(x.freq * 10) / 10; });
     return out;
   }
 
@@ -394,6 +493,7 @@ window.Engine = (() => {
     plan.meals = { lift: noLift ? null : mealsFor(p, plan, true), rest: mealsFor(p, plan, false) };
     plan.training = noLift ? null : buildDays(p);
     plan.perWeek = sessionsPerWeek(p);
+    plan.volume = noLift ? null : weeklyVolume(p, plan.training, plan.perWeek);
     plan.warnings = warnings(p, plan);
     return plan;
   }
@@ -403,6 +503,11 @@ window.Engine = (() => {
       if (plan.perWeek < 3) w.push({ text: `每周只练 ${plan.perWeek} 次，低于 3 次。${plan.goal === 'bulk' ? '增肌长期低于 3 次几乎不会进步。' : '减脂想保持肌肉需要 3-5 次。'}`, src: '表21 C8，表5 E24，表13 E24' });
       if (plan.perWeek >= 6) w.push({ text: '每周 6 次原则上不需要，除非休息得非常好', src: '表21 C8' });
       if (plan.sheet.key === 'night') w.push({ text: '夜里练：如果练后餐离睡觉很近，不宜在这么晚锻炼', src: '表7 C12' });
+    }
+    // 补充/定制分化：按共识资料提醒每周组数偏少的部位（套表分化不提醒，以套表为准）
+    if (!plan.noLift && plan.training && plan.training.ext && plan.volume) {
+      const low = window.PARTS.filter(pt => (p.parts || {})[pt.id] !== false && ['chest', 'back', 'legs', 'shoulder'].includes(pt.id) && plan.volume[pt.id].sets > 0 && plan.volume[pt.id].sets < 10);
+      if (low.length) w.push({ text: `${low.map(pt => `${pt.name}每周约 ${plan.volume[pt.id].sets} 组`).join('、')}，低于共识资料里增肌约每周 10 组的门槛`, src: '补充：ACSM 2026，Schoenfeld 2017', app: true });
     }
     if (p.goal === 'bulk' && p.lift === false) w.push({ text: '增肌必须有稳定的力训；不练时只能按减脂', src: '表13 E24' });
     const cw = plan.cardio;
@@ -455,6 +560,6 @@ window.Engine = (() => {
     return sex === 'F' ? weight / (1.0278 - 0.0278 * reps) : Math.pow(reps, 0.1) * weight;
   }
 
-  return { build, decideGoal, calories, macros, pickSheet, mealsFor, buildDays, dayName, foodsFor, sessionPlan, pickSplit, cardioPerHour, cardioWeekly, findCardio,
+  return { build, decideGoal, calories, macros, pickSheet, mealsFor, buildDays, dayName, foodsFor, sessionPlan, pickSplit, splitOf, estMinutes, weeklyVolume, fitTime, cardioPerHour, cardioWeekly, findCardio,
     holidayOf, isWorkday, plannedLift, plannedCardio, advice, oneRM, SHEETS, tm, mt, ds, pd, dow, addDays, sessionsPerWeek };
 })();

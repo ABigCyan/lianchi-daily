@@ -1,6 +1,6 @@
 /* 核心：存储、每天的卡片、训练、能量计算、奖励（界面文件共用） */
 window.C = (() => {
-const APP_VERSION = '1.7.1';
+const APP_VERSION = '1.8.0-plus.1';
 const REPO = 'ABigCyan/lianchi-daily';
 const E = window.Engine;
 const $ = s => document.querySelector(s);
@@ -165,19 +165,22 @@ function nextDayIdx(d) {
 }
 function roundsBefore(d, pred) { let n = 0; allDays(E.addDays(d, -1)).forEach(x => { const r = peek(x); if (r && r.done && r.done.lift && r.session && pred(r.session)) n++; }); return n; }
 function weekOf(d) { return Math.floor((E.pd(d) - E.pd(S.profile.startDate)) / 864e5 / 7) + 1; }
-/* 动作库：所有分化里出现过的动作 → 所属肌群与部位 */
+/* 动作库：套表分化里出现过的动作 → 所属肌群与部位（原表出处）；再加上补充动作（标明依据） */
 const LIB = (() => {
   const partOf = {}; window.PARTS.forEach(pt => pt.groups.forEach(g => partOf[g] = pt));
-  const map = {};
-  Object.values(window.SPLITS).forEach(sp => sp.days.forEach(day => day.groups.forEach(g => g.entries.forEach(e => window.ENTRY[e].forEach(v => {
-    if (!map[v]) map[v] = { v, ex: window.EX[v], group: g.name, part: (partOf[g.id] || {}).name || '其他', src: g.src };
-  })))));
+  const map = {}, gname = {};
+  Object.values(window.SPLITS).filter(sp => !sp.ext).forEach(sp => sp.days.forEach(day => day.groups.forEach(g => { gname[g.id] = gname[g.id] || g.name; g.entries.forEach(e => window.ENTRY[e].forEach(v => {
+    if (!map[v]) map[v] = { v, ex: window.EX[v], group: g.name, gid: g.id, part: (partOf[g.id] || {}).name || '其他', src: g.src };
+  })); })));
+  Object.entries(window.NEW_GROUPS || {}).forEach(([gid, [, n]]) => gname[gid] = n);
+  (window.EXT_IDS || []).forEach(v => { const ex = window.EX[v], gid = ex.groups[0];
+    map[v] = { v, ex, group: gname[gid] || gid, gid, part: (partOf[gid] || {}).name || '其他', src: `补充（${ex.kindName}）：${ex.basis}`, ext: true }; });
   return map;
 })();
 function extraItem(v, sets) {
   const p = S.profile, ex = window.EX[v], F = p.sex === 'F';
   const g = { id: 'extra-' + v, name: (LIB[v] || {}).group || '添加的动作', text: '你自己添加的动作', src: (LIB[v] || {}).src || '', sheet: 'extra' };
-  return { group: g, v, ex, sets: sets || 3, reps: F ? '10-15' : '8-12', repsSrc: F ? '表21 C14' : '表21 C12',
+  return { group: g, v, ex, sets: sets || 3, reps: ex.timed ? '30-60 秒' : F ? '10-15' : '8-12', repsSrc: ex.timed ? '计时动作（应用补充）' : F ? '表21 C14' : '表21 C12',
     rest: ex.multi ? '2-3 分钟' : '1-1.5 分钟', fail: ex.noFail ? '不追求完全力竭，提前 1-2 次停' : '可以做到力竭', alts: [], added: true };
 }
 function exMods(d, key) {
@@ -199,16 +202,17 @@ function sessionItems(d) {
     (si.groups || []).forEach(({ dayIdx, gid }) => { const dd = tr.days[dayIdx]; const g = dd && dd.groups.find(x => x.id === gid); if (g) groups.push(g); });
     day = { name: '自选部位', groups };
   } else day = si.day;
-  let items = E.sessionPlan(p, day, ctx);
+  const planned = E.sessionPlan(p, day, ctx);
   const r = peek(d) || {};
-  items = items.filter(it => !it.optional || (r.extra || {})[it.group.id]);
+  let items = planned.filter(it => !it.optional || (r.extra || {})[it.group.id]);
   const mods = exMods(d, si.key);
   items = items.filter(it => !mods.hide.has(it.v));
   mods.add.forEach(a => { if (!mods.hide.has(a.v) && !items.some(it => it.v === a.v)) items.push(extraItem(a.v, a.sets)); });
   items.forEach(it => { if (mods.sets[it.v]) it.sets = mods.sets[it.v]; });
-  const optionalGroups = E.sessionPlan(p, day, ctx).filter(it => it.optional && !(r.extra || {})[it.group.id]).map(it => it.group).filter((g, i, a) => a.indexOf(g) === i);
-  const femaleSkip = p.sex === 'F' && !si.custom && hasChest(day) && chestRound % 2 === 1;
-  return { si, day, items, ctx, femaleSkip, optionalGroups };
+  const optionalGroups = planned.filter(it => it.optional && !(r.extra || {})[it.group.id]).map(it => it.group).filter((g, i, a) => a.indexOf(g) === i);
+  // 女性隔轮跳过胸日是套表三分化的规则（表21 C14），补充分化不用
+  const femaleSkip = p.sex === 'F' && !si.custom && !tr.ext && hasChest(day) && chestRound % 2 === 1;
+  return { si, day, items, ctx, femaleSkip, optionalGroups, trimNote: planned.trimNote || '', skipped: planned.skipped || [] };
 }
 
 /* ---------- 能量：消耗与摄入 ---------- */
