@@ -139,7 +139,11 @@ function bindTrain() {
   $$('[data-exopen]').forEach(b => b.onclick = () => { const i = items.findIndex(x => x.v === b.dataset.exopen); sheet(`<div class="k-train" style="display:grid;gap:14px;padding-top:16px">${exBody(items[i], i, items.length, peek(d) || {}, d, d > today())}</div>`, m => { bindSetInputs(m, d, items); m.onclick = e => { if (e.target === m) { close(); render(); } }; }); });
   $$('[data-exdel]').forEach(b => b.onclick = () => { const v = b.dataset.exdel; askScope(`删除「${window.EX[v].n}」`, sc => { modsOf(d, si.key, sc, m => { m.hide = (m.hide || []).concat(v); m.add = (m.add || []).filter(a => a.v !== v); }); render(); toast('已删除'); }); });
   $$('[data-st]').forEach(b => b.onclick = () => { const [v, dir] = b.dataset.st.split('|'); const it = items.find(x => x.v === v); modsOf(d, si.key, 'tpl', m => { m.sets = m.sets || {}; m.sets[v] = Math.max(1, Math.min(10, it.sets + +dir)); }); Kit.haptic('light'); render(); });
-  const add = $('#addEx'); if (add) add.onclick = () => library(v => askScope(`添加「${window.EX[v].n}」`, sc => { modsOf(d, si.key, sc, m => { m.add = (m.add || []).filter(a => a.v !== v).concat({ v, sets: 3 }); m.hide = (m.hide || []).filter(x => x !== v); }); render(); toast('已添加'); }));
+  // 动作库可以一次选好几个，再一起问“只改今天 / 以后都这样”
+  const add = $('#addEx'); if (add) add.onclick = () => library(list => askScope(list.length === 1 ? `添加「${window.EX[list[0]].n}」` : `添加 ${list.length} 个动作`, sc => {
+    modsOf(d, si.key, sc, m => { m.add = (m.add || []).filter(a => !list.includes(a.v)).concat(list.map(v => ({ v, sets: 3 }))); m.hide = (m.hide || []).filter(x => !list.includes(x)); });
+    render(); toast(`已添加 ${list.length} 个动作`);
+  }), items.map(it => it.v));
   $('#finish').onclick = () => finish(!(peek(d) && peek(d).done && peek(d).done.lift));
   animate();
 }
@@ -174,20 +178,36 @@ function swap(items, idx) {
     });
   });
 }
-/* 动作库：按部位分；只列你的器械能做、没被伤病设置排除的动作（没设器械时按场地默认：健身房全部，居家哑铃/凳/弹力带/单杠） */
-function library(onPick) {
+/* 动作库：按部位分；只列你的器械能做、没被伤病设置排除的动作（没设器械时按场地默认：健身房全部，居家哑铃/凳/弹力带/单杠）。
+   可以多选：点一下选中，切换部位不会丢，最后一起添加 */
+function library(onPick, have) {
   const p = S.profile, equip = p.equip && p.equip.length ? p.equip : window.EQUIP_DEFAULT[p.place === 'home' ? 'home' : 'gym'];
-  const byPart = {};
+  const byPart = {}, picked = [], already = new Set(have || []);
   let showExt = S.libExt !== false;
   Object.values(LIB).forEach(x => { if (!window.exUsable(x.ex, equip, p.avoid || [])) return; (byPart[x.part] = byPart[x.part] || []).push(x); });
   const parts = window.PARTS.map(pt => pt.name).filter(n => byPart[n]); let cur = parts[0];
-  const draw = () => sheet(`<h2>动作库</h2><div class="segmented">${parts.map(n => `<button data-pt="${esc(n)}" aria-pressed="${n === cur}">${esc(n)}</button>`).join('')}</div>
+  const cell = x => { const ex = x.ex, on = picked.includes(x.v), inPlan = already.has(x.v);
+    return `<button class="libitem ${on ? 'picked' : ''} ${inPlan ? 'inplan' : ''}" data-add="${x.v}" aria-pressed="${on}" ${inPlan ? 'disabled' : ''}><img src="${imgUrl(ex, 0)}" alt="" loading="lazy"><span>${esc(ex.n)}</span><small>${inPlan ? '已在今天的计划里' : esc(`${x.group} · ${ex.eq}`)}</small>${ex.ext ? `<em class="lib-tag">${esc(ex.kindName)}</em>` : ''}<i class="lib-check">${I.check}</i></button>`; };
+  const footer = () => picked.length ? `<div class="lib-picked">${picked.map(v => `<button class="lib-chip" data-unpick="${v}">${esc(window.EX[v].n)}<span>×</span></button>`).join('')}</div><button class="pill ink wide" id="lib-ok">添加 ${picked.length} 个动作</button>` : '<p class="t-cap l3" style="text-align:center;margin:0">点动作选中，可以多选，切换部位不会丢</p>';
+  const draw = () => sheet(`<h2>动作库</h2><div class="seg-wrap glass"><div class="seg-scroll" id="libParts">${parts.map(n => `<button data-pt="${esc(n)}" aria-pressed="${n === cur}">${esc(n)}</button>`).join('')}</div></div>
     <div class="chips"><button data-libext aria-pressed="${showExt}">显示补充动作</button></div>
-    <div class="libgrid">${byPart[cur].filter(x => showExt || !x.ext).map(x => libItem(x.v, 'data-add', `${x.group} · ${x.ex.eq}`)).join('')}</div>
-    <p class="t-cap l3" style="text-align:center">没有标签的是表21-24 原表动作；带标签的是补充动作</p>`, m => {
+    <div class="libgrid">${byPart[cur].filter(x => showExt || !x.ext).map(cell).join('')}</div>
+    <p class="t-cap l3" style="text-align:center">没有标签的是表21-24 原表动作；带标签的是补充动作</p>
+    <div class="lib-tray" id="libTray">${footer()}</div>`, m => {
+    Kit.fadeEdges(m.querySelector('#libParts'));
     m.querySelector('[data-libext]').onclick = () => { showExt = S.libExt = !showExt; draw(); };
-    m.querySelectorAll('[data-pt]').forEach(b => b.onclick = () => { cur = b.dataset.pt; draw(); });
-    m.querySelectorAll('[data-add]').forEach(b => b.onclick = () => { close(); onPick(b.dataset.add); });
+    m.querySelectorAll('[data-pt]').forEach(b => b.onclick = () => { cur = b.dataset.pt; Kit.haptic('light'); draw(); });
+    const bindTray = () => {
+      const t = m.querySelector('#libTray'); t.innerHTML = footer();
+      t.querySelectorAll('[data-unpick]').forEach(b => b.onclick = () => { picked.splice(picked.indexOf(b.dataset.unpick), 1); const c = m.querySelector(`[data-add="${b.dataset.unpick}"]`); if (c) { c.classList.remove('picked'); c.setAttribute('aria-pressed', 'false'); } bindTray(); });
+      const ok = t.querySelector('#lib-ok'); if (ok) ok.onclick = () => { const list = picked.slice(); close(); onPick(list); };
+    };
+    m.querySelectorAll('[data-add]').forEach(b => b.onclick = () => {
+      const v = b.dataset.add, i = picked.indexOf(v);
+      if (i >= 0) picked.splice(i, 1); else picked.push(v);
+      b.classList.toggle('picked', i < 0); b.setAttribute('aria-pressed', i < 0); Kit.haptic('light'); bindTray();
+    });
+    bindTray();
   });
   draw();
 }

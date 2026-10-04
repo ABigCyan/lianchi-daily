@@ -3,25 +3,6 @@
 const { E, $, $$, esc, today, S, peek, rec, save, tasksFor, scoreDay, intakeOf, targetOf, burnOf, badges, celebrate, toast, sheet, close, head, bindHead, render, uid } = C;
 const { I } = Kit;
 
-/* 手动选食物：表19 全表（按原表大类分组）+ 表17 第5问的固定重量食物 */
-const FOODS = (() => {
-  const T = window.FOOD19, list = [];
-  T.carb.filter(f => f.r != null).forEach(f => list.push({ g: f.cat, n: f.n, unit: 'g', c: f.r, p: 0, f: 0, src: f.src }));
-  // 瘦肉的脂肪率按表17 第32行（瘦肉部分脂肪约 3%）；瘦肉干注意糖率低于 10%（表19 F101）
-  T.protein.filter(f => f.r != null).forEach(f => list.push({ g: '瘦肉（' + f.cat + '）', n: f.n, unit: 'g', c: /肉干/.test(f.n) ? 0.1 : 0, p: f.r, f: 0.03, src: f.src }));
-  T.mixed.filter(f => f.r != null).forEach(f => list.push({ g: '豆类（' + f.cat + '）', n: f.n, unit: 'g', c: f.c || 0, p: f.r, f: f.f || 0, src: f.src }));
-  const FIX = '固定重量（表19、表17 第5问）';
-  [['鸡蛋', '个', 0, 6, 5, '表19 C109'], ['纯牛奶 250ml', '盒', 12, 10, 9, '表19 C110'], ['代糖酸奶 200ml', '盒', 12, 10, 9, '表19 C111'],
-   ['乳清蛋白粉', 'g', 0, 0.75, 0.05, '表19 C102'], ['外卖饭盒米饭', '盒', 100, 0, 0, '表17 B45'], ['吐司切片面包', '片', 25, 0, 0, '表17 B45'],
-   ['去皮全鸡腿', '个', 0, 40, 8, '表17 B45'], ['去皮小鸡腿', '个', 0, 15, 3, '表17 B45'], ['去皮鸡翅根', '个', 0, 8, 2, '表17 B45'], ['去皮鸭腿', '个', 0, 20, 4, '表17 B45'],
-   ['苹果/橙子/香蕉', '个', 25, 0, 0, '表17 B45']].forEach(([n, unit, c, p, f, src]) => list.push({ g: FIX, n, unit, c, p, f, src }));
-  return list;
-})();
-function foodOptions() {
-  const groups = [];
-  FOODS.forEach((f, i) => { let g = groups.find(x => x.g === f.g); if (!g) groups.push(g = { g: f.g, items: [] }); g.items.push([f, i]); });
-  return groups.map(g => `<optgroup label="${esc(g.g)}">${g.items.map(([f, i]) => `<option value="${i}">${esc(f.n)}${f.unit === 'g' ? '' : '（每' + f.unit + '）'}</option>`).join('')}</optgroup>`).join('');
-}
 function mealsOf(d) { return tasksFor(d).meals; }
 function mealOf(d, key) { return mealsOf(d).find(m => m.key === key) || { key: 'extra', name: '加餐', c: 0, p: 0 }; }
 function nearestMeal(d) { const meals = mealsOf(d), nm = C.dayMin(E.mt(new Date().getHours() * 60 + new Date().getMinutes())); let b = meals[0]; meals.forEach(m => { if (Math.abs(C.dayMin(m.time) - nm) < Math.abs(C.dayMin(b.time) - nm)) b = m; }); return b; }
@@ -57,38 +38,107 @@ function bindFood() {
   $$('[data-meal]').forEach(b => b.onclick = () => addSheet(b.dataset.meal));
   $$('[data-f]').forEach(b => b.onclick = () => showEntry(peek(S.day).food[+b.dataset.f], +b.dataset.f));
 }
-function mealRow(d, sel) {
-  const meals = mealsOf(d), cur = sel || nearestMeal(d).key;
-  return `<div class="frow"><label for="fm-meal">餐次</label><select id="fm-meal">${meals.map(m => `<option value="${m.key}" ${m.key === cur ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}<option value="extra" ${cur === 'extra' ? 'selected' : ''}>加餐</option></select></div>`;
+function mealChips(d, cur) {
+  const meals = mealsOf(d).concat([{ key: 'extra', name: '加餐' }]);
+  return `<div class="seg-wrap glass"><div class="seg-scroll" id="fm-meals">${meals.map(m => `<button data-fm="${m.key}" aria-pressed="${m.key === cur}">${esc(m.name.replace(/（.*）/, ''))}</button>`).join('')}</div></div>`;
 }
-function addSheet(mealKey, mode) {
+/* 最近吃过的食物（近 30 天，按次数） */
+function recentFoods() {
+  const n = new Map();
+  for (let i = 0; i < 30; i++) ((peek(E.addDays(today(), -i)) || {}).food || []).forEach(e => e.items.forEach(it => {
+    const f = it.fid ? FoodDB.byId(it.fid) : FoodDB.list.find(x => String(it.name).startsWith(x.n + ' '));
+    if (f) n.set(f, (n.get(f) || 0) + 1);
+  }));
+  return [...n.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12).map(x => x[0]);
+}
+const per = f => { const u = f.unit === 'g' ? 100 : 1, m = FoodDB.calc(f, u); return `${f.unit === 'g' ? '每100g' : '每' + f.unit} · 碳水 ${m.c} · 蛋白 ${m.p} · ${m.kcal} kcal`; };
+/* 记录饮食：选食物（搜索 / 分类 / 最近 / 说一句话，多选后一次添加）、自己填、AI 估算 */
+function addSheet(mealKey, mode, preset) {
   const d = S.day;
-  let tab = mode === 'manual' ? 'pick' : 'menu';
+  mealKey = mealKey || nearestMeal(d).key;
+  let tab = mode === 'manual' || preset ? 'pick' : 'menu';
+  const recent = recentFoods();
+  let cat = recent.length ? '最近' : FoodDB.CATS[0], q = '';
+  const sel = (preset || []).map(x => ({ f: x.f, amt: x.amt, ask: x.ask || '' }));
   const draw = () => {
     let body = '';
-    if (tab === 'menu') body = `<div class="list" style="background:var(--fill3)">${mealRow(d, mealKey)}</div><div class="action-grid">${[['camera', I.camera, '拍照'], ['album', I.photo, '相册'], ['manual', I.pencil, '手动']].map(([k, ic, n]) => `<button class="action" data-src="${k}"><span class="ai">${ic}</span>${n}</button>`).join('')}</div>`;
+    if (tab === 'menu') body = `${mealChips(d, mealKey)}<div class="action-grid">${[['camera', I.camera, '拍照'], ['album', I.photo, '相册'], ['manual', I.pencil, '选食物']].map(([k, ic, n]) => `<button class="action" data-src="${k}"><span class="ai">${ic}</span>${n}</button>`).join('')}</div>`;
     else {
-      body = `<div class="segmented"><button data-tab="pick" aria-pressed="${tab === 'pick'}">选食物</button><button data-tab="own" aria-pressed="${tab === 'own'}">自己填</button><button data-tab="text" aria-pressed="${tab === 'text'}">文字 AI</button></div><div class="list" style="background:var(--fill3)">${mealRow(d, mealKey)}`;
-      if (tab === 'pick') body += `<div class="frow"><label for="fp-food">食物</label><select id="fp-food">${foodOptions()}</select></div><div class="frow"><label for="fp-amt" id="fp-unit">重量 g</label><input id="fp-amt" inputmode="decimal" placeholder="200"></div><div class="frow"><span class="lbl l2">估算</span><span class="num l2" id="fp-prev" style="text-align:right">—</span></div><p class="t-foot l3" id="fp-note" style="padding:0 20px 12px;margin:0"></p></div><button class="pill ink wide" id="fp-ok">添加</button><p class="t-cap l3" style="text-align:center">营养率来自表19、表17 B45</p>`;
-      if (tab === 'own') body += `<div class="frow"><label for="fo-n">名称</label><input id="fo-n" placeholder="例如：黄焖鸡"></div><div class="frow"><label for="fo-c">碳水 g</label><input id="fo-c" inputmode="decimal"></div><div class="frow"><label for="fo-p">蛋白质 g</label><input id="fo-p" inputmode="decimal"></div><div class="frow"><label for="fo-f">脂肪 g</label><input id="fo-f" inputmode="decimal"></div><div class="frow"><label for="fo-k">热量 kcal</label><input id="fo-k" inputmode="decimal" placeholder="空着自动算"></div></div><button class="pill ink wide" id="fo-ok">添加</button>`;
-      if (tab === 'text') body += `<div class="frow stack"><textarea class="field-in" id="ft-t" style="height:96px;padding:10px 12px;font-family:var(--font)" placeholder="例如：一碗米饭，青椒肉丝半份，一个卤鸡腿去皮"></textarea></div></div><button class="pill ink wide" id="ft-ok">${I.sparkles}让 AI 估算</button>`;
+      body = `${mealChips(d, mealKey)}<div class="segmented"><button data-tab="pick" aria-pressed="${tab === 'pick'}">选食物</button><button data-tab="own" aria-pressed="${tab === 'own'}">自己填</button><button data-tab="text" aria-pressed="${tab === 'text'}">AI 估算</button></div>`;
+      if (tab === 'pick') body += `<div class="fd-say"><input class="field-in" id="fd-say" placeholder="直接说：一根香蕉、两个鸡蛋、150g米饭" enterkeyhint="done"><button class="tbtn" id="fd-parse">识别</button></div>
+        <div class="fd-sel" id="fd-sel" hidden></div>
+        <div class="fd-search">${I.search}<input id="fd-q" placeholder="搜索表19 的食物" enterkeyhint="search" value="${esc(q)}"></div>
+        <div class="chips fd-cats">${(recent.length ? ['最近'] : []).concat(FoodDB.CATS).map(c => `<button data-cat="${c}" aria-pressed="${c === cat && !q}">${c}</button>`).join('')}</div>
+        <div class="list fd-list" id="fd-list"></div><p class="t-cap l3" style="text-align:center;margin:0">营养率来自表19、表17 B45；点一下加入，可以多选</p>
+        <div class="fd-tray" id="fd-tray" hidden></div>`;
+      if (tab === 'own') body += `<div class="list" style="background:var(--fill3)"><div class="frow"><label for="fo-n">名称</label><input id="fo-n" placeholder="例如：黄焖鸡"></div><div class="frow"><label for="fo-c">碳水 g</label><input id="fo-c" inputmode="decimal"></div><div class="frow"><label for="fo-p">蛋白质 g</label><input id="fo-p" inputmode="decimal"></div><div class="frow"><label for="fo-f">脂肪 g</label><input id="fo-f" inputmode="decimal"></div><div class="frow"><label for="fo-k">热量 kcal</label><input id="fo-k" inputmode="decimal" placeholder="空着自动算"></div></div><button class="pill ink wide" id="fo-ok">添加</button>`;
+      if (tab === 'text') body += `<div class="list" style="background:var(--fill3)"><div class="frow stack"><textarea class="field-in" id="ft-t" style="height:96px;padding:10px 12px;font-family:var(--font)" placeholder="例如：一碗米饭，青椒肉丝半份，一个卤鸡腿去皮"></textarea></div></div><button class="pill ink wide" id="ft-ok">${I.sparkles}让 AI 估算</button><p class="t-cap l3" style="text-align:center;margin:0">表里没有的菜（比如黄焖鸡）用这个，需要联网和云端大模型</p>`;
     }
     sheet(`<h2>记录饮食</h2>${body}`, m => {
-      const q = s => m.querySelector(s);
-      const meal = () => { mealKey = q('#fm-meal').value; return mealOf(d, mealKey); };
-      m.querySelectorAll('[data-src]').forEach(b => b.onclick = () => { const k = b.dataset.src; if (k === 'manual') { tab = 'pick'; meal(); draw(); } else { const x = meal(); close(); pickImage(x.key, k === 'camera'); } });
-      m.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { meal(); tab = b.dataset.tab; draw(); });
-      if (tab === 'pick') {
-        const upd = () => { const f = FOODS[+q('#fp-food').value], a = +q('#fp-amt').value || 0; q('#fp-unit').textContent = f.unit === 'g' ? '重量 g' : `数量（${f.unit}）`; q('#fp-prev').textContent = a ? `碳水 ${Math.round(f.c * a)} · 蛋白 ${Math.round(f.p * a)} · ${Math.round(f.c * a * 4 + f.p * a * 4 + f.f * a * 9)} kcal` : '—'; const nt = q('#fp-note'); if (nt) { const x = window.FOOD19.carb.concat(window.FOOD19.protein, window.FOOD19.mixed).find(y => y.src === f.src); nt.textContent = (x && x.note ? x.note + ' ' : '') + `（${f.src}${f.unit === 'g' ? '，按' + (/生|干|粉/.test(f.n) ? '生重/干重' : '熟重') + '计' : ''}）`; } };
-        q('#fp-food').onchange = upd; q('#fp-amt').oninput = upd; upd();
-        q('#fp-ok').onclick = () => { const f = FOODS[+q('#fp-food').value], a = +q('#fp-amt').value; if (!(a > 0)) { toast('请填重量或数量'); return; }
-          const it = { name: f.n + (f.unit === 'g' ? ` ${a}g` : ` ${a}${f.unit}`), grams: f.unit === 'g' ? a : 0, carbs_g: Math.round(f.c * a), protein_g: Math.round(f.p * a), fat_g: Math.round(f.f * a), category: '其他', note: f.src };
-          it.kcal = it.carbs_g * 4 + it.protein_g * 4 + it.fat_g * 9; saveEntry(d, meal(), { items: [it], source: 'manual', flags: [], advice: '' }); };
-      }
-      if (tab === 'own') q('#fo-ok').onclick = () => { const n = q('#fo-n').value.trim() || '手动记录', c = +q('#fo-c').value || 0, p = +q('#fo-p').value || 0, f = +q('#fo-f').value || 0, k = +q('#fo-k').value || (c * 4 + p * 4 + f * 9);
-        if (!k) { toast('至少填一个数'); return; } saveEntry(d, meal(), { items: [{ name: n, grams: 0, carbs_g: Math.round(c), protein_g: Math.round(p), fat_g: Math.round(f), kcal: Math.round(k), category: '其他', note: '' }], source: 'manual', flags: [], advice: '' }); };
-      if (tab === 'text') q('#ft-ok').onclick = () => { const txt = q('#ft-t').value.trim(); if (!txt) { toast('先写吃了什么'); return; } runAI(d, meal(), null, txt); };
+      const $q = s => m.querySelector(s);
+      Kit.fadeEdges($q('#fm-meals'));
+      m.querySelectorAll('[data-fm]').forEach(b => b.onclick = () => { mealKey = b.dataset.fm; Kit.haptic('light'); m.querySelectorAll('[data-fm]').forEach(x => x.setAttribute('aria-pressed', x === b)); const ok = $q('#fd-ok'); if (ok) ok.textContent = `添加 ${sel.length} 项到${mealOf(d, mealKey).name.replace(/（.*）/, '')}`; });
+      m.querySelectorAll('[data-src]').forEach(b => b.onclick = () => { const k = b.dataset.src; if (k === 'manual') { tab = 'pick'; draw(); } else { close(); pickImage(mealKey, k === 'camera'); } });
+      m.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; draw(); });
+      if (tab === 'pick') bindPick(m);
+      if (tab === 'own') $q('#fo-ok').onclick = () => { const n = $q('#fo-n').value.trim() || '手动记录', c = +$q('#fo-c').value || 0, p = +$q('#fo-p').value || 0, f = +$q('#fo-f').value || 0, k = +$q('#fo-k').value || (c * 4 + p * 4 + f * 9);
+        if (!k) { toast('至少填一个数'); return; } saveEntry(d, mealOf(d, mealKey), { items: [{ name: n, grams: 0, carbs_g: Math.round(c), protein_g: Math.round(p), fat_g: Math.round(f), kcal: Math.round(k), category: '其他', note: '' }], source: 'manual', flags: [], advice: '' }); };
+      if (tab === 'text') $q('#ft-ok').onclick = () => { const txt = $q('#ft-t').value.trim(); if (!txt) { toast('先写吃了什么'); return; } runAI(d, mealOf(d, mealKey), null, txt); };
     });
+  };
+  // 选食物：列表、已选托盘都只局部刷新，输入框不丢焦点
+  const bindPick = m => {
+    const $q = s => m.querySelector(s), listEl = $q('#fd-list'), trayEl = $q('#fd-tray');
+    const has = f => sel.some(x => x.f === f);
+    const drawList = () => {
+      const items = q ? FoodDB.search(q) : cat === '最近' ? recent : FoodDB.search('', cat);
+      let h = '', sub = null;
+      items.slice(0, 120).forEach(f => {
+        if (!q && cat !== '最近' && f.sub !== sub) { sub = f.sub; h += `<div class="fd-sub">${esc(sub)}</div>`; }
+        h += `<button class="fd-row ${has(f) ? 'on' : ''}" data-fid="${f.id}"><span class="fd-n">${esc(f.n)}</span><span class="fd-m">${per(f)}</span><span class="fd-add">${has(f) ? I.check : I.plus}</span></button>`;
+      });
+      listEl.innerHTML = h || `<div class="fd-empty">表19 里没有“${esc(q)}”。可以用“自己填”，或者联网后用“AI 估算”。</div>`;
+      listEl.querySelectorAll('[data-fid]').forEach(b => b.onclick = () => { const f = FoodDB.byId(b.dataset.fid), i = sel.findIndex(x => x.f === f); if (i >= 0) sel.splice(i, 1); else sel.push({ f, amt: FoodDB.defAmt(f), ask: '' }); Kit.haptic('light'); drawList(); drawTray(); });
+    };
+    const total = () => sel.reduce((t, x) => { const c = FoodDB.calc(x.f, +x.amt || 0); return { c: t.c + c.c, p: t.p + c.p, kcal: t.kcal + c.kcal }; }, { c: 0, p: 0, kcal: 0 });
+    const sumText = () => { const t = total(); return `碳水 ${t.c}g · 蛋白质 ${t.p}g · <b>${t.kcal} kcal</b>`; };
+    // 已选的放在上面（可以改分量），底部固定一条：合计 + 添加按钮
+    const selEl = $q('#fd-sel');
+    const drawTray = () => {
+      selEl.hidden = trayEl.hidden = !sel.length;
+      if (!sel.length) { selEl.innerHTML = trayEl.innerHTML = ''; return; }
+      selEl.innerHTML = `<div class="fd-sel-h"><span>已选 ${sel.length} 项</span><button class="link" id="fd-clear">清空</button></div>${sel.map((x, i) => `<div class="fd-item ${x.ask ? 'ask' : ''}"><div class="fd-it"><b>${esc(x.f.n)}</b><span>${x.ask ? esc(x.ask) : esc(FoodDB.note(x.f))}</span></div>
+        <div class="fd-amt"><button data-dn="${i}" aria-label="减少">−</button><input data-amt="${i}" inputmode="decimal" value="${x.amt == null ? '' : x.amt}" placeholder="?" aria-label="${esc(x.f.n)} 的${x.f.unit === 'g' ? '克数' : '数量'}"><em>${x.f.unit === 'g' ? 'g' : x.f.unit}</em><button data-up="${i}" aria-label="增加">+</button></div>
+        <button class="fd-x" data-rm="${i}" aria-label="去掉 ${esc(x.f.n)}">×</button></div>`).join('')}`;
+      trayEl.innerHTML = `<div class="fd-sum" id="fd-sum">${sumText()}</div><button class="pill ink wide" id="fd-ok">添加 ${sel.length} 项到${esc(mealOf(d, mealKey).name.replace(/（.*）/, ''))}</button>`;
+      selEl.querySelectorAll('[data-amt]').forEach(inp => inp.oninput = () => { const x = sel[+inp.dataset.amt]; x.amt = inp.value === '' ? null : +inp.value; x.ask = ''; inp.closest('.fd-item').classList.remove('ask'); $q('#fd-sum').innerHTML = sumText(); });
+      const bump = (i, dir) => { const x = sel[i], st = FoodDB.step(x.f); x.amt = Math.max(0, Math.round(((+x.amt || 0) + dir * st) * 100) / 100); x.ask = ''; Kit.haptic('light'); drawTray(); };
+      selEl.querySelectorAll('[data-up]').forEach(b => b.onclick = () => bump(+b.dataset.up, 1));
+      selEl.querySelectorAll('[data-dn]').forEach(b => b.onclick = () => bump(+b.dataset.dn, -1));
+      selEl.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { sel.splice(+b.dataset.rm, 1); drawList(); drawTray(); });
+      $q('#fd-clear').onclick = () => { sel.length = 0; drawList(); drawTray(); };
+      $q('#fd-ok').onclick = () => {
+        const bad = sel.find(x => !(+x.amt > 0));
+        if (bad) { toast(`请填“${bad.f.n}”的${bad.f.unit === 'g' ? '克数' : '数量'}`); const i = selEl.querySelector(`[data-amt="${sel.indexOf(bad)}"]`); if (i) i.focus(); return; }
+        saveEntry(d, mealOf(d, mealKey), { items: sel.map(x => FoodDB.item(x.f, +x.amt)), source: 'manual', flags: [], advice: '' });
+      };
+    };
+    $q('#fd-q').oninput = e => { q = e.target.value.trim(); m.querySelectorAll('[data-cat]').forEach(b => b.setAttribute('aria-pressed', !q && b.dataset.cat === cat)); drawList(); };
+    m.querySelectorAll('[data-cat]').forEach(b => b.onclick = () => { cat = b.dataset.cat; q = ''; $q('#fd-q').value = ''; m.querySelectorAll('[data-cat]').forEach(x => x.setAttribute('aria-pressed', x === b)); Kit.haptic('light'); drawList(); listEl.scrollIntoView({ block: 'nearest' }); });
+    // 说一句话：按规则拆成食物和分量（不用大模型，离线也能用）
+    const parse = () => {
+      const t = $q('#fd-say').value.trim(); if (!t) { toast('先写吃了什么'); return; }
+      const r = FoodDB.parse(t);
+      if (r.meal && mealsOf(d).some(x => x.key === r.meal)) { mealKey = r.meal; m.querySelectorAll('[data-fm]').forEach(x => x.setAttribute('aria-pressed', x.dataset.fm === mealKey)); }
+      r.items.forEach(x => { const old = sel.find(y => y.f === x.f); if (old) { old.amt = x.amt == null ? old.amt : x.amt; old.ask = x.ask; } else sel.push({ f: x.f, amt: x.amt, ask: x.ask }); });
+      if (r.items.length) { $q('#fd-say').value = ''; Kit.haptic('success'); }
+      if (r.unknown.length) toast(`表19 里没有：${r.unknown.join('、')}，可以用“自己填”或“AI 估算”`);
+      else if (!r.items.length) toast('没认出食物，换个说法试试，比如“两个鸡蛋”');
+      drawList(); drawTray();
+    };
+    $q('#fd-parse').onclick = parse;
+    $q('#fd-say').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); parse(); } };
+    drawList(); drawTray();
   };
   draw();
 }
@@ -139,5 +189,5 @@ function showEntry(f, idx, dataUrl) {
   };
   draw();
 }
-window.Food = { view: viewFood, bind: bindFood, addSheet };
+window.Food = { view: viewFood, bind: bindFood, addSheet, saveEntry, mealOf, mealsOf };
 })();

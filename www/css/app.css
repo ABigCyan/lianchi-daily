@@ -607,3 +607,69 @@ details.ref p{margin:4px 0}
 .src-item{margin:6px 0 0;padding:10px 12px;border-radius:14px;background:var(--fill)}
 .src-item b{font-size:12px;color:var(--ink2)}
 .src-item p{margin:4px 0 0;line-height:1.6;color:var(--ink2);white-space:pre-wrap}
+
+/* ---------- 选食物：说一句 / 搜索 / 分类 / 多选托盘 ---------- */
+.fd-say{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}
+.fd-say .tbtn{height:44px;padding:0 18px;border-radius:14px}
+.fd-search{display:flex;align-items:center;gap:8px;height:44px;border-radius:14px;background:var(--fill);padding:0 14px;color:var(--ink3)}
+.fd-search svg{width:18px;height:18px;flex:none}
+.fd-search input{flex:1;min-width:0;border:0;background:none;outline:none;font-size:16px;color:var(--ink)}
+.fd-cats{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;margin:0 -20px;padding:0 20px}
+.fd-cats::-webkit-scrollbar{display:none}
+.fd-cats button{flex:none}
+.fd-list{background:var(--fill);display:grid;max-height:42vh;overflow-y:auto;overscroll-behavior:contain;border-radius:20px}
+.fd-sub{font-size:12px;font-weight:600;color:var(--ink3);padding:12px 16px 4px;letter-spacing:.02em}
+.fd-row{display:grid;grid-template-columns:1fr auto;grid-template-areas:"n a" "m a";column-gap:12px;row-gap:2px;align-items:center;text-align:left;padding:10px 12px 10px 16px;min-height:56px;position:relative}
+.fd-row + .fd-row::before{content:"";position:absolute;top:0;left:16px;right:0;border-top:1px solid var(--hair)}
+.fd-n{grid-area:n;font-size:15px;font-weight:500;color:var(--ink);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fd-m{grid-area:m;font-size:12px;color:var(--ink3);font-variant-numeric:tabular-nums;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fd-add{grid-area:a;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:var(--card-solid);color:var(--ink2);box-shadow:0 0 0 .5px var(--hair);transition:background .15s,color .15s,transform .15s}
+.fd-add svg{width:16px;height:16px}
+.fd-row:active .fd-add{transform:scale(.9)}
+.fd-row.on .fd-add{background:var(--primary);color:var(--on-primary);box-shadow:none}
+.fd-empty{padding:20px 16px;font-size:14px;color:var(--ink3);text-align:center;line-height:1.5}
+.fd-tray{position:sticky;bottom:-22px;margin:0 -20px -22px;padding:12px 20px calc(16px + var(--sab,0px));display:grid;gap:10px;background:var(--chrome-strong);border-top:.5px solid var(--hair);-webkit-backdrop-filter:blur(20px) saturate(1.4);backdrop-filter:blur(20px) saturate(1.4);animation:rise .28s cubic-bezier(.2,.9,.25,1)}
+.fd-sel{display:grid;gap:8px}
+.fd-sel[hidden],.fd-tray[hidden]{display:none}
+.fd-sel-h{display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:600;color:var(--ink2);padding:0 4px}
+.fd-sel-h .link{min-height:0;font-size:13px}
+.fd-item{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:8px 6px 8px 12px;border-radius:16px;background:var(--fill)}
+.fd-item.ask{box-shadow:inset 0 0 0 1.5px var(--accent)}
+.fd-it{display:grid;min-width:0}
+.fd-it b{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fd-it span{font-size:11px;color:var(--ink3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fd-item.ask .fd-it span{color:var(--accent)}
+.fd-amt{display:inline-flex;align-items:center;border-radius:99px;background:var(--card-solid);height:34px;box-shadow:0 0 0 .5px var(--hair)}
+.fd-amt button{width:30px;height:34px;font-size:17px;color:var(--ink2)}
+.fd-amt input{width:46px;border:0;background:none;text-align:right;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums;color:var(--ink);outline:none;padding:0}
+.fd-amt em{font-style:normal;font-size:12px;color:var(--ink3);margin-left:2px}
+.fd-x{width:28px;height:28px;border-radius:50%;font-size:18px;line-height:1;color:var(--ink3)}
+.fd-sum{text-align:center;font-size:13px;color:var(--ink2);font-variant-numeric:tabular-nums}
+.fd-sum b{color:var(--ink)}
+
+/* ---------- 动作库多选 ---------- */
+.libitem{position:relative;transition:box-shadow .15s,transform .15s}
+.libitem:active{transform:scale(.98)}
+.libitem .lib-check{display:none;position:absolute;top:14px;right:14px;width:26px;height:26px;border-radius:50%;background:var(--primary);color:var(--on-primary);place-items:center;box-shadow:0 0 0 2px var(--card-solid)}
+.libitem .lib-check svg{width:15px;height:15px}
+.libitem.picked{box-shadow:inset 0 0 0 2px var(--primary)}
+.libitem.picked .lib-check{display:grid}
+.libitem.inplan{opacity:.45}
+.lib-tray{position:sticky;bottom:-22px;margin:0 -20px -22px;padding:12px 20px calc(16px + var(--sab,0px));display:grid;gap:10px;background:var(--chrome-strong);border-top:.5px solid var(--hair);-webkit-backdrop-filter:blur(20px) saturate(1.4);backdrop-filter:blur(20px) saturate(1.4)}
+.lib-picked{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.lib-picked::-webkit-scrollbar{display:none}
+.lib-chip{flex:none;height:30px;padding:0 6px 0 12px;border-radius:99px;background:var(--fill);font-size:13px;font-weight:500;color:var(--ink);display:inline-flex;align-items:center;gap:4px}
+.lib-chip span{width:20px;text-align:center;color:var(--ink3)}
+.legend i.dash{width:14px;height:0;border-radius:0;border-top:2px dashed var(--accent);background:none}
+
+/* ---------- 键盘：跟着键盘动画平滑上移（--kb 键盘高度、--kb-dur 动画时长，见 ui-kit.js） ---------- */
+#sab-probe{position:fixed;left:0;bottom:0;width:0;height:var(--sab);pointer-events:none;visibility:hidden}
+.chat{bottom:var(--kb,0px);transition:bottom var(--kb-dur,250ms) cubic-bezier(.2,0,0,1)}
+.modal{padding-bottom:var(--kb,0px);transition:padding-bottom var(--kb-dur,250ms) cubic-bezier(.2,0,0,1)}
+.modal .sheet{max-height:calc(88vh - var(--kb,0px));transition:max-height var(--kb-dur,250ms) cubic-bezier(.2,0,0,1)}
+body{padding-bottom:var(--kb,0px)}
+.kb-open .tabbar{opacity:0;pointer-events:none;transition:opacity .15s}
+.kb-open .modal .fd-tray,.kb-open .modal .lib-tray{padding-bottom:12px}
+@media (prefers-reduced-motion: reduce){.chat,.modal,.modal .sheet{transition:none}}
+.hap-try{display:flex;gap:6px;justify-self:end;flex-wrap:wrap;justify-content:flex-end}
+.hap-try .tbtn{height:32px;padding:0 12px;font-size:13px}

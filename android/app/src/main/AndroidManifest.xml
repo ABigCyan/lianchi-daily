@@ -41,4 +41,6 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- 应用内更新：安装下载好的新版本 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- 触感反馈 -->
+    <uses-permission android:name="android.permission.VIBRATE" />
 </manifest>

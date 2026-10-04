@@ -10,6 +10,9 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ApkInstallerPlugin.class);
         registerPlugin(AppChromePlugin.class);
         registerPlugin(LocalLlmPlugin.class);
+        // 清脆可调的触感、键盘弹出时页面跟着平滑上移
+        registerPlugin(FeelPlugin.class);
+        registerPlugin(ImeAnimPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

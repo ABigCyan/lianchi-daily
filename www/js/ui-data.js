@@ -24,20 +24,40 @@ function analysis(rows) {
   E.advice(S.profile, S.plan, weights(), today()).forEach(a => out.push({ cls: a.cls, title: a.cls === 'ok' ? '体重进度正常' : a.cls === 'warn' ? '体重进度需要注意' : '体重进度', text: a.text }));
   return { out, L, sum };
 }
+/* 平滑曲线：单调三次插值（Fritsch-Carlson），不会冲过数据点，折线看起来连贯又不失真 */
+function smooth(pts) {
+  if (pts.length < 2) return pts.length ? `M${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}` : '';
+  const n = pts.length, dx = [], m = [], t = [];
+  for (let i = 0; i < n - 1; i++) { dx[i] = pts[i + 1][0] - pts[i][0]; m[i] = (pts[i + 1][1] - pts[i][1]) / dx[i]; }
+  t[0] = m[0]; t[n - 1] = m[n - 2];
+  for (let i = 1; i < n - 1; i++) t[i] = m[i - 1] * m[i] <= 0 ? 0 : 3 * (dx[i - 1] + dx[i]) / ((2 * dx[i] + dx[i - 1]) / m[i - 1] + (dx[i] + 2 * dx[i - 1]) / m[i]);
+  let d = `M${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+  for (let i = 0; i < n - 1; i++) {
+    const [x0, y0] = pts[i], [x1, y1] = pts[i + 1], h = dx[i] / 3;
+    d += ` C${(x0 + h).toFixed(1)} ${(y0 + t[i] * h).toFixed(1)} ${(x1 - h).toFixed(1)} ${(y1 - t[i + 1] * h).toFixed(1)} ${x1.toFixed(1)} ${y1.toFixed(1)}`;
+  }
+  return d;
+}
 function energyChart(rows) {
-  const W = 600, H = 190, L = 40, R = 6, T = 8, B = 24;
-  const top = Math.ceil(Math.max(...rows.map(r => Math.max(r.in, r.out, r.target)), 1000) / 500) * 500;
-  const bw = (W - L - R) / rows.length, Y = v => T + (H - T - B) * (1 - v / top);
+  const W = 600, H = 200, L = 40, R = 14, T = 14, B = 24;
+  const top = Math.ceil(Math.max(...rows.map(r => Math.max(r.logged ? r.in : 0, r.out, r.target)), 1000) / 500) * 500;
+  const bw = (W - L - R) / rows.length, X = i => L + bw * (i + .5), Y = v => T + (H - T - B) * (1 - v / top);
   let g = '';
   for (let v = 0; v <= top; v += top / 4) g += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--sep)" stroke-width=".5"/><text x="${L - 6}" y="${Y(v) + 4}" text-anchor="end">${v}</text>`;
-  rows.forEach((r, i) => {
-    const x = L + i * bw, w = Math.min(13, bw * .3);
-    g += `<rect x="${x + bw / 2 - w - 1.5}" y="${Y(r.out)}" width="${w}" height="${Y(0) - Y(r.out)}" rx="${w / 2}" fill="var(--ink4)"/>`;
-    if (r.logged) g += `<rect x="${x + bw / 2 + 1.5}" y="${Y(r.in)}" width="${w}" height="${Y(0) - Y(r.in)}" rx="${w / 2}" fill="var(--ink)"/>`;
-    g += `<line x1="${x + bw * .14}" x2="${x + bw * .86}" y1="${Y(r.target)}" y2="${Y(r.target)}" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="2 4"/>`;
-    const dd = E.pd(r.d); g += `<text x="${x + bw / 2}" y="${H - 6}" text-anchor="middle">${rows.length > 10 ? dd.getDate() : (dd.getMonth() + 1) + '/' + dd.getDate()}</text>`;
-  });
-  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="每日摄入与消耗">${g}</svg><div class="legend"><span><i style="background:var(--ink)"></i>摄入</span><span><i style="background:var(--ink4)"></i>消耗</span><span><i style="background:var(--accent)"></i>应吃</span></div>`;
+  rows.forEach((r, i) => { const dd = E.pd(r.d); if (rows.length <= 10 || i % 2 === (rows.length - 1) % 2) g += `<text x="${X(i)}" y="${H - 6}" text-anchor="middle">${rows.length > 10 ? dd.getDate() : (dd.getMonth() + 1) + '/' + dd.getDate()}</text>`; });
+  const out = rows.map((r, i) => [X(i), Y(r.out)]), tgt = rows.map((r, i) => [X(i), Y(r.target)]);
+  const inn = rows.map((r, i) => r.logged ? [X(i), Y(r.in)] : null).filter(Boolean);
+  // 应吃：虚线；消耗：浅色实线；摄入：深色实线 + 渐变面积，只连有记录的日子
+  g += `<path d="${smooth(tgt)}" fill="none" stroke="var(--accent)" stroke-width="1.6" stroke-dasharray="3 5" stroke-linecap="round"/>`;
+  g += `<path d="${smooth(out)}" fill="none" stroke="var(--ink4)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>`;
+  if (inn.length > 1) g += `<path d="${smooth(inn)} L${inn[inn.length - 1][0].toFixed(1)} ${Y(0)} L${inn[0][0].toFixed(1)} ${Y(0)} Z" fill="url(#eg)"/>`;
+  if (inn.length) g += `<path d="${smooth(inn)}" fill="none" stroke="var(--ink)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>`;
+  out.forEach(([x, y]) => g += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.6" fill="var(--ink4)"/>`);
+  inn.forEach(([x, y], i) => g += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${i === inn.length - 1 ? 4.5 : 3}" fill="${i === inn.length - 1 ? 'var(--accent)' : 'var(--ink)'}" stroke="var(--card-solid)" stroke-width="1.5"/>`);
+  const last = rows.map((r, i) => ({ r, i })).filter(x => x.r.logged).pop();
+  if (last) { const x = X(last.i), y = Y(last.r.in); g += `<text x="${Math.min(x, W - R - 4)}" y="${Math.max(y - 10, T + 8)}" text-anchor="${x > W - 60 ? 'end' : 'middle'}" style="font-weight:600;fill:var(--ink)">${last.r.in}</text>`; }
+  const note = rows.some(r => r.logged) ? '' : '<p class="t-cap l3" style="margin:4px 0 0">还没有饮食记录，记录后会画出摄入曲线</p>';
+  return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="每日摄入与消耗"><defs><linearGradient id="eg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--ink)" stop-opacity=".12"/><stop offset="1" stop-color="var(--ink)" stop-opacity="0"/></linearGradient></defs>${g}</svg>${note}<div class="legend"><span><i style="background:var(--ink)"></i>摄入</span><span><i style="background:var(--ink4)"></i>消耗</span><span><i class="dash"></i>应吃</span></div>`;
 }
 function weightChart() {
   const ws = weights(); if (ws.length < 2) return '<p class="t-sub l2">记录两天以上体重后显示趋势。</p>';

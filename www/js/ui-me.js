@@ -461,8 +461,15 @@ function viewSettings() {
     <div class="frow stack"><div class="look-preview"><div class="lp-bg" aria-hidden="true"><i></i><i></i><i></i></div><div class="mat card lp-card"><span class="eyebrow">预览</span><div class="fig" style="font-size:40px">1885<small>kcal</small></div><div class="progress"><i style="width:62%;background:var(--accent)"></i></div></div></div></div></div>
     <div class="list-footer">卡片默认不透明；堆叠卡组最上面一张总是不透明。模糊只用在标签栏、顶部导航和弹出面板上；手机发热或卡顿时可以打开省电模式。<button class="link" id="look-reset" style="min-height:0;font-size:12px">恢复默认</button></div></section>`;
   h += `<section class="fsec"><h3>插件</h3><div class="list mat"><button class="row" data-sub="localai"><span class="row-ico">${I.sparkles}</span><span class="row-main"><span class="row-title">内置模型</span><span class="row-sub">在手机上运行的小模型 · 测试版</span></span><span class="row-val chev"><span class="rv">${LocalAI.prefs().enabled ? '已开启' : '未开启'}</span></span></button></div></section>`;
+  const fl = Kit.feel(), hm = Kit.hapticMode();
+  h += `<section class="fsec"><h3>震动</h3><div class="list mat">
+    <div class="frow"><span class="lbl">震动</span><div class="segmented" style="justify-self:end" data-hap>${[['all', '开'], ['long', '仅长按'], ['off', '关']].map(([k, n]) => `<button data-v="${k}" aria-pressed="${hm === k}">${n}</button>`).join('')}</div></div>
+    ${hm === 'off' ? '' : `<div class="frow"><span class="lbl">质感</span><div class="segmented" style="justify-self:end" data-feel>${[['crisp', '清脆'], ['system', '跟随系统']].map(([k, n]) => `<button data-v="${k}" aria-pressed="${fl.style === k}">${n}</button>`).join('')}</div></div>
+    ${fl.style === 'crisp' ? `<div class="frow stack"><div class="range-h"><span>强度</span><span class="num" id="rv-hs">${['很轻', '轻', '适中', '强', '很强'][fl.strength - 1]}</span></div><input type="range" class="range" id="rg-hs" min="1" max="5" step="1" value="${fl.strength}" aria-label="震动强度"></div>` : ''}
+    <div class="frow"><span class="lbl">试一下</span><div class="hap-try">${[['tick', '滚轮'], ['light', '轻点'], ['medium', '长按'], ['success', '完成']].map(([k, n]) => `<button class="tbtn" data-try="${k}">${n}</button>`).join('')}</div></div>`}</div>
+    <div class="list-footer" id="hap-note">${hm === 'off' ? '已关闭全部震动。' : fl.style === 'crisp' ? '清脆：用系统的短促触感（像按键的“哒”一下），强度可以调。' : '跟随系统：用手机厂商调好的按键触感，强弱跟着系统设置；系统里关了触感反馈就不震。'}</div></section>`;
   h += `<section class="fsec"><h3>通用</h3><div class="list mat">
-    <div class="frow"><span class="lbl">震动</span><div class="segmented" style="justify-self:end" data-hap>${[['all', '开'], ['long', '仅长按'], ['off', '关']].map(([k, n]) => `<button data-v="${k}" aria-pressed="${Kit.hapticMode() === k}">${n}</button>`).join('')}</div></div>
+    <div class="frow" id="st-ime-row" hidden><label for="st-ime">键盘弹出动效</label><input type="checkbox" class="switch" id="st-ime"></div>
     <div class="frow"><label for="st-auto">自动检查更新</label><input type="checkbox" class="switch" id="st-auto" ${up.auto ? 'checked' : ''}></div>
     <button class="row" id="st-check" style="grid-template-columns:1fr auto"><span class="row-main"><span class="row-title">现在检查更新</span></span><span class="row-val chev">${APP_VERSION}</span></button>
     <div class="frow"><label for="st-guide">下次打开时显示新手引导</label><input type="checkbox" class="switch" id="st-guide" ${LS.get('guideNext') ? 'checked' : ''}></div>
@@ -485,8 +492,18 @@ function bindSettings() {
   $('#rg-alpha').oninput = e => { Look.set({ alpha: +e.target.value }); $('#rv-alpha').textContent = Math.round(e.target.value * 100) + '%'; };
   $('#st-lite').onchange = e => { Look.set({ lite: e.target.checked }); toast(e.target.checked ? '已关闭模糊和动画' : '已恢复'); };
   $('#look-reset').onclick = () => { Look.reset(); Kit.haptic('light'); render(); toast('已恢复默认外观'); };
-  $$('[data-hap] button').forEach(b => b.onclick = () => { Kit.setHaptic(b.dataset.v); Kit.haptic('medium', true); render(); toast(b.dataset.v === 'off' ? '已关闭震动' : b.dataset.v === 'long' ? '只有长按时震动（长按安排可改时间、长按动作可换动作）' : '已开启震动'); });
+  $$('[data-hap] button').forEach(b => b.onclick = () => { const y = scrollY; Kit.setHaptic(b.dataset.v); Kit.haptic('medium', true); render(); scrollTo(0, y); toast(b.dataset.v === 'off' ? '已关闭震动' : b.dataset.v === 'long' ? '只有长按时震动（长按安排可改时间、长按动作可换动作）' : '已开启震动'); });
+  $$('[data-feel] button').forEach(b => b.onclick = () => { const y = scrollY; Kit.setFeel({ style: b.dataset.v }); Kit.haptic('medium', true, true); render(); scrollTo(0, y); });
+  const hs = $('#rg-hs');
+  if (hs) { let last = +hs.value; hs.oninput = () => { const v = +hs.value; $('#rv-hs').textContent = ['很轻', '轻', '适中', '强', '很强'][v - 1]; if (v !== last) { last = v; Kit.setFeel({ strength: v }); Kit.haptic('medium', true, true); } }; }
+  $$('[data-try]').forEach(b => b.onclick = () => Kit.haptic(b.dataset.try, true, true));
+  // 这台手机支不支持清脆的触感原语：不支持时说明会退到预设效果
+  Kit.feelInfo().then(i => { const n = $('#hap-note'); if (!i || !n || Kit.feel().style !== 'crisp' || Kit.hapticMode() === 'off') return; if (!i.primitives) n.textContent += i.predefined ? ' 这台手机不支持细调触感，会用系统预设的“点击”效果，强度分轻/中/重三档。' : ' 这台手机的震动马达比较老，只能做很短的一下。'; });
   $('#st-auto').onchange = e => Updater.savePrefs({ auto: e.target.checked });
+  // 键盘弹出动效（安卓 11+）：页面不被压扁，输入框跟着键盘平滑上移；个别手机不正常时可以关掉，恢复系统原来的做法
+  const ime = window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform() && window.capacitorExports && capacitorExports.registerPlugin('ImeAnim');
+  if (ime) ime.info().then(i => { if (!i.supported) return; $('#st-ime-row').hidden = false; $('#st-ime').checked = i.smooth;
+    $('#st-ime').onchange = e => { ime.setSmooth({ on: e.target.checked }); Kit.haptic('light'); toast(e.target.checked ? '已开启：键盘弹出时页面跟着平滑上移' : '已关闭：键盘弹出时按系统原来的方式压缩页面'); }; }).catch(() => {});
   $('#st-check').onclick = () => Updater.check(false);
   $('#st-guide').onchange = e => { LS.set('guideNext', e.target.checked); toast(e.target.checked ? '下次打开 App 时会显示引导' : '已关闭'); };
   $('#st-guide-now').onclick = () => { S.sub = null; Guide.start(); render(); scrollTo(0, 0); };

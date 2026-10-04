@@ -45,18 +45,60 @@ const I = {
 const KIND = { train: ['训练', I.train, 'k-train'], food: ['饮食', I.food, 'k-food'], cardio: ['有氧', I.run, 'k-cardio'], habit: ['习惯', I.clock, 'k-habit'], sleep: ['睡眠', I.moon, 'k-sleep'], scale: ['称重', I.scale, 'k-habit'] };
 
 /* ---------- 触感反馈（HIG：动效之外用触感补充反馈） ---------- */
-/* 震动设置：all 全部开 / long 只有长按时 / off 关（我的 → 设置） */
-let hapticMode = (() => { try { return JSON.parse(localStorage.getItem('lcd:haptic')) || 'all'; } catch (e) { return 'all'; } })();
-function setHaptic(m) { hapticMode = m; try { localStorage.setItem('lcd:haptic', JSON.stringify(m)); } catch (e) { /* 存不下不影响 */ } }
-function haptic(kind, fromLongPress) {
-  if (hapticMode === 'off' || (hapticMode === 'long' && !fromLongPress)) return;
+/* 震动设置：all 全部开 / long 只有长按时 / off 关；强度 1-5；质感 crisp 清脆（触感原语）/ system 跟随系统按键触感（我的 → 设置） */
+const lsGet = (k, d) => { try { const v = JSON.parse(localStorage.getItem('lcd:' + k)); return v == null ? d : v; } catch (e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem('lcd:' + k, JSON.stringify(v)); } catch (e) { /* 存不下不影响 */ } };
+let hapticMode = lsGet('haptic', 'all'), feel = Object.assign({ strength: 3, style: 'crisp' }, lsGet('hapticFeel', {}));
+function setHaptic(m) { hapticMode = m; lsSet('haptic', m); }
+function setFeel(f) { feel = Object.assign({}, feel, f); lsSet('hapticFeel', feel); }
+const isNative = () => !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
+let Feel = null;
+const feelPlugin = () => Feel || (Feel = isNative() && (window.capacitorExports ? capacitorExports.registerPlugin('Feel') : Capacitor.registerPlugin && Capacitor.registerPlugin('Feel')));
+function haptic(kind, fromLongPress, force) {
+  if (!force && (hapticMode === 'off' || (hapticMode === 'long' && !fromLongPress))) return;
   try {
-    const H = window.capacitorHaptics && window.capacitorHaptics.Haptics;
-    if (H && window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()) {
-      if (kind === 'success') H.notification({ type: 'SUCCESS' }); else H.impact({ style: kind === 'medium' ? 'MEDIUM' : 'LIGHT' });
-    } else if (navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate(kind === 'success' ? [10, 40, 10] : 8);
+    const F = feelPlugin();
+    if (F) { F.play({ kind: kind || 'light', strength: [0.25, 0.45, 0.65, 0.82, 1][Math.max(0, Math.min(4, (+feel.strength || 3) - 1))], style: feel.style }).catch(() => {}); return; }
+    if (navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate(kind === 'success' ? [6, 50, 6] : kind === 'tick' ? 3 : 6);
   } catch (e) { /* 没有触感也不影响使用 */ }
 }
+async function feelInfo() { try { const F = feelPlugin(); return F ? await F.info() : null; } catch (e) { return null; } }
+
+/* ---------- 键盘：页面不被系统压扁，输入框、底部面板跟着键盘一起平滑上移 ---------- */
+// 原生（ImeAnimPlugin，安卓 11+）在键盘动画开始时调用 window.__ime(键盘高度, 动画毫秒)；
+// 浏览器里用 visualViewport 估算。页面用 CSS 变量 --kb（键盘高度）和 --kb-dur（动画时长）排版。
+let kbH = 0;
+const kbListeners = new Set();
+function onKeyboard(fn) { kbListeners.add(fn); return () => kbListeners.delete(fn); }
+function setKb(h, dur) {
+  h = Math.max(0, Math.round(h)); dur = Math.max(0, Math.min(600, dur || 0));
+  const root = document.documentElement.style;
+  root.setProperty('--kb-dur', (dur || 120) + 'ms'); root.setProperty('--kb', h + 'px');
+  document.documentElement.classList.toggle('kb-open', h > 0);
+  const was = kbH; kbH = h;
+  if (was === h) return;
+  kbListeners.forEach(fn => { try { fn(h, dur); } catch (e) { /* 忽略 */ } });
+  if (h > was) setTimeout(revealFocused, (dur || 120) + 30);
+}
+window.__ime = setKb;
+// 键盘出来以后：正在输入的框被挡住就滚上来（底部面板里的滚面板，页面上的滚页面）
+function revealFocused() {
+  const el = document.activeElement;
+  if (!el || !/^(INPUT|TEXTAREA)$/.test(el.tagName) || el.closest('.composer')) return;
+  const sheet = el.closest('.sheet');
+  if (sheet) { el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); return; }
+  const r = el.getBoundingClientRect(), probe = document.getElementById('sab-probe'), sab = probe ? probe.offsetHeight : 0;
+  const limit = innerHeight - kbH - sab - 16;
+  if (r.bottom > limit) scrollBy({ top: r.bottom - limit + 24, behavior: 'smooth' });
+}
+if (window.visualViewport) {
+  let raf = 0;
+  visualViewport.addEventListener('resize', () => {
+    if (window.__imeNative || raf) return;
+    raf = requestAnimationFrame(() => { raf = 0; const h = innerHeight - visualViewport.height - visualViewport.offsetTop; setKb(h > 80 ? h : 0, 0); });
+  });
+}
+document.addEventListener('focusin', e => { if (kbH && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) setTimeout(revealFocused, 60); });
 
 /* ---------- 大标题 + 滚动后显示的玻璃导航栏 ---------- */
 function largeTitle(title, subtitle, trailing) {
@@ -159,7 +201,7 @@ function timeWheel(value, title, cb) {
   cols[0].scrollTop = h0 * IH; cols[1].scrollTop = m0 * IH;
   cols.forEach(c => {
     let last = mark(c), raf = 0;
-    c.addEventListener('scroll', () => { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; const i = mark(c); if (i !== last) { last = i; haptic('light'); } }); }, { passive: true });
+    c.addEventListener('scroll', () => { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; const i = mark(c); if (i !== last) { last = i; haptic('tick'); } }); }, { passive: true });
     c.addEventListener('click', e => { const it = e.target.closest('.tw-item'); if (it) c.scrollTo({ top: +it.dataset.i * IH, behavior: 'smooth' }); });
   });
   const close = ok => {
@@ -196,5 +238,5 @@ function fadeEdges(el) {
   if (on && (on.offsetLeft + on.offsetWidth > el.clientWidth)) { el.scrollLeft = on.offsetLeft - 24; upd(); }
 }
 
-return { I, KIND, haptic, setHaptic, hapticMode: () => hapticMode, longPress, timeWheel, fadeEdges, largeTitle, setNav, rings, deck, bindDeck, chk, row, $, $$ };
+return { I, KIND, haptic, setHaptic, hapticMode: () => hapticMode, feel: () => feel, setFeel, feelInfo, onKeyboard, kbHeight: () => kbH, longPress, timeWheel, fadeEdges, largeTitle, setNav, rings, deck, bindDeck, chk, row, $, $$ };
 })();

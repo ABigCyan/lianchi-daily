@@ -29,7 +29,7 @@ function goBack() {
   if (window.__closeWheel && window.__closeWheel()) return true;
   const m = $('#modal');
   if (m && !m.hidden) { C.close(); return true; }
-  if (S.chatOn) { S.chatOn = false; if (window.visualViewport) visualViewport.onresize = null; render(); scrollTo(0, 0); return true; }
+  if (S.chatOn) { S.chatOn = false; render(); scrollTo(0, 0); return true; }
   if (S.guideOn) return Guide.back();
   if (S.sub) { S.sub = S.sub === 'localai' && S.subBack ? S.subBack : null; S.subBack = null; S.firstImport = false; render(); scrollTo(0, 0); return true; }
   if (S.edit) { S.edit = false; render(); return true; }

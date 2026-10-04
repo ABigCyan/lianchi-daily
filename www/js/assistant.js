@@ -211,10 +211,15 @@ const TOOLS = [
     date: { type: 'string' }, type: { type: 'string', enum: ['lift', 'rest', 'auto'] }, reason: { type: 'string' } }, required: ['date', 'type', 'reason'] } },
   { name: 'exercise_info', description: '查一个动作或器械：动作名、用的器械、是否多关节、是否要避免力竭、所属肌群和套表出处、同组可替换的动作，以及 B站 教程搜索链接。可以按 exercise_id 或名称查。', parameters: { type: 'object', properties: { exercise_id: { type: 'string' }, name: { type: 'string' } } } },
   { name: 'video_links', description: '给出教程视频链接：套表里提到的 B站 视频（带出处），以及按关键词搜 B站 的链接（表21 C4：动作教程在 B站 搜动作名称即可）。', parameters: { type: 'object', properties: { topic: { type: 'string', description: '动作名或主题，例如“高位下拉”“饮食定量”' } }, required: ['topic'] } },
+  { name: 'search_foods', description: '在表19（食物营养率）和表17 第5问（固定重量食物）里找食物，返回每100g或每个的碳水、蛋白质、脂肪、热量和出处。记饮食、算热量前先查。', parameters: { type: 'object', properties: { query: { type: 'string', description: '食物名，例如“香蕉”“鸡胸肉”“米饭”' } }, required: ['query'] } },
+  { name: 'log_food', description: '帮用户记一餐吃了什么（饮食页同步，并把这一餐标成完成）。foods 里每项：name 用 search_foods 查到的表19 名称 + amount 分量（unit 为 g 时是克数，否则是个数）；表19 没有的菜（比如黄焖鸡）可以自己估算 carbs_g、protein_g、fat_g，并设 estimated=true。replace=true 表示替换这一餐已经记的（用户说“改成”时）。会先让用户确认。', parameters: { type: 'object', properties: {
+    date: { type: 'string', description: 'YYYY-MM-DD，默认今天' }, meal_key: { type: 'string', description: 'get_today 的 meals 里的 meal_key（breakfast/lunch/dinner/pre/post/snack），加餐用 extra' },
+    foods: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, amount: { type: 'number' }, unit: { type: 'string', description: 'g、个、盒、片' }, carbs_g: { type: 'number' }, protein_g: { type: 'number' }, fat_g: { type: 'number' }, estimated: { type: 'boolean' } }, required: ['name'] } },
+    replace: { type: 'boolean' }, reason: { type: 'string' } }, required: ['meal_key', 'foods'] } },
   { name: 'set_today_training', description: '换今天练哪一天（day_index 来自 get_my_plan），或者用 group_ids 自选几个肌群。会先让用户确认。', parameters: { type: 'object', properties: { day_index: { type: 'integer' }, group_ids: { type: 'array', items: { type: 'string' } }, reason: { type: 'string' } } } },
 ];
-const WRITE = new Set(['update_profile', 'edit_training', 'set_today_training', 'edit_timeline', 'set_meal_amounts', 'set_day_training', 'create_custom_split']);
-const STEP_TEXT = { search_refs: a => `查补充资料：${a.query || ''}`, list_groups: () => '查肌群模板', create_custom_split: a => `准备定制分化：${a.name || ''}`, search_excel: a => `查套表：${a.query || ''}${a.sheet ? '（表' + a.sheet + '）' : ''}`, read_excel_rows: a => `读原文：表${a.sheet} 第${a.from_row}-${a.to_row}行`, get_my_plan: () => '看你的计划', get_today: a => `看${a.date || '今天'}的安排`, get_history: a => `看最近 ${a.days || 14} 天记录`, list_exercises: a => `查动作库${a.part ? '：' + a.part : ''}`, update_profile: () => '准备修改计划', edit_training: () => '准备修改训练动作', set_today_training: () => '准备换今天的训练', edit_timeline: a => `准备修改${a.date || '今天'}的安排`, set_meal_amounts: a => `准备调整${a.date || '今天'}各餐分量`, set_day_training: a => `准备设置 ${a.date} 练不练`, exercise_info: a => `查动作：${a.name || a.exercise_id || ''}`, video_links: a => `找视频：${a.topic || ''}`, describe_image: () => '看图片' };
+const WRITE = new Set(['log_food', 'update_profile', 'edit_training', 'set_today_training', 'edit_timeline', 'set_meal_amounts', 'set_day_training', 'create_custom_split']);
+const STEP_TEXT = { search_foods: a => `查表19：${a.query || ''}`, log_food: () => '准备记饮食', search_refs: a => `查补充资料：${a.query || ''}`, list_groups: () => '查肌群模板', create_custom_split: a => `准备定制分化：${a.name || ''}`, search_excel: a => `查套表：${a.query || ''}${a.sheet ? '（表' + a.sheet + '）' : ''}`, read_excel_rows: a => `读原文：表${a.sheet} 第${a.from_row}-${a.to_row}行`, get_my_plan: () => '看你的计划', get_today: a => `看${a.date || '今天'}的安排`, get_history: a => `看最近 ${a.days || 14} 天记录`, list_exercises: a => `查动作库${a.part ? '：' + a.part : ''}`, update_profile: () => '准备修改计划', edit_training: () => '准备修改训练动作', set_today_training: () => '准备换今天的训练', edit_timeline: a => `准备修改${a.date || '今天'}的安排`, set_meal_amounts: a => `准备调整${a.date || '今天'}各餐分量`, set_day_training: a => `准备设置 ${a.date} 练不练`, exercise_info: a => `查动作：${a.name || a.exercise_id || ''}`, video_links: a => `找视频：${a.topic || ''}`, describe_image: () => '看图片' };
 
 /* ---------- 对话状态 ---------- */
 const st = { busy: false, view: [], msgs: [], pending: {}, ctl: null, img: null, draft: LS.get('chatDraft') || '' };
@@ -239,6 +244,7 @@ function sysPrompt() {
     '4. 不做医疗诊断；伤病、疾病、用药问题提醒就医。',
     '7. 安排当天或以后的日子（节假日回来、今天有事、聚餐、加班）：先 get_today 看那一天，再按套表规则用 edit_timeline（删/加/改时间）、set_meal_amounts（挪各餐分量，全天合计保持配额）、set_day_training（这天练不练）。不吃零食/夜宵时分量并到其他餐（表5 B89）；练前餐只垫碳水（表5 I44）；休息日自己安排，不必一轮练完才休息（表21 C8）。',
     '8. 用户发了照片时，消息里会附上“图片识别”的文字。识别器械、说明器械怎么调这类套表没写的操作常识可以用常识回答，但要在句末标“（常识，非套表）”；组数、次数、重量、饮食分量、计划安排仍然只按套表。',
+    '12. 用户说吃了什么、要记饮食或算热量：先 search_foods 查表19，再用 log_food 记（表19 没有的菜估算碳水蛋白质脂肪并设 estimated=true，回答里说明是估算）；说“改成”时 replace=true。只问热量不让记时，只回答不调用 log_food。',
     '9. 需要教程视频时用 video_links 或 exercise_info，把链接原样给用户（Markdown 链接格式 [文字](网址)），不要自己编视频号。',
     '5. 用户要改计划（目标、目标体重、训练日、部位、分化、动作、组数、今天练什么）：直接调用 update_profile / edit_training / set_today_training，App 会弹出确认卡，由用户决定改不改，你不用再口头问“要不要改”。和套表建议冲突时，把冲突和出处写进 reason，照样调用工具。一次请求里有几项修改，就都放进同一次调用。',
     '6. 中文回答，先结论后理由，一般不超过 250 字。可以用“- ”列要点、用 **粗体** 强调，不要用表格和标题。',
@@ -246,11 +252,57 @@ function sysPrompt() {
   ].join('\n');
 }
 
+/* ---------- 记饮食（云端 log_food 和离线规则共用）：表19 能查到的按表算，查不到的用估算值并标明 ---------- */
+function foodItems(foods) {
+  const items = [], bad = [];
+  (foods || []).forEach(x => {
+    const unit = String(x.unit || '').trim(), amt = +x.amount;
+    let f = FoodDB.byName(String(x.name || '').trim());
+    if (!f) { const r = FoodDB.parse(`${amt > 0 ? amt + (unit || '') : ''}${x.name}`); if (r.items.length === 1) { f = r.items[0].f; if (!(amt > 0) && r.items[0].amt) x.amount = r.items[0].amt; } }
+    if (f) {
+      let a = +x.amount;
+      if (!(a > 0)) a = f.unit === 'g' ? NaN : 1;
+      if (f.unit !== 'g' && /^(g|克)$/.test(unit)) { bad.push(`${f.n} 是按${f.unit}算的，请给个数`); return; }
+      if (!(a > 0)) { bad.push(`${f.n} 要写克数`); return; }
+      items.push(FoodDB.item(f, a));
+    } else if (x.carbs_g != null || x.protein_g != null || x.fat_g != null) {
+      const c = Math.round(+x.carbs_g || 0), p = Math.round(+x.protein_g || 0), fat = Math.round(+x.fat_g || 0);
+      items.push({ name: `${x.name}${amt > 0 ? ' ' + amt + (unit || '') : ''}`, grams: /^(g|克)$/.test(unit) ? amt : 0, carbs_g: c, protein_g: p, fat_g: fat, kcal: c * 4 + p * 4 + fat * 9, category: '其他', note: '估算（不在表19）', est: true });
+    } else bad.push(`表19 里没有“${x.name}”`);
+  });
+  return { items, bad };
+}
+async function logFood(a, viaLocal) {
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(a.date || '') ? a.date : today();
+  if (d > today()) return { ok: false, error: '不能记以后的饮食' };
+  const meals = tasksFor(d).meals, meal = meals.find(m => m.key === a.meal_key) || (a.meal_key === 'extra' ? { key: 'extra', name: '加餐' } : null);
+  if (!meal) return { ok: false, error: `这一天没有这一餐，可选：${meals.map(m => m.key + ' ' + m.name).join('、')}、extra 加餐` };
+  const { items, bad } = foodItems(a.foods);
+  if (!items.length) return { ok: false, error: bad.join('；') || '没有可记的食物' };
+  const r0 = peek(d) || {}, old = (r0.food || []).filter(f => f.meal === meal.key);
+  const sum = items.reduce((t, x) => ({ c: t.c + x.carbs_g, p: t.p + x.protein_g, f: t.f + x.fat_g, k: t.k + x.kcal }), { c: 0, p: 0, f: 0, k: 0 });
+  const lines = items.map(x => `${x.name}：碳水 ${x.carbs_g}g · 蛋白质 ${x.protein_g}g · ${x.kcal} kcal${x.est ? '（估算）' : ''}`)
+    .concat([`合计 ${sum.k} kcal（碳水 ${sum.c}g、蛋白质 ${sum.p}g、脂肪 ${sum.f}g）；这一餐目标 碳水 ${meal.c || 0}g、蛋白质 ${meal.p || 0}g`])
+    .concat(a.replace && old.length ? [`替换${meal.name}已记的 ${old.length} 条`] : [])
+    .concat(meal.key !== 'extra' ? [`${meal.name}标记为完成`] : [])
+    .concat(bad.length ? ['没记上：' + bad.join('；')] : []);
+  if (!await confirmCard(`记饮食 · ${d === today() ? '今天' : d} ${meal.name.replace(/（.*）/, '')}`, lines, a.reason || (viaLocal ? '按你的话记：' + String(viaLocal).slice(0, 40) : ''), '记上')) return { ok: false, error: '用户取消了' };
+  const r = rec(d); r.food = r.food || [];
+  if (a.replace) r.food = r.food.filter(f => f.meal !== meal.key);
+  const now = new Date(), entry = { id: uid(), meal: meal.key, mealName: meal.name, time: E.mt(now.getHours() * 60 + now.getMinutes()), items, source: items.some(x => x.est) ? 'ai' : 'manual', flags: [], advice: '',
+    total: { carbs_g: sum.c, protein_g: sum.p, fat_g: sum.f, kcal: sum.k } };
+  r.food.push(entry);
+  if (meal.key !== 'extra' && tasksFor(d).tasks.some(t => t.id === 'meal-' + meal.key)) r.done['meal-' + meal.key] = true;
+  save(d); scoreDay(d);
+  const e = intakeOf(d), t = targetOf(d);
+  return { ok: true, done: `${meal.name}记了 ${items.length} 项，共 ${sum.k} kcal`, day_total: `今天已吃 ${e.kcal}/${t.kcal} kcal，碳水 ${e.c}/${t.c}g，蛋白质 ${e.p}/${t.p}g`, not_logged: bad };
+}
+
 /* ---------- 执行工具 ---------- */
-function confirmCard(title, lines, reason) {
+function confirmCard(title, lines, reason, okText) {
   return new Promise(resolve => {
     const id = 'c' + Date.now();
-    st.view.push({ k: 'confirm', id, title, lines, reason, state: 'wait' });
+    st.view.push({ k: 'confirm', id, title, lines, reason, state: 'wait', ok: okText });
     st.pending[id] = resolve; draw();
   });
 }
@@ -264,6 +316,12 @@ async function runTool(name, a) {
   if (name === 'list_exercises') return listExercises(a);
   if (name === 'search_refs') return searchRefs(a);
   if (name === 'list_groups') return listGroups(a);
+  if (name === 'search_foods') {
+    const hits = FoodDB.search(a.query || '').slice(0, 8);
+    if (!hits.length) return { results: [], note: '表19 里没有这个食物。可以按常见做法估算碳水、蛋白质、脂肪，用 log_food 记的时候设 estimated=true，并告诉用户是估算' };
+    return { results: hits.map(f => { const u = f.unit === 'g' ? 100 : 1, m = FoodDB.calc(f, u); return { name: f.n, unit: f.unit, [`per_${f.unit === 'g' ? '100g' : f.unit}`]: { carbs_g: m.c, protein_g: m.p, fat_g: m.f, kcal: m.kcal }, src: f.src }; }) };
+  }
+  if (name === 'log_food') return logFood(a);
   if (name === 'create_custom_split') {
     if (S.profile.lift === false) return { ok: false, error: '现在设置的是不做力训' };
     const spec = { name: String(a.name || '我的分化'), why: String(a.reason || '').slice(0, 200), days: (a.days || []).map(d => ({ name: d.name, groups: (d.groups || []).map(g => ({ tpl: g.tpl, sets: g.sets, pick: g.pick, optional: !!g.optional })) })) };
@@ -429,7 +487,7 @@ function itemHtml(v) {
   if (v.k === 'srcs') return `<details class="srcs"><summary>原文 · ${v.items.map(x => esc(x.src)).join('、')}</summary>${v.items.map(x => `<div class="src-item"><b>${esc(x.src)}${x.title ? ' · ' + esc(x.title) : ''}</b><p>${esc(x.text)}</p></div>`).join('')}</details>`;
   if (v.k === 'err') return `<div class="msg err">${esc(v.t)}</div>`;
   if (v.k === 'confirm') return `<div class="confirm mat"><div class="eyebrow">${esc(v.title)}</div>${v.lines.map(l => `<div class="t-headline" style="font-weight:600">${esc(l)}</div>`).join('')}${v.reason ? `<div class="t-foot l2">${esc(v.reason)}</div>` : ''}
-    ${v.state === 'wait' ? `<div class="deck-ctrl" style="margin:4px 0 0"><button class="pill glass" data-cf="${v.id}|0">取消</button><button class="pill ink" data-cf="${v.id}|1">确认修改</button></div>` : `<div class="t-foot" style="color:${v.state === 'ok' ? 'var(--ok)' : 'var(--ink3)'}">${v.state === 'ok' ? '已修改' : '已取消'}</div>`}</div>`;
+    ${v.state === 'wait' ? `<div class="deck-ctrl" style="margin:4px 0 0"><button class="pill glass" data-cf="${v.id}|0">取消</button><button class="pill ink" data-cf="${v.id}|1">${esc(v.ok || '确认修改')}</button></div>` : `<div class="t-foot" style="color:${v.state === 'ok' ? 'var(--ok)' : 'var(--ink3)'}">${v.state === 'ok' ? (v.ok ? '已记上' : '已修改') : '已取消'}</div>`}</div>`;
   return '';
 }
 const SUGGEST = ['我今天该吃多少碳水和蛋白质？出处在哪？', '减脂两周体重不掉怎么办？', '今天练什么？为什么是这些？', '我每周只能练两次，怎么安排？', '我只有哑铃和凳子，膝盖不太好，帮我改计划', '练前要怎么热身？'];
@@ -497,11 +555,13 @@ async function ask(q) {
   if (st.ctl === ctl) { st.busy = false; st.ctl = null; }
   persist(); draw();
 }
-/* ---------- 离线模式：内置小模型 ---------- */
-// 小模型不擅长自己多次调用工具：App 先检索套表、整理好“我的计划”，模型只负责组织语言；
-// 要改计划时，让模型只输出一个固定格式的 JSON 指令，再走和云端一样的确认卡。
+/* ---------- 离线模式：内置小模型专用流程（和云端助手完全分开，提示词也单独一套） ---------- */
+// 0.8B-2B 的小模型不会可靠地自己调用工具，改计划时还容易“顺手”改别的（比如把腰围改成 58）。所以离线时：
+// 1. 打招呼、记饮食、问食物热量、常见的改安排说法，App 用规则直接听懂，不经过模型，又快又准；
+// 2. 规则听不懂的修改，才让模型输出 JSON 指令，并且逐条检查：字段和数字必须在原话里出现，和现在一样的改动直接丢掉；
+// 3. 问答：App 先检索套表原文，模型只用几句话组织语言（提示词见 LP）。
 function useLocal() { const p = LocalAI.prefs(); return p.enabled && (p.use === 'local' || (p.use === 'auto' && !navigator.onLine)); }
-const EDIT_RE = /(改|调|换|删|去掉|不吃|不练|加练|推迟|提前|挪|目标|设成|设为|设置|取消|恢复|休息一天|别练)/;
+const EDIT_RE = /(改|调|换|删|去掉|不吃|不练|加练|推迟|提前|挪|设成|设为|设置|取消|恢复|休息一天|别练)/;
 function planBrief(d) {
   const pl = S.plan, info = dayInfo(d), { meals } = tasksFor(d), t = targetOf(d);
   const tr = pl.training && info.lift ? sessionItems(d) : null;
@@ -587,23 +647,146 @@ function windowAround(t, key) {
 }
 // 问的是自己的数字或安排时，才把“我的计划”给模型（否则小模型容易整段复述计划）
 const PERSONAL_RE = /(今天|明天|昨天|这周|吃多少|该吃|几点|我的计划|我的目标|热量|卡路里|大卡|碳水|蛋白|脂肪|练什么|练哪|安排|摄入|消耗|几组|几次|体重多少|目标体重|分化|几天)/;
-function actionSys(d) {
-  const { tasks } = tasksFor(d), tm = E.addDays(d, 1);
-  return [
-    '把用户的要求转换成 JSON 指令数组，只输出 JSON，不要解释。可用指令：',
-    '{"action":"update_profile","changes":{...}}  changes 可以有：goal("cut"减脂/"bulk"增肌/"auto")、weight、targetWeight、waist、liftDays(数组，0=周一…6=周日)、liftTime("HH:MM")、parts({"chest","back","shoulder","arm","legs","abs"} 值为 true/false)、level("new"/"some"/"vet")、place("gym"/"home")',
-    '{"action":"set_day_training","date":"YYYY-MM-DD","type":"lift"|"rest"|"auto"}  这天加练/不练/按计划',
-    '{"action":"edit_timeline","date":"YYYY-MM-DD","op":"remove"|"restore"|"set_time","item_id":"…","time":"HH:MM"}',
-    '不是修改计划的要求就输出 []。',
-    `今天是 ${d}（周${DOW[E.dow(d)]}），明天是 ${tm}。今天的安排（item_id 名称 时间）：${tasks.map(t => `${t.id} ${t.title} ${t.time}`).join('；')}`,
-    '例子：',
-    `今天不练了 → [{"action":"set_day_training","date":"${d}","type":"rest"}]`,
-    `夜宵不吃了 → [{"action":"edit_timeline","date":"${d}","op":"remove","item_id":"meal-snack"}]`,
-    `晚饭改到九点 → [{"action":"edit_timeline","date":"${d}","op":"set_time","item_id":"meal-dinner","time":"21:00"}]`,
-    '目标体重改成68 → [{"action":"update_profile","changes":{"targetWeight":68}}]',
-    '我不想练腿了 → [{"action":"update_profile","changes":{"parts":{"legs":false}}}]',
-    `明天要加练 → [{"action":"set_day_training","date":"${tm}","type":"lift"}]`,
-  ].join('\n');
+/* ---------- 小模型专用提示词 ---------- */
+const LP = {
+  // 问答：只根据资料，第一句给结论
+  qa: personal => [
+    '你是健身饮食 App 的离线助手。只根据下面给的【资料】' + (personal ? '和【我的计划】' : '') + '回答。',
+    '要求：',
+    '1. 第一句直接回答问题。然后最多列 3 条做法，每条一行，用“- ”开头。',
+    '2. 资料里的数字（克、大卡、分钟、组数）原样照抄，不要换算，不要自己编数字。',
+    '3. 资料里没有的内容不要说。资料和问题对不上，就只回答“套表里没有写这个”。',
+    '4. 最后一行写“出处：”加资料方括号里的出处。',
+    '5. 一共不超过 150 字。',
+  ].join('\n'),
+  // 修改指令：只输出 JSON；例子覆盖最常见的说法
+  action: d => {
+    const { tasks } = tasksFor(d), tm = E.addDays(d, 1);
+    return [
+      '把用户的话转换成 JSON 数组，只输出 JSON。只写用户明确要求改的内容，没提到的字段一律不要写。',
+      '可用指令：',
+      '{"action":"set_day_training","date":"YYYY-MM-DD","type":"rest"|"lift"|"auto"}',
+      '{"action":"edit_timeline","date":"YYYY-MM-DD","op":"remove"|"restore"|"set_time","item_id":"…","time":"HH:MM"}',
+      '{"action":"update_profile","changes":{"targetWeight":数字}} 或 {"weight":数字} 或 {"waist":数字} 或 {"goal":"cut"|"bulk"} 或 {"parts":{"legs":false}}（chest胸 back背 shoulder肩 arm手臂 legs腿 abs腹）',
+      '听不懂就输出 []。',
+      `今天 ${d}（周${DOW[E.dow(d)]}），明天 ${tm}。今天的安排：${tasks.map(t => `${t.id}=${t.title.replace(/（.*?）/g, '')}@${t.time}`).join('，')}`,
+      '例子：',
+      `今天不练了 → [{"action":"set_day_training","date":"${d}","type":"rest"}]`,
+      `把夜宵删了 → [{"action":"edit_timeline","date":"${d}","op":"remove","item_id":"meal-snack"}]`,
+      `晚饭挪到九点 → [{"action":"edit_timeline","date":"${d}","op":"set_time","item_id":"meal-dinner","time":"21:00"}]`,
+      '目标体重定成68 → [{"action":"update_profile","changes":{"targetWeight":68}}]',
+      '帮我写首诗 → []',
+    ].join('\n');
+  },
+};
+/* ---------- 规则：直接听懂的说法 ---------- */
+const HELLO_RE = /^(你好|您好|嗨|哈喽|哈啰|hello|hi|hey|在吗|在不在|早上好|中午好|下午好|晚上好|早安|晚安)[呀啊哦！!。.~～\s]*$/i;
+const THANKS_RE = /^(谢谢|多谢|感谢|thanks|thank you|好的|好|ok|嗯|收到)[呀啊了！!。.~～\s]*$/i;
+const WHO_RE = /(你是谁|你能做什么|你会什么|怎么用|有什么功能|能帮我什么)/;
+const LOCAL_HELP = '我是离线助手（内置小模型，不联网）。可以这样问我：\n- 记饮食：“午饭吃了一根香蕉和两个鸡蛋”\n- 查热量：“200g 米饭多少热量”\n- 改安排：“今天不练了”“晚饭改到 21:00”“夜宵不吃了”\n- 问套表：“减脂两周体重不掉怎么办”\n离线时我只按套表原文回答；拍照识别和复杂的定制要联网用云端助手。';
+const FOOD_VERB = /(吃了|喝了|吃的|喝的|记录|记一下|记上|记成|记个|改成|换成|改为|帮我记)/;
+const KCAL_Q = /(多少热量|多少卡|多少大卡|多少千卡|热量多少|热量是|卡路里|碳水多少|多少碳水|蛋白质多少|多少蛋白|营养)/;
+function dateIn(q, d) {
+  if (/大后天/.test(q)) return E.addDays(d, 3);
+  if (/后天/.test(q)) return E.addDays(d, 2);
+  if (/明天|明儿/.test(q)) return E.addDays(d, 1);
+  const w = q.match(/(下|这|本)?(?:周|星期|礼拜)([一二三四五六日天])/);
+  if (w) { const i = '一二三四五六日'.indexOf(w[2] === '天' ? '日' : w[2]); let x = E.addDays(d, (i - E.dow(d) + 7) % 7); if (w[1] === '下') x = E.addDays(x, x <= E.addDays(d, 6 - E.dow(d)) ? 7 : 0); return x; }
+  return d;
+}
+// 时间：21:00、9点、九点半、晚上9点、下午三点一刻。没说上午下午时，按原来的时间就近取（晚饭“九点”是 21:00）
+function timeIn(q, near) {
+  let m = q.match(/(\d{1,2})[:：](\d{2})/);
+  let h, mi = 0;
+  if (m) { h = +m[1]; mi = +m[2]; }
+  else {
+    m = q.match(/(\d{1,2}|[零一二两三四五六七八九十]{1,3})\s*点\s*(半|一刻|三刻|(\d{1,2}|[零一二三四五六七八九十]{1,3})分?)?/);
+    if (!m) return null;
+    h = FoodDB.cnNum(m[1]); mi = m[2] === '半' ? 30 : m[2] === '一刻' ? 15 : m[2] === '三刻' ? 45 : m[3] ? FoodDB.cnNum(m[3]) : 0;
+  }
+  if (!(h >= 0 && h <= 24 && mi >= 0 && mi < 60)) return null;
+  if (/(下午|晚上|傍晚|今晚|夜里)/.test(q) && h < 12) h += 12;
+  else if (near && h < 12 && !/(上午|早上|凌晨|早晨)/.test(q)) { const t0 = E.tm(near), a = h * 60 + mi, b = a + 720, dist = x => Math.min(Math.abs(x - t0), 1440 - Math.abs(x - t0)); if (dist(b) < dist(a)) h += 12; }
+  return String(h % 24).padStart(2, '0') + ':' + String(mi).padStart(2, '0');
+}
+const PART_WORDS = [['chest', /胸/], ['back', /背/], ['shoulder', /肩/], ['arm', /手臂|胳膊|二头|三头|臂/], ['legs', /腿|臀|下肢/], ['abs', /腹|核心/]];
+const ITEM_WORDS = [[/早饭|早餐|早上那顿/, 'meal-breakfast'], [/午饭|午餐|中饭|中午那顿/, 'meal-lunch'], [/晚饭|晚餐|晚上那顿/, 'meal-dinner'], [/练前餐|练前/, 'meal-pre'], [/练后餐|练后/, 'meal-post'], [/夜宵|宵夜|零食/, 'meal-snack']];
+function findItem(q, d) {
+  const { tasks } = tasksFor(d), hidden = hiddenOf(d).map(x => x.item_id);
+  for (const [re, id] of ITEM_WORDS) if (re.test(q) && (tasks.some(t => t.id === id) || hidden.includes(id))) return { id, t: tasks.find(t => t.id === id) };
+  // 其他卡片按标题找（力量训练、跑步、称重、睡觉……），标题去掉括号后出现在原话里
+  const t = tasks.filter(x => { const n = x.title.replace(/（.*?）/g, '').trim(); return n.length >= 2 && q.includes(n); }).sort((a, b) => b.title.length - a.title.length)[0];
+  if (t) return { id: t.id, t };
+  if (/训练|力训|健身|撸铁/.test(q)) { const x = tasks.find(y => y.kind === 'train'); if (x) return { id: x.id, t: x }; }
+  if (/睡觉|睡/.test(q)) { const x = tasks.find(y => y.kind === 'sleep'); if (x) return { id: x.id, t: x }; }
+  return null;
+}
+/* 改安排、改资料的常见说法 → 指令。听不懂返回 [] */
+function ruleEdits(q, d) {
+  const out = [], day = dateIn(q, d);
+  const partsOff = {}, partsOn = {};
+  PART_WORDS.forEach(([id, re]) => { if (new RegExp('(不想练|不练|别练|去掉|不要练)[^，,。]{0,4}' + re.source).test(q)) partsOff[id] = false; if (new RegExp('(想练|要练|加上|恢复练)[^，,。]{0,4}' + re.source).test(q)) partsOn[id] = true; });
+  if (Object.keys(partsOff).length || Object.keys(partsOn).length) out.push({ action: 'update_profile', changes: { parts: Object.assign({}, partsOn, partsOff) } });
+  else if (/(恢复按计划|按原计划|恢复原来|恢复正常)/.test(q) && !findItem(q, d)) out.push({ action: 'set_day_training', date: day, type: 'auto' });
+  else if (/(不练|休息一天|休息|不去练|不去健身|练不了|别练|不训练|歇一天)/.test(q) && !/(怎么|为什么|可以|能不能|吗|？|\?)/.test(q)) out.push({ action: 'set_day_training', date: day, type: 'rest' });
+  else if (/(加练|补练|要去练|去练|练一次)/.test(q) && !/(怎么|为什么|吗|？|\?)/.test(q)) out.push({ action: 'set_day_training', date: day, type: 'lift' });
+  // 时间线：改时间 / 删 / 恢复
+  const it = findItem(q, day);
+  if (it && !out.some(x => x.action === 'set_day_training')) {
+    const tm = timeIn(q, it.t && it.t.time), rel = q.match(/(推迟|延后|晚|提前|早)\s*(\d+(?:\.\d+)?|[一两二三四五六半]+)\s*(个)?\s*(小时|钟头|分钟|分)/);
+    if (tm && /(改|挪|调|推迟|延后|提前|换|定|设)/.test(q)) out.push({ action: 'edit_timeline', date: day, op: 'set_time', item_id: it.id, time: tm });
+    else if (rel && it.t) { const n = FoodDB.cnNum(rel[2]) * (/小时|钟头/.test(rel[4]) ? 60 : 1) * (/提前|早/.test(rel[1]) ? -1 : 1); out.push({ action: 'edit_timeline', date: day, op: 'set_time', item_id: it.id, time: E.mt(((E.tm(it.t.time) + n) % 1440 + 1440) % 1440) }); }
+    else if (/(不吃|去掉|删掉|删除|删了|取消|跳过|不要了|不需要)/.test(q)) out.push({ action: 'edit_timeline', date: day, op: 'remove', item_id: it.id });
+    else if (/恢复|加回来|还原/.test(q)) out.push({ action: 'edit_timeline', date: day, op: 'restore', item_id: it.id });
+  }
+  // 改训练时间：这天没有训练卡片，或者说了“以后/每次”，就改资料里的开始训练时间
+  if (/(训练|力训|练)/.test(q) && /(改|挪|调|换|定|设)/.test(q) && (!it || it.t && it.t.kind !== 'train' || /(以后|每次|都)/.test(q)) && !out.some(x => x.action === 'set_day_training')) {
+    const tm = timeIn(q, S.profile.liftTime);
+    if (tm) { const i = out.findIndex(x => x.action === 'edit_timeline'); if (i >= 0) out.splice(i, 1); out.push({ action: 'update_profile', changes: { liftTime: tm } }); }
+  }
+  // 资料里的数字
+  const num = re => { const m = q.match(re); return m ? +m[1] * (m[2] && /斤/.test(m[2]) && !/公斤/.test(m[2]) ? 0.5 : 1) : null; };
+  const ch = {};
+  const tw = num(/目标体重[^\d]{0,6}(\d{2,3}(?:\.\d)?)\s*(公斤|kg|斤)?/i); if (tw) ch.targetWeight = tw;
+  const w = /目标体重/.test(q) ? null : num(/体重[^\d]{0,6}(\d{2,3}(?:\.\d)?)\s*(公斤|kg|斤)?/i); if (w) ch.weight = w;
+  const wa = num(/腰围[^\d]{0,6}(\d{2,3}(?:\.\d)?)/); if (wa) ch.waist = wa;
+  if (/(目标|改成|换成|开始|转|要)[^，,。]{0,4}(减脂|减肥|减重)/.test(q)) ch.goal = 'cut';
+  if (/(目标|改成|换成|开始|转|要)[^，,。]{0,4}增肌/.test(q)) ch.goal = 'bulk';
+  if (Object.keys(ch).length) out.push({ action: 'update_profile', changes: ch });
+  return out;
+}
+/* 检查小模型给的指令：字段要在原话里有依据，数字要在原话里出现，没变化的丢掉 */
+function checkActions(list, q, d) {
+  const nums = (q.match(/\d+(?:\.\d+)?/g) || []).map(Number), has = v => nums.includes(+v) || nums.includes(+v * 2);
+  const ok = [];
+  (Array.isArray(list) ? list : []).forEach(x => {
+    if (!x || typeof x !== 'object') return;
+    const date = /^\d{4}-\d{2}-\d{2}$/.test(x.date || '') ? x.date : d;
+    if (x.action === 'set_day_training') {
+      if (x.type === 'rest' && /(不练|休息|练不了|别练|不训练|歇)/.test(q)) ok.push({ ...x, date });
+      else if (x.type === 'lift' && /(加练|补练|去练|要练)/.test(q)) ok.push({ ...x, date });
+      else if (x.type === 'auto' && /恢复|按计划|原计划/.test(q)) ok.push({ ...x, date });
+    } else if (x.action === 'edit_timeline') {
+      const { tasks } = tasksFor(date), t = tasks.find(y => y.id === x.item_id);
+      const named = it => { const w = ITEM_WORDS.find(([, id]) => id === it); return w ? w[0].test(q) : !!(t && q.includes(t.title.replace(/（.*?）/g, '').trim())); };
+      if (!named(x.item_id)) return;
+      if (x.op === 'set_time') { if (t && /^\d{1,2}:\d{2}$/.test(x.time || '') && x.time.padStart(5, '0') !== t.time && (has(+x.time.split(':')[0]) || has(+x.time.split(':')[0] - 12) || /[点:：]/.test(q))) ok.push({ ...x, date }); }
+      else if (x.op === 'remove') { if (t && /(不吃|去掉|删|取消|跳过|不要)/.test(q)) ok.push({ ...x, date }); }
+      else if (x.op === 'restore') { if (/恢复|加回|还原/.test(q)) ok.push({ ...x, date }); }
+    } else if (x.action === 'update_profile' && x.changes && typeof x.changes === 'object') {
+      const c = {}, p = S.profile;
+      const RULE = { targetWeight: [/目标体重|目标/, 1], weight: [/体重/, 1], waist: [/腰围/, 1], liftTime: [/训练|力训|练.{0,4}[点:：]/, 0], goal: [/减脂|减肥|减重|增肌/, 0], parts: [/练|胸|背|肩|臂|腿|腹/, 0] };
+      Object.entries(x.changes).forEach(([k, v]) => {
+        const r = RULE[k]; if (!r || !r[0].test(q)) return;
+        if (r[1] && !has(v)) return;
+        if (k === 'goal' && !((v === 'cut' && /减脂|减肥|减重/.test(q)) || (v === 'bulk' && /增肌/.test(q)))) return;
+        if (k === 'parts') { const pv = {}; PART_WORDS.forEach(([id, re]) => { if (v && v[id] != null && re.test(q)) pv[id] = !!v[id]; }); if (Object.keys(pv).length) c.parts = pv; return; }
+        if (JSON.stringify(v) !== JSON.stringify(p[k])) c[k] = v;
+      });
+      if (Object.keys(c).length) ok.push({ action: 'update_profile', changes: c });
+    }
+  });
+  return ok;
 }
 function parseActions(text) {
   const t = LocalAI.clean(text).replace(/```json|```/g, '');
@@ -614,17 +797,23 @@ function parseActions(text) {
   return null;
 }
 async function runActions(list, q) {
-  const out = [], reason = '离线助手按你的要求：' + q.slice(0, 40);
+  const out = [], reason = '按你的话：' + q.slice(0, 40);
   for (const x of list) {
-    if (!x || !x.action) continue;
     let r;
     if (x.action === 'update_profile') r = await runTool('update_profile', { changes: x.changes || {}, reason });
     else if (x.action === 'set_day_training') r = await runTool('set_day_training', { date: x.date, type: x.type, reason });
-    else if (x.action === 'edit_timeline') r = await runTool('edit_timeline', { date: x.date, action: x.op || x.action_type, item_id: x.item_id, time: x.time, scope: 'day', reason });
+    else if (x.action === 'edit_timeline') r = await runTool('edit_timeline', { date: x.date, action: x.op, item_id: x.item_id, time: x.time, scope: 'day', reason });
     else continue;
-    out.push(r.ok ? '✓ ' + (r.done || (r.changed || []).join('；') || (r.now ? `${r.date} 现在是${r.now}` : '已修改')) : '✗ ' + (r.error || '没有改'));
+    out.push(r.ok ? '✓ ' + (r.done || (r.changed || []).join('；') || (r.now ? `${r.date} 现在是${r.now}` : '已修改')) : (r.error === '用户取消了' || r.error === '用户取消了修改' ? '已取消' : '✗ ' + (r.error || '没有改')));
   }
   return out;
+}
+/* 食物热量：直接按表算，不用模型 */
+function foodAnswer(items) {
+  return items.map(x => {
+    const f = x.f, a = x.amt || (f.unit === 'g' ? 100 : 1), m = FoodDB.calc(f, a);
+    return `- **${f.n} ${a}${f.unit === 'g' ? 'g' : f.unit}**：碳水 ${m.c}g、蛋白质 ${m.p}g、脂肪 ${m.f}g，约 ${m.kcal} kcal（${f.src}）${x.amt ? '' : f.unit === 'g' ? '（没说分量，按 100g 算）' : ''}`;
+  }).join('\n') + '\n热量按 碳水×4 + 蛋白质×4 + 脂肪×9 算。';
 }
 async function askLocal(q, img) {
   const d = today(), ctl = st.ctl = new AbortController();
@@ -634,6 +823,7 @@ async function askLocal(q, img) {
   let raw = '', raf = 0;
   const paint = () => { raf = 0; const el = [...document.querySelectorAll('.msg.bot')].pop(); if (el && live.t) el.innerHTML = md(live.t); const l = $('#chat-list'); if (l) l.scrollTop = l.scrollHeight; };
   const onToken = t => { raw += t; live.t = LocalAI.clean(raw); if (!raf) raf = requestAnimationFrame(paint); };
+  const reply = (t, step) => { if (step) st.view.push({ k: 'step', t: step }); st.view.push({ k: 'bot', t }); st.msgs.push({ role: 'user', content: q }, { role: 'assistant', content: t }); };
   try {
     let question = q;
     if (img) {
@@ -641,44 +831,51 @@ async function askLocal(q, img) {
       st.view.push({ k: 'step', t: '看图片（云端看图模型）' }); draw();
       question = `${q}\n（图片内容：${await AI.describeImage(S.ai, img.data, q, ctl.signal)}）`;
     }
-    // 要改计划：先让模型输出指令
-    if (EDIT_RE.test(q)) {
-      st.view.push({ k: 'step', t: '理解要改什么' }); draw();
-      const r = await LocalAI.chat([{ role: 'system', content: actionSys(d) }, { role: 'user', content: q }], { signal: ctl.signal, maxTokens: 240, temperature: 0.1 });
-      const acts = parseActions(r.text);
-      if (acts && acts.length) {
+    const plain = q.replace(/\s+/g, ' ').trim();
+    // 1. 打招呼、道谢、问能做什么
+    if (HELLO_RE.test(plain) || WHO_RE.test(plain)) return reply(LOCAL_HELP);
+    if (THANKS_RE.test(plain)) return reply('不客气，有需要再叫我。');
+    // 2. 记饮食 / 问食物热量（按表19 规则拆，不用模型）
+    const fp = FoodDB.parse(q);
+    if (fp.items.length && (FOOD_VERB.test(q) || (fp.meal && !timeIn(q)) || KCAL_Q.test(q))) {
+      const record = FOOD_VERB.test(q) || (fp.meal && !KCAL_Q.test(q)) || /完成|打卡/.test(q);
+      if (!record) return reply(foodAnswer(fp.items), '查表19');
+      const meal = fp.meal || (tasksFor(d).meals.slice().sort((a, b) => Math.abs(C.dayMin(a.time) - C.dayMin(E.mt(new Date().getHours() * 60 + new Date().getMinutes()))) - Math.abs(C.dayMin(b.time) - C.dayMin(E.mt(new Date().getHours() * 60 + new Date().getMinutes()))))[0] || {}).key || 'extra';
+      const need = fp.items.filter(x => x.amt == null);
+      if (need.length) return reply(`${need.map(x => `“${x.f.n}”${x.ask ? '：' + x.ask : ''}`).join('；')}。补上克数再说一次，比如“午饭吃了 150g 米饭”；也可以到饮食页“选食物”里点选。`, '查表19');
+      st.view.push({ k: 'step', t: '查表19：' + fp.items.map(x => x.f.n).join('、') }); draw();
+      const r = await logFood({ date: d, meal_key: meal, replace: fp.replace, foods: fp.items.map(x => ({ name: x.f.n, amount: x.amt })) }, q);
+      const t = r.ok ? `已记好：${r.done}。\n${r.day_total}。${fp.unknown.length ? `\n表19 里没有：${fp.unknown.join('、')}，可以在饮食页“自己填”。` : ''}` : r.error === '用户取消了' ? '好的，没有记。' : '没记上：' + r.error;
+      return reply(t);
+    }
+    if (fp.unknown.length && FOOD_VERB.test(q) && !EDIT_RE.test(q.replace(/改成|换成|改为/g, ''))) return reply(`表19 里没有“${fp.unknown.join('、')}”，离线没法估算。可以在饮食页用“自己填”，或者联网后用“AI 估算”。`, '查表19：没有找到');
+    // 3. 改安排、改资料：先用规则，规则听不懂再问模型，模型的结果逐条检查
+    if (EDIT_RE.test(q) || /目标体重|体重|腰围/.test(q) && /\d/.test(q)) {
+      let acts = ruleEdits(q, d), how = '';
+      if (!acts.length) {
+        st.view.push({ k: 'step', t: '理解要改什么' }); draw();
+        const r = await LocalAI.chat([{ role: 'system', content: LP.action(d) }, { role: 'user', content: q }], { signal: ctl.signal, maxTokens: 200, temperature: 0 });
+        acts = checkActions(parseActions(r.text), q, d); how = statLine(r.stats);
+      }
+      if (acts.length) {
         const res = await runActions(acts, q);
-        st.view.push({ k: 'bot', t: res.length ? res.join('\n') : '没有听懂要改什么，可以说得具体一点，比如“今天不练了”“晚饭改到 21:00”' });
-        st.view.push({ k: 'step', t: statLine(r.stats) });
-        st.msgs.push({ role: 'user', content: q }, { role: 'assistant', content: res.join('\n') });
+        reply(res.join('\n'));
+        if (how) st.view.push({ k: 'step', t: how });
         return;
       }
+      if (!PERSONAL_RE.test(q) && !/[？?]|怎么|为什么|吗/.test(q)) return reply('没听懂要改什么。可以这样说：“今天不练了”“晚饭改到 21:00”“夜宵不吃了”“目标体重改成 68”。复杂的修改（换分化、定制计划）请联网用云端助手。');
     }
-    // 回答问题：App 先检索套表原文；问自己的数字时再带上“我的计划”；模型只根据这些回答
+    // 4. 回答问题：App 先检索套表原文；问自己的数字时再带上“我的计划”；模型只根据这些回答
     await loadKB();
     const personal = PERSONAL_RE.test(q);
     const R = localRetrieve(question);
     if (personal) R.sources = R.sources.slice(0, 1); // 问自己的数字：以“我的计划”为主，原文最多一段，免得混淆
-    if (!R.found && !personal) {
-      // 套表里找不到这个主题：直接说没写，不让模型自己发挥
-      const ans = '套表里没有写这个。可以换个说法再问，或者联网后问云端助手（它会查补充资料，并标明“补充”）。';
-      st.view.push({ k: 'step', t: '查套表：没有找到相关原文' }, { k: 'bot', t: ans });
-      st.msgs.push({ role: 'user', content: q }, { role: 'assistant', content: ans });
-      return;
-    }
+    if (!R.found && !personal) return reply('套表里没有写这个。可以换个说法再问，或者联网后问云端助手（它会查补充资料，并标明“补充”）。', '查套表：没有找到相关原文');
     st.view.push({ k: 'step', t: R.sources.length ? `查套表：${R.sources.map(h => h.src + (h.title ? `「${h.title}」` : '')).join('、')}` : '用你的计划回答' });
     st.view.push(live); draw();
-    const sys = [
-      '你是“练吃日课”的离线助手，回答健身和饮食问题。规则：',
-      '1. 第一句直接回答问题（结论），然后列 2-4 条具体做法；不要复述和问题无关的内容。',
-      '2. 只能用【资料】' + (personal ? '和【我的计划】' : '') + '里写了的内容；资料没提到的，就说“套表里没有写这个”，不要自己补充建议或理由。',
-      '3. 资料里有具体数字和做法（克数、大卡、分钟、组数、“二选一”的办法），要原样写出来。',
-      '4. 最后一行写“出处：”，只能照抄资料方括号里的出处或“我的计划”，不用每条都写。',
-      '5. 用中文，挑最重要的内容，不超过 200 字。',
-    ].join('\n');
     const srcText = R.sources.map(h => `[${h.src}]${h.title ? `（问答：${h.title}）` : ''} ${h.text}`).join('\n\n');
     const user = (personal ? `【我的计划】\n${planBrief(d)}\n\n` : '') + `【资料】\n${srcText || '（没有找到相关原文）'}\n\n【问题】${question}`;
-    const r = await LocalAI.chat([{ role: 'system', content: sys }, { role: 'user', content: user }], { signal: ctl.signal, onToken, maxTokens: LocalAI.current().maxTokens || 500, temperature: 0.2 });
+    const r = await LocalAI.chat([{ role: 'system', content: LP.qa(personal) }, { role: 'user', content: user }], { signal: ctl.signal, onToken, maxTokens: LocalAI.current().maxTokens || 500, temperature: 0.2 });
     live.t = LocalAI.clean(r.text) || '（没有回答）'; delete live.live;
     // 原文附在回答下面，可以自己核对
     if (R.sources.length) st.view.push({ k: 'srcs', items: R.sources.map(h => ({ src: h.src, title: h.title || '', text: h.text.slice(0, 1600) })) });
@@ -705,10 +902,7 @@ async function pickImage(file) {
   } catch (e) { toast(e.message || '图片读不出来'); }
 }
 function bind() {
-  $('[data-cback]').onclick = () => { S.chatOn = false; if (window.visualViewport) visualViewport.onresize = null; render(); scrollTo(0, 0); };
-  // 键盘弹出时让输入框跟着上移（按可见区域的高度排版）
-  const vv = window.visualViewport;
-  if (vv) { const fit = () => { const c = $('.chat'); if (!c) return; c.style.height = vv.height + 'px'; c.style.top = vv.offsetTop + 'px'; c.style.bottom = 'auto'; const l = $('#chat-list'); if (l) l.scrollTop = l.scrollHeight; }; vv.onresize = fit; fit(); }
+  $('[data-cback]').onclick = () => { S.chatOn = false; render(); scrollTo(0, 0); };
   $('[data-cclear]').onclick = () => { stop(); st.view = []; st.msgs = []; persist(); draw(); };
   const ib = $('#chat-img'), fi = $('#chat-file');
   if (ib) ib.onclick = () => fi.click();
@@ -733,5 +927,13 @@ function bind() {
   requestAnimationFrame(() => { const l = $('#chat-list'); if (l) l.scrollTop = l.scrollHeight; });
 }
 function open() { S.chatOn = true; render(); loadKB().catch(() => {}); }
-return { view, bind, open, runTool, TOOLS, searchExcel, loadKB };
+// 键盘弹出/收起时（对话框底部跟着键盘平滑移动，见 ui-kit.js）：原来停在最底下的，动画过程中一直保持在最底下
+Kit.onKeyboard((h, dur) => {
+  const l = $('#chat-list'); if (!l || !S.chatOn) return;
+  if (l.scrollHeight - l.scrollTop - l.clientHeight > 120 && h) return;
+  const end = performance.now() + (dur || 120) + 80;
+  (function follow() { l.scrollTop = l.scrollHeight; if (performance.now() < end) requestAnimationFrame(follow); })();
+  setTimeout(() => { l.scrollTop = l.scrollHeight; }, (dur || 120) + 100); // 动画结束再对齐一次（后台时 rAF 不跑）
+});
+return { view, bind, open, runTool, TOOLS, searchExcel, loadKB, _local: { ruleEdits, checkActions, timeIn, dateIn, foodAnswer, HELLO_RE, FOOD_VERB, KCAL_Q } };
 })();
