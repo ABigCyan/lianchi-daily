@@ -273,8 +273,19 @@ window.Engine = (() => {
       const groups = d.groups.filter(gp => ok.has(gp.id));
       return { ...d, idx: i, groups };
     });
+    // 不练腿的三分化（应用补充）：直接去掉腿日只剩两天轮换；改成“背 / 胸 / 大臂 + 腹”三天一轮，
+    // 安排参照表23 四分化（手臂单练版）的“大臂 + 腹”日，肌群、组数、动作仍是原来三分化（表21 / 表24）里的
+    const LEGS = ['quad', 'ham', 'glute'], ARMS = ['bi', 'tri'];
+    const noLeg = !split.ext && ['three', 'home'].includes(sp.key) && !LEGS.some(g => ok.has(g)) && ARMS.some(g => ok.has(g));
+    if (noLeg) {
+      const arm = [], abs = [];
+      days.forEach(d => { d.groups.forEach(gp => { if (ARMS.includes(gp.id)) arm.push(gp); else if (gp.id === 'abs') abs.push(gp); }); d.groups = d.groups.filter(gp => !ARMS.includes(gp.id) && gp.id !== 'abs'); });
+      days = days.filter(d => d.groups.length);
+      const order = ['bi', 'tri'];
+      days.push({ name: '大臂 + 腹', src: (arm[0] || {}).src || '', idx: -1, made: true, groups: arm.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)).concat(abs) });
+    }
     // 去掉腿日后，原来和腿一起练的腹移到剩余最后一天（应用补充）
-    if (!split.ext) days.forEach(d => {
+    if (!split.ext && !noLeg) days.forEach(d => {
       const hasLeg = d.groups.some(gp => ['quad', 'ham', 'glute', 'comp'].includes(gp.id));
       const onlyAbs = d.groups.length && d.groups.every(gp => gp.id === 'abs');
       if (onlyAbs && !hasLeg) { moved = d.groups; d.groups = []; }
@@ -287,12 +298,14 @@ window.Engine = (() => {
     // 名称按你实际保留的肌群生成；原表的标题留在 tableName 里（去掉部位后名称会跟着变）
     // 补充分化的名称（全身 A、上肢 B…）在没删部位时保留
     days.forEach(d => {
+      if (d.made) { d.tableName = '大臂 + 腹（不练腿时单独一天，参照表23 B72）'; d.name = dayName(d.groups); d.changed = true; return; }
       const full = split.days[d.idx].groups.length;
       d.tableName = d.name;
       d.name = split.ext && d.groups.length === full ? d.name : dayName(d.groups);
       d.changed = split.ext ? d.groups.length !== full : d.name.replace(/\s/g, '') !== d.tableName.replace(/\s/g, '');
     });
-    return { split: sp, splitName: split.name, ext: !!split.ext, splitMeta: { refs: split.refs || [], rel: split.rel || '', fit: split.fit || '', why: split.why || '' },
+    return { split: sp, splitName: split.name + (noLeg ? '（不练腿）' : ''), ext: !!split.ext,
+      noLeg: noLeg ? '你不练腿：三分化去掉腿日后只剩两天轮换，所以改成“背 / 胸 / 大臂 + 腹”三天一轮（参照表23 四分化手臂单练版），肌群和组数仍按原来的三分化（应用补充）' : '', splitMeta: { refs: split.refs || [], rel: split.rel || '', fit: split.fit || '', why: split.why || '' },
       days, removed: window.PARTS.filter(pt => (p.parts || {})[pt.id] === false).map(pt => pt.name) };
   }
   /* 由肌群得出这天练什么：胸 / 背 / 肩（前中后束）/ 肱二头、肱三头 / 腿臀 / 腹，按原表顺序 */
@@ -400,10 +413,11 @@ window.Engine = (() => {
         });
         out.push({
           group: gp, entry: c.entry, v: c.v, ex, sets: base + (i < extra ? 1 : 0),
-          reps: ex.timed ? '30-60 秒' : firstTwo ? '12-15' : (F ? '10-15' : '8-12'),
-          repsSrc: ex.timed ? '计时动作（应用补充）' : firstTwo ? '表21 C12（适应新动作用更轻的重量）' : (F ? '表21 C14' : '表21 C12'),
-          rest: ex.multi ? (['quad', 'ham', 'comp'].includes(gp.id) ? '2-3 分钟或更长' : '2-3 分钟') : '1-1.5 分钟',
+          ...repsOf(ex, gp, c.v, { firstTwo, F, fresh: ctx.fresh }),
+          rest: ex.timed ? '30-60 秒' : ex.multi ? (['quad', 'ham', 'comp'].includes(gp.id) ? '2-3 分钟或更长' : '2-3 分钟') : '1-1.5 分钟',
+          restSrc: ex.multi ? '表21 C11：多关节动作' : '表21 C11：单关节动作',
           fail: ex.noFail ? '不追求完全力竭，提前 1-2 次停' : '可以做到力竭',
+          failSrc: ex.noFail ? '表21 C13：可能砸伤的动作' : '表21 C13：无危险动作',
           alts, extAlts, optional, focus: pri,
           note: !gp.ext && ex.ext ? '原表动作和你的器械/伤病设置不符，用了补充动作' : '',
         });
@@ -413,6 +427,19 @@ window.Engine = (() => {
     out.trimNote = cap ? fitTime(out, cap) : '';
     out.skipped = skipped;
     return out;
+  }
+  /* 每个动作的次数（配重）：
+     - 计时动作按秒；新手前 2 周、或者这个动作以前没练过：能做 12-15 次的配重（表21 C12“适应新动作”）；
+     - 女性 10-15 次（表21 C14）；侧平举、反向飞鸟、提踵、卷腹这类小肌群单关节动作 12-15 次（应用补充，仍在表21 C12 的 5-30 次范围内）；
+     - 其余 8-12 次（表21 C12） */
+  const SMALL = new Set(['side', 'rear', 'calf', 'abs', 'core', 'forearm']);
+  function repsOf(ex, gp, v, o) {
+    if (ex.timed) return { reps: '30-60 秒', repsSrc: '计时动作（应用补充）' };
+    if (o.firstTwo) return { reps: '12-15', repsSrc: '表21 C12（新手前两周，适应新动作用更轻的重量）' };
+    if (o.fresh && o.fresh.has(v)) return { reps: '12-15', repsSrc: '表21 C12（这个动作以前没练过，先用能做 12-15 次的配重适应）', fresh: true };
+    if (o.F) return { reps: '10-15', repsSrc: '表21 C14' };
+    if (!ex.multi && SMALL.has(gp.id)) return { reps: '12-15', repsSrc: '小肌群单关节动作用较轻配重（应用补充，在表21 C12 的 5-30 次范围内）' };
+    return { reps: '8-12', repsSrc: '表21 C12' };
   }
   /* 按“每次最多练多久”压缩【应用补充】：先把组数多的非重点动作每个减到不少于 2 组，还超时再去掉非重点的单关节动作。
      依据：表21 C10“组数偏多，可以酌减”；ACSM 2026：坚持比完美的计划更重要 */

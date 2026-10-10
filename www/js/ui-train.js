@@ -1,7 +1,8 @@
 /* 训练：动作卡组 + 全部动作列表 */
 (() => {
 const { E, $, $$, esc, src, today, S, LS, peek, rec, save, saveCustom, dayInfo, scoreDay, training, sessionInfo, sessionItems, LIB,
-  badges, celebrate, toast, sheet, close, askScope, confetti, imgUrl, head, bindHead, render, allDays } = C;
+  badges, celebrate, toast, sheet, close, askScope, confetti, imgUrl, head, bindHead, render, allDays, suggestFor } = C;
+S.trainScope = S.trainScope || 'tpl';
 const { I } = Kit;
 S.exLater = S.exLater || {};
 
@@ -41,19 +42,54 @@ function allStretchSheet() {
 const nAlts = it => it.alts.length + (it.extAlts || []).length;
 const doneSets = (r, it) => ((r.sets || {})[it.v] || []).slice(0, it.sets).filter(x => x && x.done).length;
 function exBody(it, idx, n, r, d, future) {
-  const ex = it.ex, sets = ((r.sets || {})[it.v]) || [], last = lastLift(it.v, d);
+  const ex = it.ex, sets = ((r.sets || {})[it.v]) || [], sg = future ? null : suggestFor(it, d);
+  const lo = (String(it.reps).match(/^(\d+)/) || [])[1] || '';
+  const why = [['次数', it.repsSrc], ['休息', it.restSrc], ['力竭', it.failSrc]].filter(x => x[1]).map(([k, v]) => `${k}：${v}`).join(' · ');
   return `<div class="ex-hero"><img data-anim="${esc(ex.img)}" src="${imgUrl(ex, 0)}" alt="${esc(ex.n)}"><span class="badge">${idx + 1} / ${n} · ${esc(it.group.name)}</span></div>
     <div><div class="dc-title" style="font-size:24px">${esc(ex.n)}</div><div class="dc-sub">${it.sets} 组 × ${esc(it.reps)}${ex.timed ? '' : ' 次'} · 组间休息 ${esc(it.rest)}</div></div>
-    <div class="t-foot l2">${esc(ex.eq)} · ${esc(it.fail)}${last ? ` · 上次 <span class="num">${esc(last)}</span>` : ''}</div>${ex.ext ? `<div class="t-foot l2">${src('补充 · ' + ex.kindName, 1)} ${esc(ex.basis)}</div>` : ''}${it.note ? `<div class="t-foot l2">${esc(it.note)}</div>` : ''}${rmLine(it, r, d)}
-    <div class="sets">${[...Array(it.sets)].map((_, i) => { const s = sets[i] || {}; return `<div class="set"><span class="n">${i + 1}</span><input class="field-in" data-set="${it.v}|${i}|w" value="${esc(s.w || '')}" placeholder="kg" inputmode="decimal" aria-label="第${i + 1}组重量" ${future ? 'disabled' : ''}><input class="field-in" data-set="${it.v}|${i}|r" value="${esc(s.r || '')}" placeholder="次数" inputmode="numeric" aria-label="第${i + 1}组次数" ${future ? 'disabled' : ''}><button class="hit" data-sd="${it.v}|${i}" aria-label="第${i + 1}组完成" ${future ? 'disabled' : ''}>${Kit.chk(!!s.done)}</button></div>`; }).join('')}</div>
-    <div class="ghost-row">${nAlts(it) ? `<button class="tbtn" data-swap="${it.v}">换动作（${nAlts(it)}）</button>` : ''}<button class="tbtn" data-big="${it.v}">动作图</button></div>`;
+    <div class="ex-tags"><span class="xt ${/不追求/.test(it.fail) ? 'warn' : ''}">${/不追求/.test(it.fail) ? '不做到力竭，留 1-2 次' : '可以做到力竭'}</span><span class="xt">${ex.multi ? '多关节' : '单关节'}</span><span class="xt">${esc(ex.eq)}</span>${it.custom ? '<span class="xt mine">你改过</span>' : ''}${it.fresh ? '<span class="xt">新动作</span>' : ''}</div>
+    ${sg ? `<div class="ex-sug">${Kit.I.sparkles}<span>建议 <b class="num">${sg.w ? sg.w + ' kg × ' : ''}${sg.r} 次</b> · ${esc(sg.why)}<br><span class="l3">上次（${esc(sg.last.d.slice(5).replace('-', '/'))}）${esc(sg.lastText)}</span></span></div>` : ''}
+    ${ex.ext ? `<div class="t-foot l2">${src('补充 · ' + ex.kindName, 1)} ${esc(ex.basis)}</div>` : ''}${it.note ? `<div class="t-foot l2">${esc(it.note)}</div>` : ''}${rmLine(it, r, d)}
+    <div class="sets">${[...Array(it.sets)].map((_, i) => { const s = sets[i] || {}; return `<div class="set"><span class="n">${i + 1}</span><input class="field-in" data-set="${it.v}|${i}|w" value="${esc(s.w || '')}" placeholder="${sg && sg.w ? sg.w : 'kg'}" inputmode="decimal" aria-label="第${i + 1}组重量" ${future ? 'disabled' : ''}><input class="field-in" data-set="${it.v}|${i}|r" value="${esc(s.r || '')}" placeholder="${sg ? sg.r : lo || '次数'}" inputmode="numeric" aria-label="第${i + 1}组次数" ${future ? 'disabled' : ''}><button class="hit" data-sd="${it.v}|${i}" aria-label="第${i + 1}组完成" ${future ? 'disabled' : ''}>${Kit.chk(!!s.done)}</button></div>`; }).join('')}</div>
+    ${sg ? '<div class="t-foot l3">灰色数字是按上次算的建议，直接打勾就按建议记下</div>' : ''}
+    <div class="ghost-row">${nAlts(it) ? `<button class="tbtn" data-swap="${it.v}">换动作（${nAlts(it)}）</button>` : ''}<button class="tbtn" data-cfg="${it.v}">调整</button><button class="tbtn" data-big="${it.v}">动作图</button></div>
+    <details class="ex-why"><summary>为什么是这些数</summary><p>${esc(why)}</p></details>`;
+}
+/* 调整一个动作：次数范围、组间休息、要不要做到力竭（对这个动作一直有效；恢复默认就回到套表规则） */
+function cfgSheet(it) {
+  const c = Object.assign({}, (S.custom.exCfg || {})[it.v] || {}), def = it.def || it;
+  const m0 = String(c.reps || it.reps).match(/(\d+)\s*-\s*(\d+)/) || [], RESTS = ['30-60 秒', '1 分钟', '1-1.5 分钟', '2 分钟', '2-3 分钟', '3 分钟以上'];
+  let rest = c.rest || it.rest, fail = c.fail != null ? c.fail : !/不追求/.test(it.fail);
+  sheet(`<h2>${esc(it.ex.n)}</h2><div class="sheet-sub">对这个动作一直有效，换到哪天练都一样</div>
+    <div class="list" style="background:var(--fill3)">
+      <div class="frow"><label for="cf-lo">每组次数</label><div class="cf-reps"><input id="cf-lo" inputmode="numeric" value="${m0[1] || ''}" aria-label="最少次数"><span>-</span><input id="cf-hi" inputmode="numeric" value="${m0[2] || ''}" aria-label="最多次数"><em>次</em></div></div>
+      <div class="frow stack"><span class="lbl">组间休息</span><div class="chips">${RESTS.map(x => `<button data-rest="${x}" aria-pressed="${x === rest}">${x}</button>`).join('')}</div></div>
+      <div class="frow"><label for="cf-fail">做到力竭</label><input type="checkbox" class="switch" id="cf-fail" ${fail ? 'checked' : ''}></div></div>
+    <p class="t-foot l2" style="padding:0 6px">套表默认：${esc(def.reps)} 次（${esc(def.repsSrc || '')}）；休息 ${esc(def.rest)}（${esc(def.restSrc || '')}）；${esc(def.fail)}（${esc(def.failSrc || '')}）。${it.ex.noFail ? '这是可能砸伤的动作，套表建议不要做到完全力竭。' : ''}</p>
+    <button class="pill ink wide" id="cf-ok">保存</button>${(S.custom.exCfg || {})[it.v] ? '<button class="pill glass wide" id="cf-reset">恢复套表默认</button>' : ''}`, m => {
+    m.querySelectorAll('[data-rest]').forEach(b => b.onclick = () => { rest = b.dataset.rest; m.querySelectorAll('[data-rest]').forEach(x => x.setAttribute('aria-pressed', x === b)); Kit.haptic('light'); });
+    m.querySelector('#cf-ok').onclick = () => {
+      const lo = +m.querySelector('#cf-lo').value, hi = +m.querySelector('#cf-hi').value, f = m.querySelector('#cf-fail').checked;
+      if (!it.ex.timed && !(lo >= 1 && hi >= lo && hi <= 50)) { toast('次数要写成 8-12 这样'); return; }
+      const cfg = {};
+      if (!it.ex.timed && `${lo}-${hi}` !== def.reps) cfg.reps = `${lo}-${hi}`;
+      if (rest !== def.rest) cfg.rest = rest;
+      if (f !== !/不追求/.test(def.fail)) cfg.fail = f;
+      S.custom.exCfg = S.custom.exCfg || {};
+      if (Object.keys(cfg).length) S.custom.exCfg[it.v] = cfg; else delete S.custom.exCfg[it.v];
+      saveCustom(); close(); Kit.haptic('success'); render(); toast('已保存');
+    };
+    const rs = m.querySelector('#cf-reset'); if (rs) rs.onclick = () => { delete S.custom.exCfg[it.v]; saveCustom(); close(); render(); toast('已恢复套表默认'); };
+  });
 }
 /* 为什么是这个安排：分化怎么选的、今天为什么练这些、和原表有什么不同 */
 function whyLine(tr, si) {
   if (si.custom) return tr.ext ? '自选部位：从当前分化的肌群里挑' : '自选部位：从当前分化的肌群里挑，组数按原表';
   const d = si.day, parts = [`${tr.split.why}${tr.split.src ? '（' + tr.split.src + '）' : ''}`];
+  if (tr.noLeg) parts.push(tr.noLeg);
   parts.push(si.recommended ? '接着上次练到的往下排，休息日自己安排（表21 C8）' : '你选的这一天');
   if (tr.ext) parts.push(`${d.changed ? `你没选${tr.removed.join('、') || '部分肌群'}，这天只练保留的肌群；` : ''}肌群和动作来自表21-24 + 补充动作，组数为应用补充（依据见“规则与出处”）`);
+  else if (d.made) parts.push('这天的肱二头、肱三头来自原来的背日和胸日，腹来自腿臀日，组数和动作都按原表');
   else parts.push(d.changed ? `原表这天是“${d.tableName.replace(/\s/g, '')}”（${d.src}），你没选${tr.removed.join('、') || '部分肌群'}，所以按你保留的肌群改成现在这样` : `原表 ${d.src}`);
   return parts.join(' · ');
 }
@@ -80,12 +116,14 @@ function viewTrain() {
     ${Kit.deck('exDeck', order.map(x => ({ key: x.it.v, cls: 'k-train', html: exBody(x.it, x.i, items.length, r, d, future) })), doneLift ? '<div class="t-title3" style="color:var(--ink)">今天练完了</div>' : '<div class="t-title3" style="color:var(--ink)">动作都做完了</div><div class="t-foot">点下面的“完成训练”</div>')}
     ${order.length && !future ? `<div class="deck-ctrl"><button class="pill glass" data-skip>${I.later}先跳过</button><button class="pill ink" data-exdone>${I.check}做完了</button></div>` : ''}</section>`;
   // 全部动作
-  h += `<section class="section"><div class="section-h"><h2>全部动作</h2><button class="link" id="editEx">${S.edit ? '完成' : '编辑'}</button></div><div class="list mat">`;
+  h += `<section class="section"><div class="section-h"><h2>全部动作</h2><button class="link" id="editEx">${S.edit ? '完成' : '编辑'}</button></div>`;
+  if (S.edit) h += `<div class="tscope"><span class="t-foot l2">拖动 ≡ 调整顺序；改动范围</span><div class="segmented" data-tscope>${[['day', '只改今天'], ['tpl', '以后都这样']].map(([k, n]) => `<button data-v="${k}" aria-pressed="${S.trainScope === k}">${n}</button>`).join('')}</div></div>`;
+  h += `<div class="list mat" id="exList">`;
   items.forEach(it => {
     const dn = doneSets(r, it);
-    h += `<div class="row" style="grid-template-columns:48px 1fr auto">${S.edit ? `<button class="hit" data-exdel="${it.v}" aria-label="删除 ${esc(it.ex.n)}" style="margin:0;justify-items:start"><span class="del">−</span></button>` : `<img class="thumb" src="${imgUrl(it.ex, 0)}" alt="" loading="lazy">`}
-      <button class="row-main" data-exopen="${it.v}"><span class="row-title">${esc(it.ex.n)}</span><span class="row-sub">${esc(it.group.name)} · ${it.sets} × ${esc(it.reps)}</span></button>
-      ${S.edit ? `<span class="stepper"><button data-st="${it.v}|-1" aria-label="减一组">−</button><span>${it.sets}</span><button data-st="${it.v}|1" aria-label="加一组">+</button></span>` : `<span class="row-val">${dn === it.sets ? Kit.chk(true) : dn + ' / ' + it.sets}</span>`}</div>`;
+    h += `<div class="row ex-row" data-v="${it.v}" style="grid-template-columns:${S.edit ? '40px 1fr auto 36px' : '48px 1fr auto'}">${S.edit ? `<button class="hit" data-exdel="${it.v}" aria-label="删除 ${esc(it.ex.n)}" style="margin:0;justify-items:start"><span class="del">−</span></button>` : `<img class="thumb" src="${imgUrl(it.ex, 0)}" alt="" loading="lazy">`}
+      <button class="row-main" data-exopen="${it.v}"><span class="row-title">${esc(it.ex.n)}</span><span class="row-sub">${esc(it.group.name)} · ${it.sets} × ${esc(it.reps)} · 休息 ${esc(it.rest)}</span></button>
+      ${S.edit ? `<span class="stepper"><button data-st="${it.v}|-1" aria-label="减一组">−</button><span>${it.sets}</span><button data-st="${it.v}|1" aria-label="加一组">+</button></span><button class="drag" data-drag="${it.v}" aria-label="拖动调整 ${esc(it.ex.n)} 的顺序">≡</button>` : `<span class="row-val">${dn === it.sets ? Kit.chk(true) : dn + ' / ' + it.sets}</span>`}</div>`;
   });
   if (S.edit) h += `<button class="row add" id="addEx"><span class="plus">+</span><span class="row-title">从动作库添加</span></button>`;
   h += '</div>';
@@ -102,13 +140,17 @@ function ensureSession(d) { const r = rec(d); if (!r.session) { const si = sessi
 function bindSetInputs(root, d, items) {
   root.querySelectorAll('[data-set]').forEach(i => i.oninput = () => { const [v, k, f] = i.dataset.set.split('|'); setOf(d, v, +k)[f] = i.value.trim(); ensureSession(d); save(d); });
   root.querySelectorAll('[data-sd]').forEach(b => b.onclick = () => {
-    const [v, k] = b.dataset.sd.split('|'); const s = setOf(d, v, +k); s.done = !s.done; ensureSession(d); save(d); Kit.haptic(s.done ? 'medium' : 'light');
-    b.innerHTML = Kit.chk(s.done);
+    const [v, k] = b.dataset.sd.split('|'); const s = setOf(d, v, +k); s.done = !s.done; ensureSession(d);
     const it = items.find(x => x.v === v), r = rec(d);
+    // 没填就打勾：按建议（上次的重量和次数）记下
+    if (s.done && !s.w && !s.r) { const sg = suggestFor(it, d); if (sg) { if (sg.w) s.w = String(sg.w); s.r = String(sg.r); const row = b.closest('.set'); if (row) { const [wi, ri] = row.querySelectorAll('input'); if (wi && s.w) wi.value = s.w; if (ri) ri.value = s.r; } } }
+    save(d); Kit.haptic(s.done ? 'medium' : 'light');
+    b.innerHTML = Kit.chk(s.done);
     if (doneSets(r, it) === it.sets) { toast(`${it.ex.n} 完成`); setTimeout(() => { close(); afterSets(d, items); }, 350); }
   });
   root.querySelectorAll('[data-swap]').forEach(b => b.onclick = () => swap(items, items.findIndex(x => x.v === b.dataset.swap)));
   root.querySelectorAll('[data-big]').forEach(b => b.onclick = () => bigImage(items.find(x => x.v === b.dataset.big).ex));
+  root.querySelectorAll('[data-cfg]').forEach(b => b.onclick = () => cfgSheet(items.find(x => x.v === b.dataset.cfg)));
 }
 function afterSets(d, items) {
   const r = rec(d);
@@ -137,8 +179,17 @@ function bindTrain() {
   // 长按动作：有备选就换动作，没有就看大图
   $$('[data-exopen]').forEach(b => { const i = items.findIndex(x => x.v === b.dataset.exopen), row = b.closest('.row'); if (row && i >= 0) Kit.longPress(row, () => nAlts(items[i]) ? swap(items, i) : bigImage(items[i].ex)); });
   $$('[data-exopen]').forEach(b => b.onclick = () => { const i = items.findIndex(x => x.v === b.dataset.exopen); sheet(`<div class="k-train" style="display:grid;gap:14px;padding-top:16px">${exBody(items[i], i, items.length, peek(d) || {}, d, d > today())}</div>`, m => { bindSetInputs(m, d, items); m.onclick = e => { if (e.target === m) { close(); render(); } }; }); });
-  $$('[data-exdel]').forEach(b => b.onclick = () => { const v = b.dataset.exdel; askScope(`删除「${window.EX[v].n}」`, sc => { modsOf(d, si.key, sc, m => { m.hide = (m.hide || []).concat(v); m.add = (m.add || []).filter(a => a.v !== v); }); render(); toast('已删除'); }); });
-  $$('[data-st]').forEach(b => b.onclick = () => { const [v, dir] = b.dataset.st.split('|'); const it = items.find(x => x.v === v); modsOf(d, si.key, 'tpl', m => { m.sets = m.sets || {}; m.sets[v] = Math.max(1, Math.min(10, it.sets + +dir)); }); Kit.haptic('light'); render(); });
+  const stay = () => { const y = scrollY; render(); scrollTo(0, y); };
+  // 编辑模式：删除、组数、拖动排序都按上面选的范围（只改今天 / 以后都这样）
+  const scopeText = () => S.trainScope === 'tpl' ? `以后练“${si.custom ? '自选部位' : si.day.name}”都这样` : '只改今天';
+  $$('[data-tscope] button').forEach(b => b.onclick = () => { S.trainScope = b.dataset.v; Kit.haptic('light'); $$('[data-tscope] button').forEach(x => x.setAttribute('aria-pressed', x === b)); });
+  $$('[data-exdel]').forEach(b => b.onclick = () => { const v = b.dataset.exdel; modsOf(d, si.key, S.trainScope, m => { m.hide = (m.hide || []).concat(v); m.add = (m.add || []).filter(a => a.v !== v); }); stay(); toast(`已删除「${window.EX[v].n}」（${scopeText()}）`); });
+  $$('[data-st]').forEach(b => b.onclick = () => { const [v, dir] = b.dataset.st.split('|'); const it = items.find(x => x.v === v); modsOf(d, si.key, S.trainScope, m => { m.sets = m.sets || {}; m.sets[v] = Math.max(1, Math.min(10, it.sets + +dir)); }); Kit.haptic('light'); stay(); });
+  const exList = $('#exList');
+  if (exList && S.edit) dragSort(exList, (from, to) => {
+    const order = items.map(x => x.v), [mv] = order.splice(from, 1); order.splice(to, 0, mv);
+    modsOf(d, si.key, S.trainScope, m => { m.order = order; }); Kit.haptic('success'); stay(); toast(`顺序已调整（${scopeText()}）`);
+  });
   // 动作库可以一次选好几个，再一起问“只改今天 / 以后都这样”
   const add = $('#addEx'); if (add) add.onclick = () => library(list => askScope(list.length === 1 ? `添加「${window.EX[list[0]].n}」` : `添加 ${list.length} 个动作`, sc => {
     modsOf(d, si.key, sc, m => { m.add = (m.add || []).filter(a => !list.includes(a.v)).concat(list.map(v => ({ v, sets: 3 }))); m.hide = (m.hide || []).filter(x => !list.includes(x)); });
@@ -146,6 +197,30 @@ function bindTrain() {
   }), items.map(it => it.v));
   $('#finish').onclick = () => finish(!(peek(d) && peek(d).done && peek(d).done.lift));
   animate();
+}
+/* 拖动排序：按住 ≡ 上下拖，其他行让位；松手后回调 (原位置, 新位置) */
+function dragSort(list, onDrop) {
+  list.querySelectorAll('[data-drag]').forEach(h => h.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const rows = [...list.querySelectorAll('[data-v]')], row = h.closest('[data-v]'), i0 = rows.indexOf(row);
+    const rects = rows.map(x => x.getBoundingClientRect()), hgt = rects[i0].height, y0 = e.clientY;
+    let to = i0;
+    h.setPointerCapture(e.pointerId); row.classList.add('dragging'); rows.forEach(x => x !== row && x.classList.add('shifting')); Kit.haptic('medium', true);
+    const move = ev => {
+      const dy = Math.max(rects[0].top - rects[i0].top, Math.min(rects[rows.length - 1].bottom - rects[i0].bottom, ev.clientY - y0));
+      row.style.transform = `translateY(${dy}px)`;
+      const cy = rects[i0].top + hgt / 2 + dy;
+      const n = rects.filter((r, j) => j !== i0 && r.top + r.height / 2 < cy).length;
+      if (n !== to) { to = n; Kit.haptic('tick'); }
+      rows.forEach((x, j) => { if (j === i0) return; const sft = i0 < to && j > i0 && j <= to ? -hgt : i0 > to && j < i0 && j >= to ? hgt : 0; x.style.transform = sft ? `translateY(${sft}px)` : ''; });
+    };
+    const up = () => {
+      h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', up); h.removeEventListener('pointercancel', up);
+      rows.forEach(x => { x.style.transform = ''; x.classList.remove('dragging', 'shifting'); });
+      if (to !== i0) onDrop(i0, to);
+    };
+    h.addEventListener('pointermove', move); h.addEventListener('pointerup', up); h.addEventListener('pointercancel', up);
+  }));
 }
 function finish(on) {
   const d = S.day, r = rec(d), before = badges().filter(b => b.got).length;
@@ -174,7 +249,7 @@ function swap(items, idx) {
     m.querySelectorAll('[data-alt]').forEach(b => b.onclick = () => {
       const key = g.sheet + ':' + g.id, nv = b.dataset.alt;
       S.choices[key] = items.filter(x => x.group === g).map(x => x.v === it.v ? nv : x.v).filter((v, i, a) => a.indexOf(v) === i);
-      LS.set('choices', S.choices); close(); Kit.haptic('light'); render(); toast('已换成 ' + window.EX[nv].n);
+      LS.set('choices', S.choices); C.replaceInOrder(S.day, sessionItems(S.day).si.key, it.v, nv); close(); Kit.haptic('light'); render(); toast('已换成 ' + window.EX[nv].n);
     });
   });
 }

@@ -460,7 +460,11 @@ function viewSettings() {
     <div class="frow"><label for="st-lite">省电模式</label><input type="checkbox" class="switch" id="st-lite" ${l.lite ? 'checked' : ''}></div>
     <div class="frow stack"><div class="look-preview"><div class="lp-bg" aria-hidden="true"><i></i><i></i><i></i></div><div class="mat card lp-card"><span class="eyebrow">预览</span><div class="fig" style="font-size:40px">1885<small>kcal</small></div><div class="progress"><i style="width:62%;background:var(--accent)"></i></div></div></div></div></div>
     <div class="list-footer">卡片默认不透明；堆叠卡组最上面一张总是不透明。模糊只用在标签栏、顶部导航和弹出面板上；手机发热或卡顿时可以打开省电模式。<button class="link" id="look-reset" style="min-height:0;font-size:12px">恢复默认</button></div></section>`;
+  h += `<section class="fsec"><h3>助手</h3><div class="list mat"><button class="row" data-sub="memory"><span class="row-ico">${I.heart}</span><span class="row-main"><span class="row-title">AI 记忆</span><span class="row-sub">助手记住的事、你的训练记录</span></span><span class="row-val chev"><span class="rv">${Memory.list().length} 条</span></span></button></div></section>`;
   h += `<section class="fsec"><h3>插件</h3><div class="list mat"><button class="row" data-sub="localai"><span class="row-ico">${I.sparkles}</span><span class="row-main"><span class="row-title">内置模型</span><span class="row-sub">在手机上运行的小模型 · 测试版</span></span><span class="row-val chev"><span class="rv">${LocalAI.prefs().enabled ? '已开启' : '未开启'}</span></span></button></div></section>`;
+  const track = C.metricsOn().map(m => m.id);
+  h += `<section class="fsec"><h3>每日记录</h3><div class="list mat"><div class="frow stack"><span class="lbl">每天称重时一起记</span><div class="chips" data-track>${C.METRICS.map(m => `<button data-v="${m.id}" aria-pressed="${track.includes(m.id)}" ${m.id === 'weight' ? 'disabled' : ''}>${m.name}</button>`).join('')}</div></div></div>
+    <div class="list-footer">体重一直要记；多选几项后，“今天”的称重卡片会一起填，“数据”页可以左右滑看每一项的曲线。套表建议看体重、腰围和外观，体测仪的体脂率短期误差很大（表17 B88）。</div></section>`;
   const fl = Kit.feel(), hm = Kit.hapticMode();
   h += `<section class="fsec"><h3>震动</h3><div class="list mat">
     <div class="frow"><span class="lbl">震动</span><div class="segmented" style="justify-self:end" data-hap>${[['all', '开'], ['long', '仅长按'], ['off', '关']].map(([k, n]) => `<button data-v="${k}" aria-pressed="${hm === k}">${n}</button>`).join('')}</div></div>
@@ -493,6 +497,7 @@ function bindSettings() {
   $('#st-lite').onchange = e => { Look.set({ lite: e.target.checked }); toast(e.target.checked ? '已关闭模糊和动画' : '已恢复'); };
   $('#look-reset').onclick = () => { Look.reset(); Kit.haptic('light'); render(); toast('已恢复默认外观'); };
   $$('[data-hap] button').forEach(b => b.onclick = () => { const y = scrollY; Kit.setHaptic(b.dataset.v); Kit.haptic('medium', true); render(); scrollTo(0, y); toast(b.dataset.v === 'off' ? '已关闭震动' : b.dataset.v === 'long' ? '只有长按时震动（长按安排可改时间、长按动作可换动作）' : '已开启震动'); });
+  $$('[data-track] button').forEach(b => b.onclick = () => { if (b.disabled) return; const on = b.getAttribute('aria-pressed') !== 'true'; b.setAttribute('aria-pressed', on); const t = $$('[data-track] button[aria-pressed="true"]').map(x => x.dataset.v).filter(x => x !== 'weight'); S.profile = Object.assign({}, S.profile, { track: t }); LS.set('profile', S.profile); Kit.haptic('light'); });
   $$('[data-feel] button').forEach(b => b.onclick = () => { const y = scrollY; Kit.setFeel({ style: b.dataset.v }); Kit.haptic('medium', true, true); render(); scrollTo(0, y); });
   const hs = $('#rg-hs');
   if (hs) { let last = +hs.value; hs.oninput = () => { const v = +hs.value; $('#rv-hs').textContent = ['很轻', '轻', '适中', '强', '很强'][v - 1]; if (v !== last) { last = v; Kit.setFeel({ strength: v }); Kit.haptic('medium', true, true); } }; }
@@ -509,7 +514,25 @@ function bindSettings() {
   $('#st-guide-now').onclick = () => { S.sub = null; Guide.start(); render(); scrollTo(0, 0); };
 }
 
+/* ---------- AI 记忆：助手记住的事（可删、可自己加）+ 训练记录（从每天的记录里算，不另存） ---------- */
+function viewMemory() {
+  const items = Memory.list().slice().reverse(), log = AITools.trainingLog({ days: 365 }).exercises || [];
+  let h = back('设置') + Kit.largeTitle('AI 记忆', '助手回答前会先看这些');
+  h += `<section class="list mat"><div class="frow stack"><div class="mem-add"><input class="field-in" id="mem-in" placeholder="例如：左膝受过伤，不做深蹲" enterkeyhint="done"><button class="tbtn" id="mem-ok">记住</button></div></div></section>`;
+  h += `<section class="section"><div class="section-h"><h2>记住的事</h2>${items.length ? '<button class="link red" id="mem-clear">全部清空</button>' : ''}</div><div class="list mat">${items.length ? items.map(x => `<div class="row" style="grid-template-columns:1fr auto"><span class="row-main"><span class="row-title" style="white-space:normal">${esc(x.text)}</span><span class="row-sub">${esc(Memory.TAGS[x.tag] || '其他')} · ${new Date(x.ts).toLocaleDateString('zh-CN')} · ${x.src === 'ai' ? '助手记的' : '你加的'}</span></span><button class="link red" data-mdel="${x.id}">删除</button></div>`).join('') : '<div class="row" style="grid-template-columns:1fr"><span class="row-sub">还没有。可以在上面写，或者跟助手说“记住……”。</span></div>'}</div>
+    <div class="list-footer">伤病、器械、作息、饮食习惯这类长期有效的事放在这里；体重、腰围这些每天的数记在“今天”的称重卡片里。</div></section>`;
+  h += `<section class="section"><div class="section-h"><h2>训练记录</h2><span class="t-foot l2">${log.length} 个动作</span></div><div class="list mat">${log.length ? log.sort((a, b) => b.last.date.localeCompare(a.last.date)).map(x => `<div class="row" style="grid-template-columns:1fr auto"><span class="row-main"><span class="row-title">${esc(x.name)}</span><span class="row-sub">上次 ${esc(x.last.date.slice(5).replace('-', '/'))}：${esc(x.last.sets)}</span></span><span class="row-val num">最重 ${x.best_kg}kg<br><span class="l3">${x.times} 次</span></span></div>`).join('') : '<div class="row" style="grid-template-columns:1fr"><span class="row-sub">训练时填了重量和次数，这里就会有记录；下次练同一个动作会按上次的数给出建议。</span></div>'}</div></section>`;
+  return h;
+}
+function bindMemory() {
+  $$('[data-back]').forEach(b => b.onclick = () => { S.sub = 'settings'; S.subBack = null; render(); scrollTo(0, 0); });
+  const add = () => { const v = $('#mem-in').value.trim(); if (v.length < 2) { toast('写一句要记住的事'); return; } Memory.add(v, null, 'user'); Kit.haptic('success'); render(); };
+  $('#mem-ok').onclick = add; $('#mem-in').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); add(); } };
+  $$('[data-mdel]').forEach(b => b.onclick = () => { Memory.remove(b.dataset.mdel); Kit.haptic('light'); render(); });
+  const cl = $('#mem-clear'); if (cl) cl.onclick = () => sheet(`<h2>清空 AI 记忆？</h2><p class="t-sub l2" style="text-align:center">训练记录不受影响。</p><button class="pill wide" style="background:var(--warn);color:#fff" id="mc-ok">清空</button><button class="pill glass wide" id="mc-x">取消</button>`, m => { m.querySelector('#mc-ok').onclick = () => { Memory.clear(); close(); render(); toast('已清空'); }; m.querySelector('#mc-x').onclick = close; });
+}
 const SUB = {
+  memory: { view: viewMemory, bind: bindMemory },
   settings: { view: viewSettings, bind: bindSettings },
   localai: { view: viewLocal, bind: bindLocal },
   profile: { view: () => back() + Kit.largeTitle('编辑资料', '') + profileForm(false), bind: () => { $$('[data-back]').forEach(b => b.onclick = () => { S.sub = null; render(); }); bindProfile(false); } },

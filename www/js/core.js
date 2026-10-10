@@ -1,6 +1,6 @@
 /* 核心：存储、每天的卡片、训练、能量计算、奖励（界面文件共用） */
 window.C = (() => {
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '1.10.0';
 const REPO = 'ABigCyan/lianchi-daily';
 const E = window.Engine;
 const $ = s => document.querySelector(s);
@@ -26,7 +26,7 @@ const S = {
   holidays: LS.get('holidays') || {},
   ai: LS.get('ai') || { preset: 'dashscope', type: 'openai', base: AI.PRESETS[0].base, key: '', model: '', models: [] },
   choices: LS.get('choices') || {},
-  custom: Object.assign({ timeline: {}, train: {} }, LS.get('custom') || {}),
+  custom: Object.assign({ timeline: {}, train: {}, exCfg: {} }, LS.get('custom') || {}),
   notify: LS.get('notify') || { on: false },
 };
 function month(ym) { if (!S.months[ym]) S.months[ym] = LS.get('m:' + ym) || {}; return S.months[ym]; }
@@ -186,7 +186,47 @@ function extraItem(v, sets) {
 function exMods(d, key) {
   const tpl = S.custom.train[key] || {};
   const day = (peek(d) || {}).ex || {};
-  return { hide: new Set([...(tpl.hide || []), ...(day.hide || [])]), add: [...(tpl.add || []), ...(day.add || [])], sets: Object.assign({}, tpl.sets || {}, day.sets || {}) };
+  return { hide: new Set([...(tpl.hide || []), ...(day.hide || [])]), add: [...(tpl.add || []), ...(day.add || [])], sets: Object.assign({}, tpl.sets || {}, day.sets || {}),
+    order: day.order || tpl.order || null };
+}
+// 换动作后，排过的顺序里把旧动作换成新动作（新动作占旧动作的位置）
+function replaceInOrder(d, key, from, to) {
+  const ms = [S.custom.train[key], (peek(d) || {}).ex];
+  ms.forEach(m => { if (m && m.order) m.order = m.order.map(v => v === from ? to : v); });
+  saveCustom(); if (peek(d)) save(d);
+}
+/* ---------- 训练记录（用户数据）：每个动作以前练过的组，用来给出这次的建议重量 ---------- */
+// 某个动作在某天之前最近一次有重量或次数的记录
+function lastSession(v, before) {
+  const days = allDays(E.addDays(before, -1));
+  for (let i = days.length - 1; i >= 0; i--) {
+    const s = ((peek(days[i]) || {}).sets || {})[v];
+    const ok = (s || []).filter(x => x && (+x.w > 0 || +x.r > 0));
+    if (ok.length) return { d: days[i], sets: ok.map(x => ({ w: +x.w || 0, r: +x.r || 0 })) };
+  }
+  return null;
+}
+// 以前做过哪些动作（打过勾或填过重量、次数），以及一共练过几次
+function trainedBefore(d) {
+  const seen = new Set(); let n = 0;
+  allDays(E.addDays(d, -1)).forEach(x => { const r = peek(x); if (!r) return; if (r.done && r.done.lift) n++; Object.entries(r.sets || {}).forEach(([v, s]) => { if ((s || []).some(y => y && (y.done || +y.w > 0 || +y.r > 0))) seen.add(v); }); });
+  return { seen, n };
+}
+// 配重加减的幅度（应用补充：常见器械的最小加重档）
+function stepKg(ex) { const e = ex.eq || ''; return /哑铃|壶铃/.test(e) ? 2 : /自重|徒手|单杠|双杠|弹力带|瑜伽球|健腹轮|垫|罗马椅|平凳或|GHR/.test(e) || !e ? 0 : 2.5; }
+/* 这次的建议：按上次的重量和次数。表21 C12：配重要选“能做 8-12 次会力竭”的——
+   上次每组都做到了次数上限 → 加一档；有一组没做到下限 → 减一档；否则不变 */
+function suggestFor(it, d) {
+  const last = lastSession(it.v, d);
+  if (!last || it.ex.timed) return null;
+  const m = String(it.reps).match(/(\d+)\s*-\s*(\d+)/), lo = m ? +m[1] : 8, hi = m ? +m[2] : 12;
+  const reps = last.sets.map(x => x.r).filter(Boolean), st = stepKg(it.ex), w0 = Math.max(...last.sets.map(x => x.w));
+  let w = w0, why = '和上次一样';
+  if (reps.length && reps.every(r => r >= hi) && w0 > 0 && st) { w = w0 + st; why = `上次每组都做到 ${hi} 次，按表21 C12 加 ${st}kg`; }
+  else if (reps.length && reps.some(r => r < lo) && w0 > st && st) { w = w0 - st; why = `上次有一组不到 ${lo} 次，按表21 C12 减 ${st}kg`; }
+  else if (reps.length && reps.every(r => r >= hi) && !st) why = `上次每组都做到 ${hi} 次，可以放慢速度或加次数`;
+  const r = w === w0 ? Math.min(hi, Math.max(lo, Math.round(reps.reduce((a, b) => a + b, 0) / (reps.length || 1)) || lo)) : (w > w0 ? lo : hi);
+  return { w: Math.round(w * 4) / 4, r, why, last, lastText: last.sets.map(x => `${x.w || '-'}×${x.r || '?'}`).join('  ') };
 }
 function sessionItems(d) {
   const tr = training(), si = sessionInfo(d), p = S.profile;
@@ -195,7 +235,9 @@ function sessionItems(d) {
   const dayAt = s => tr.days[s.dayIdx % tr.days.length];
   const legRound = roundsBefore(d, s => !s.custom && hasLeg(dayAt(s)));
   const chestRound = roundsBefore(d, s => !s.custom && hasChest(dayAt(s)));
-  const ctx = { week: weekOf(d), legRound, chestRound, choices: S.choices };
+  const hist = trainedBefore(d);
+  // 练过 3 次以上才区分“新动作”（新手前两周本来就全部用 12-15 次）
+  const ctx = { week: weekOf(d), legRound, chestRound, choices: S.choices, fresh: hist.n >= 3 && hist.seen.size ? new Set(Object.keys(window.EX).filter(v => !hist.seen.has(v))) : null };
   let day;
   if (si.custom) {
     const groups = [];
@@ -209,6 +251,13 @@ function sessionItems(d) {
   items = items.filter(it => !mods.hide.has(it.v));
   mods.add.forEach(a => { if (!mods.hide.has(a.v) && !items.some(it => it.v === a.v)) items.push(extraItem(a.v, a.sets)); });
   items.forEach(it => { if (mods.sets[it.v]) it.sets = mods.sets[it.v]; });
+  // 自己（或助手）改过的次数、休息、是否力竭：对这个动作一直有效
+  items.forEach(it => { it.def = { reps: it.reps, rest: it.rest, fail: it.fail, repsSrc: it.repsSrc, restSrc: it.restSrc, failSrc: it.failSrc }; });
+  items.forEach(it => { const c = (S.custom.exCfg || {})[it.v]; if (!c) return;
+    if (c.reps) { it.reps = c.reps; it.repsSrc = '你改的'; } if (c.rest) { it.rest = c.rest; it.restSrc = '你改的'; }
+    if (c.fail != null) { it.fail = c.fail ? '可以做到力竭' : '不追求完全力竭，提前 1-2 次停'; it.failSrc = '你改的'; } it.custom = true; });
+  // 动作顺序：拖动排过的按排好的顺序（这一天单独排的优先），新加的动作排在后面
+  if (mods.order) { const pos = v => { const i = mods.order.indexOf(v); return i < 0 ? 1e3 : i; }; items = items.map((it, i) => ({ it, i })).sort((a, b) => pos(a.it.v) - pos(b.it.v) || a.i - b.i).map(x => x.it); }
   const optionalGroups = planned.filter(it => it.optional && !(r.extra || {})[it.group.id]).map(it => it.group).filter((g, i, a) => a.indexOf(g) === i);
   // 女性隔轮跳过胸日是套表三分化的规则（表21 C14），补充分化不用
   const femaleSkip = p.sex === 'F' && !si.custom && !tr.ext && hasChest(day) && chestRound % 2 === 1;
@@ -259,6 +308,18 @@ function totals() {
   const st = streaks(); points += Math.floor(st.best / 7) * 50;
   return { lifts, km: Math.round(km * 10) / 10, weighs, perfect, points, meals, ...st };
 }
+/* ---------- 每日身体数据：体重必记，腰围等可选（我的 → 设置 → 每日记录） ---------- */
+const METRICS = [
+  { id: 'weight', name: '体重', unit: 'kg', min: 20, max: 300, note: '只比较 1-2 周的平均值（表17 B91）' },
+  { id: 'waist', name: '腰围', unit: 'cm', min: 40, max: 200, note: '空腹量肚脐一圈，同一时间量' },
+  { id: 'hip', name: '臀围', unit: 'cm', min: 50, max: 200 },
+  { id: 'chest', name: '胸围', unit: 'cm', min: 50, max: 200 },
+  { id: 'arm', name: '臂围', unit: 'cm', min: 15, max: 80 },
+  { id: 'thigh', name: '大腿围', unit: 'cm', min: 25, max: 120 },
+  { id: 'fat', name: '体脂率', unit: '%', min: 3, max: 70, note: '体测仪短期误差很大，只看长期趋势（表17 B88）' },
+];
+function metricsOn() { const t = Array.isArray(S.profile.track) ? S.profile.track : []; return METRICS.filter(m => m.id === 'weight' || t.includes(m.id)); }
+function metricSeries(id) { return allDays().map(d => ({ d, w: +(peek(d) || {})[id] || null })).filter(x => x.w); }
 function weights() { return allDays().map(d => ({ d, w: +(peek(d) || {}).weight || null })).filter(x => x.w); }
 function badges() {
   const t = totals(), ws = weights(), p = S.profile, cut = S.plan.goal === 'cut';
@@ -318,6 +379,6 @@ function bindHead() { $$('[data-ai]').forEach(b => b.onclick = () => { Kit.hapti
 function render() { window.__render(); }
 
 return { APP_VERSION, REPO, E, $, $$, esc, today, DAY_START, dayMin, DOW, uid, src, LS, S, month, peek, rec, save, saveCustom, allDays, ICON, holiday, dayInfo, TYPE,
-  tasksFor, setTaskTime, scoreDay, pctOf, training, sessionInfo, sessionItems, weekOf, LIB, extraItem, burnOf, intakeOf, targetOf, streaks, totals, weights,
+  tasksFor, setTaskTime, scoreDay, pctOf, training, sessionInfo, sessionItems, weekOf, LIB, extraItem, replaceInOrder, lastSession, suggestFor, trainedBefore, METRICS, metricsOn, metricSeries, burnOf, intakeOf, targetOf, streaks, totals, weights,
   badges, levelOf, celebrate, toast, sheet, close, askScope, confetti, imgUrl, dateLabel, head, bindHead, render };
 })();

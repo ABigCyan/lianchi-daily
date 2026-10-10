@@ -1,7 +1,7 @@
 /* 今天：圆环 + “接下来”堆叠卡组 + 全部安排（分组列表） */
 (() => {
 const { E, $, $$, esc, today, S, peek, rec, save, saveCustom, dayInfo, TYPE, tasksFor, scoreDay, pctOf, sessionItems, burnOf, intakeOf, targetOf,
-  badges, celebrate, toast, sheet, close, askScope, confetti, head, bindHead, render, uid, streaks, setTaskTime } = C;
+  badges, celebrate, toast, sheet, close, askScope, confetti, head, bindHead, render, uid, streaks, setTaskTime, metricsOn } = C;
 S.editScope = S.editScope || 'day';
 const { I, KIND } = Kit;
 S.later = S.later || {};
@@ -9,7 +9,7 @@ S.later = S.later || {};
 function kindOf(t) { return t.icon === 'moon' ? 'sleep' : t.icon === 'scale' ? 'scale' : (KIND[t.kind] ? t.kind : 'habit'); }
 function subOf(t, r, d) {
   if (t.kind === 'train') { const s = sessionItems(d); return `${s.items.length} 个动作 · 约 ${s.items.reduce((a, x) => a + x.sets, 0)} 组`; }
-  if (t.id === 'weigh' && r.weight) return `${r.weight} kg`;
+  if (t.id === 'weigh') { const got = metricsOn().filter(m => r[m.id]).map(m => `${m.name} ${r[m.id]}${m.unit === '%' ? '%' : ' ' + m.unit}`); if (got.length) return got.join(' · '); if (metricsOn().length > 1) return '起床后、吃东西前；' + metricsOn().slice(1).map(m => m.name).join('、') + '可选'; }
   return t.sub || t.note || '';
 }
 /* 卡片正文：卡组顶部和详情面板共用 */
@@ -20,7 +20,13 @@ function body(t, r, d, future) {
       ${future ? '' : `<div class="ghost-row"><button class="tbtn" data-log="${t.meal.key}">记录吃了什么</button></div>`}`;
   }
   if (t.kind === 'train') return `<div class="ghost-row"><button class="pill tint" data-go="train">${I.train}开始训练</button></div>`;
-  if (t.id === 'weigh') return `<div class="set" style="grid-template-columns:1fr auto"><input class="field-in" data-w inputmode="decimal" placeholder="体重 kg" value="${esc(r.weight || '')}" ${future ? 'disabled' : ''}><button class="pill tint" data-wok ${future ? 'disabled' : ''}>记录</button></div><div class="t-foot l2">只比较 1-2 周的平均值（表17 B91）</div>`;
+  if (t.id === 'weigh') {
+    const ms = metricsOn();
+    if (ms.length === 1) return `<div class="set" style="grid-template-columns:1fr auto"><input class="field-in" data-m="weight" inputmode="decimal" placeholder="体重 kg" value="${esc(r.weight || '')}" ${future ? 'disabled' : ''}><button class="pill tint" data-wok ${future ? 'disabled' : ''}>记录</button></div><div class="t-foot l2">只比较 1-2 周的平均值（表17 B91）</div>`;
+    // 选了腰围等：每项一行，空着的不记
+    return `<div class="mgrid">${ms.map(m => `<label class="mcell"><span>${m.name}</span><input class="field-in" data-m="${m.id}" inputmode="decimal" placeholder="${m.unit}" value="${esc(r[m.id] || '')}" ${future ? 'disabled' : ''}></label>`).join('')}</div>
+      <button class="pill tint wide" data-wok ${future ? 'disabled' : ''}>记录</button><div class="t-foot l2">体重只比较 1-2 周的平均值（表17 B91）；其他几项空着就不记</div>`;
+  }
   if (t.kind === 'cardio' && t.act && t.act.kind === '跑步') return `<div class="set" style="grid-template-columns:1fr auto"><input class="field-in" data-km inputmode="decimal" placeholder="实际跑了多少 km（可选）" value="${esc(r.km || '')}" ${future ? 'disabled' : ''}><button class="tbtn" data-kmok ${future ? 'disabled' : ''}>保存</button></div>`;
   if (t.note) return `<div class="dc-body">${esc(t.note)}</div>`;
   return '';
@@ -91,7 +97,13 @@ function toggleDone(d, id, on) {
 }
 function bindInputs(root, d) {
   const q = s => root.querySelector(s);
-  const wok = q('[data-wok]'); if (wok) wok.onclick = () => { const v = q('[data-w]').value.trim(); if (!(+v > 20)) { toast('请输入体重'); return; } rec(d).weight = v; if (!rec(d).done.weigh) toggleDone(d, 'weigh', true); else save(d); close(); render(); };
+  const wok = q('[data-wok]'); if (wok) wok.onclick = () => {
+    const vals = {}, bad = [];
+    root.querySelectorAll('[data-m]').forEach(i => { const m = metricsOn().find(x => x.id === i.dataset.m), v = i.value.trim(); if (!m || v === '') return; if (+v >= m.min && +v <= m.max) vals[m.id] = v; else bad.push(m.name); });
+    if (bad.length) { toast(`${bad.join('、')}的数不对`); return; }
+    if (!Object.keys(vals).length) { toast('请输入体重'); return; }
+    Object.assign(rec(d), vals); if (!rec(d).done.weigh) toggleDone(d, 'weigh', true); else save(d); close(); render();
+  };
   const kok = q('[data-kmok]'); if (kok) kok.onclick = () => { rec(d).km = q('[data-km]').value.trim(); save(d); toast('已保存，消耗按实际距离计算'); };
   root.querySelectorAll('[data-log]').forEach(b => b.onclick = () => { close(); window.Food.addSheet(b.dataset.log); });
   root.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { close(); S.tab = b.dataset.go; render(); scrollTo(0, 0); });
