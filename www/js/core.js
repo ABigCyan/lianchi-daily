@@ -1,6 +1,6 @@
 /* 核心：存储、每天的卡片、训练、能量计算、奖励（界面文件共用） */
 window.C = (() => {
-const APP_VERSION = '1.10.0';
+const APP_VERSION = '1.10.1';
 const REPO = 'ABigCyan/lianchi-daily';
 const E = window.Engine;
 const $ = s => document.querySelector(s);
@@ -186,8 +186,27 @@ function extraItem(v, sets) {
 function exMods(d, key) {
   const tpl = S.custom.train[key] || {};
   const day = (peek(d) || {}).ex || {};
-  return { hide: new Set([...(tpl.hide || []), ...(day.hide || [])]), add: [...(tpl.add || []), ...(day.add || [])], sets: Object.assign({}, tpl.sets || {}, day.sets || {}),
-    order: day.order || tpl.order || null };
+  // 两层：“以后都这样”（tpl）和“只改今天”（day）。今天加回来的动作，不受“以后都这样”里删掉的影响
+  const dayAdd = new Set((day.add || []).map(a => a.v));
+  return { hide: new Set([...(tpl.hide || []).filter(v => !dayAdd.has(v)), ...(day.hide || [])]), add: [...(tpl.add || []), ...(day.add || [])], sets: Object.assign({}, tpl.sets || {}, day.sets || {}),
+    order: day.order || tpl.order || null, swap: Object.assign({}, tpl.swap || {}, day.swap || {}) };
+}
+/* 换动作：记在“以后都这样”里（原动作 → 新动作），换回原动作就去掉这条 */
+function swapExercise(d, si, from, to) {
+  const m = S.custom.train[si.key] || (S.custom.train[si.key] = {});
+  m.swap = m.swap || {};
+  const orig = Object.keys(m.swap).find(k => m.swap[k] === from) || from;
+  if (to === orig) delete m.swap[orig]; else m.swap[orig] = to;
+  replaceInOrder(d, si.key, from, to);
+  saveCustom();
+}
+/* 加动作：两层的“删掉”里都去掉它，免得加不回来 */
+function addExercises(d, si, scope, list, sets) {
+  const r = peek(d), t = S.custom.train[si.key];
+  [t, r && r.ex].forEach(m => { if (m && m.hide) m.hide = m.hide.filter(v => !list.includes(v)); });
+  const layer = scope === 'tpl' || scope === 'always' ? (S.custom.train[si.key] || (S.custom.train[si.key] = {})) : (() => { const rr = rec(d); rr.ex = rr.ex || {}; if (!rr.session) rr.session = si.custom ? { custom: true, split: training().split.key, groups: si.groups } : { split: training().split.key, dayIdx: si.dayIdx }; return rr.ex; })();
+  layer.add = (layer.add || []).filter(a => !list.includes(a.v)).concat(list.map(v => ({ v, sets: sets || 3 })));
+  saveCustom(); save(d);
 }
 // 换动作后，排过的顺序里把旧动作换成新动作（新动作占旧动作的位置）
 function replaceInOrder(d, key, from, to) {
@@ -212,6 +231,18 @@ function trainedBefore(d) {
   allDays(E.addDays(d, -1)).forEach(x => { const r = peek(x); if (!r) return; if (r.done && r.done.lift) n++; Object.entries(r.sets || {}).forEach(([v, s]) => { if ((s || []).some(y => y && (y.done || +y.w > 0 || +y.r > 0))) seen.add(v); }); });
   return { seen, n };
 }
+/* 重量怎么记（每个动作可以在“调整”里改）：
+   bar 杠铃类：填每边加的片，杆重另算（杠铃 20kg、EZ 杠 10kg、史密斯 15kg，可改），总重 = 杆 + 片 × 2；
+   db 单只：哑铃、壶铃、杠铃片填单只的重量；stack 配重：器械、龙门架填插销那格的重量；none 自重：卷腹、平板支撑这类只记次数（或秒） */
+const LOADS = { bar: '杆 + 片', db: '单只', stack: '配重', none: '自重' };
+function loadOf(ex, v) {
+  const c = (S.custom.exCfg || {})[v] || {}, e = ex.eq || '';
+  let mode = c.load;
+  if (!mode) mode = ex.timed || /徒手|瑜伽垫|健腹轮|平凳或|罗马椅|GHR|瑜伽球|弹力带/.test(e) || /^(单杠|双杠)/.test(e) ? 'none'
+    : /杠铃片/.test(e) ? 'db' : /EZ|史密斯|杠铃/.test(e) ? 'bar' : /哑铃|壶铃/.test(e) ? 'db' : 'stack';
+  const bar = c.bar != null ? +c.bar : /EZ/.test(e) ? 10 : /史密斯/.test(e) ? 15 : 20;
+  return { mode, bar, label: { bar: `每边片 kg · 杆 ${bar}`, db: /杠铃片/.test(e) ? '杠铃片 kg' : '单只 kg', stack: '配重 kg', none: '自重，只记次数' }[mode] };
+}
 // 配重加减的幅度（应用补充：常见器械的最小加重档）
 function stepKg(ex) { const e = ex.eq || ''; return /哑铃|壶铃/.test(e) ? 2 : /自重|徒手|单杠|双杠|弹力带|瑜伽球|健腹轮|垫|罗马椅|平凳或|GHR/.test(e) || !e ? 0 : 2.5; }
 /* 这次的建议：按上次的重量和次数。表21 C12：配重要选“能做 8-12 次会力竭”的——
@@ -226,7 +257,9 @@ function suggestFor(it, d) {
   else if (reps.length && reps.some(r => r < lo) && w0 > st && st) { w = w0 - st; why = `上次有一组不到 ${lo} 次，按表21 C12 减 ${st}kg`; }
   else if (reps.length && reps.every(r => r >= hi) && !st) why = `上次每组都做到 ${hi} 次，可以放慢速度或加次数`;
   const r = w === w0 ? Math.min(hi, Math.max(lo, Math.round(reps.reduce((a, b) => a + b, 0) / (reps.length || 1)) || lo)) : (w > w0 ? lo : hi);
-  return { w: Math.round(w * 4) / 4, r, why, last, lastText: last.sets.map(x => `${x.w || '-'}×${x.r || '?'}`).join('  ') };
+  const ld = loadOf(it.ex, it.v), wt = Math.round(w * 4) / 4;
+  if (ld.mode === 'none') return { w: 0, r, why: reps.every(x => x >= hi) ? `上次每组都做到 ${hi} 次，可以放慢速度或加次数` : '和上次一样', last, lastText: last.sets.map(x => `${x.r || '?'}次`).join('  '), load: ld };
+  return { w: wt, side: ld.mode === 'bar' ? Math.max(0, Math.round((wt - ld.bar) / 2 * 4) / 4) : null, r, why, last, lastText: last.sets.map(x => `${x.w || '-'}×${x.r || '?'}`).join('  '), load: ld };
 }
 function sessionItems(d) {
   const tr = training(), si = sessionInfo(d), p = S.profile;
@@ -250,6 +283,16 @@ function sessionItems(d) {
   const mods = exMods(d, si.key);
   items = items.filter(it => !mods.hide.has(it.v));
   mods.add.forEach(a => { if (!mods.hide.has(a.v) && !items.some(it => it.v === a.v)) items.push(extraItem(a.v, a.sets)); });
+  // 换过的动作：原位置、原组数不变，换成新动作，次数/休息/力竭按新动作重新算（不再借用“同一格的备选”，避免换不掉或变成多加一个）
+  const rulesCtx = { firstTwo: (p.level || 'new') === 'new' && ctx.week <= 2, F: p.sex === 'F', fresh: ctx.fresh };
+  items = items.map(it => {
+    let nv = it.v, guard = 0;
+    while (mods.swap[nv] && window.EX[mods.swap[nv]] && guard++ < 5) nv = mods.swap[nv];
+    if (nv === it.v) return it;
+    const ex = window.EX[nv];
+    return { ...it, v: nv, ex, ...E.itemRules(ex, it.group, nv, rulesCtx), swappedFrom: it.v, note: `换掉了原来的“${it.ex.n}”`,
+      alts: [it.v].concat((it.alts || []).filter(x => x !== nv)), extAlts: (it.extAlts || []).filter(x => x !== nv) };
+  }).filter((it, i, a) => a.findIndex(x => x.v === it.v) === i);
   items.forEach(it => { if (mods.sets[it.v]) it.sets = mods.sets[it.v]; });
   // 自己（或助手）改过的次数、休息、是否力竭：对这个动作一直有效
   items.forEach(it => { it.def = { reps: it.reps, rest: it.rest, fail: it.fail, repsSrc: it.repsSrc, restSrc: it.restSrc, failSrc: it.failSrc }; });
@@ -384,6 +427,6 @@ function bindHead() { $$('[data-ai]').forEach(b => b.onclick = () => { Kit.hapti
 function render() { window.__render(); }
 
 return { APP_VERSION, REPO, E, $, $$, esc, today, DAY_START, dayMin, DOW, uid, src, LS, S, month, peek, rec, save, saveCustom, allDays, ICON, holiday, dayInfo, TYPE,
-  tasksFor, setTaskTime, scoreDay, pctOf, training, sessionInfo, sessionItems, weekOf, LIB, extraItem, replaceInOrder, lastSession, suggestFor, trainedBefore, METRICS, metricsOn, metricSeries, burnOf, intakeOf, targetOf, streaks, totals, weights,
+  tasksFor, setTaskTime, scoreDay, pctOf, training, sessionInfo, sessionItems, weekOf, LIB, extraItem, replaceInOrder, swapExercise, addExercises, LOADS, loadOf, lastSession, suggestFor, trainedBefore, METRICS, metricsOn, metricSeries, burnOf, intakeOf, targetOf, streaks, totals, weights,
   badges, levelOf, celebrate, toast, sheet, close, askScope, confetti, imgUrl, dateLabel, head, bindHead, render };
 })();

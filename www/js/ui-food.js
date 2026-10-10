@@ -184,18 +184,25 @@ function showEntry(f, idx, dataUrl) {
   const isNew = idx < 0, d = S.day;
   const draw = () => {
     recompute(f);
-    const rows = f.items.map((it, i) => `<tr><td>${esc(it.name)}${it.category && it.category !== '其他' ? `<br><span class="t-cap l2">${esc(it.category)}</span>` : ''}</td><td class="n">${it.grams ? `<input class="field-in" style="width:70px;height:34px;text-align:right" data-g="${i}" value="${it.grams}" inputmode="decimal">` : '—'}</td><td class="n">${it.carbs_g}</td><td class="n">${it.protein_g}</td><td class="n">${it.kcal}</td></tr>`).join('');
+    const rows = f.items.map((it, i) => `<tr><td>${esc(it.name)}${it.category && it.category !== '其他' ? `<br><span class="t-cap l2">${esc(it.category)}</span>` : ''}</td><td class="n">${it.grams ? `<input class="field-in" style="width:70px;height:34px;text-align:right" data-g="${i}" value="${it.grams}" inputmode="decimal">` : '—'}</td><td class="n" data-c="${i}">${it.carbs_g}</td><td class="n" data-p="${i}">${it.protein_g}</td><td class="n" data-k="${i}">${it.kcal}</td></tr>`).join('');
+    const tot = () => `<b class="num">${f.total.kcal} kcal</b> <span class="l2">· 碳水 ${f.total.carbs_g}g · 蛋白质 ${f.total.protein_g}g · 脂肪 ${f.total.fat_g}g</span>`;
     sheet(`<h2>${esc(f.mealName || '')}</h2>${f.source === 'ai' ? `<div class="sheet-sub">AI 估算 · 把握度 ${Math.round((f.confidence || 0) * 100)}%</div>` : ''}
       ${dataUrl ? `<img class="bigimg" src="${dataUrl}" alt="餐食照片">` : ''}
       <div class="tbl"><table><thead><tr><th>食物</th><th class="n">克</th><th class="n">碳水</th><th class="n">蛋白</th><th class="n">kcal</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="l2">没有识别到食物</td></tr>'}</tbody></table></div>
-      <div class="t-sub" style="text-align:center"><b class="num">${f.total.kcal} kcal</b> <span class="l2">· 碳水 ${f.total.carbs_g}g · 蛋白质 ${f.total.protein_g}g · 脂肪 ${f.total.fat_g}g</span></div>
+      <div class="t-sub" style="text-align:center" id="fs-tot">${tot()}</div>
       ${(f.flags || []).map(x => `<div class="note warn" style="background:var(--fill3)">${esc(x)}</div>`).join('')}${f.advice ? `<div class="note" style="background:var(--fill3)">${esc(f.advice)}</div>` : ''}
       ${isNew ? '<button class="pill ink wide" id="fs-save">保存</button>' : '<button class="pill glass wide" id="fs-del" style="color:var(--red)">删除这条</button>'}`, m => {
-      m.querySelectorAll('[data-g]').forEach(inp => inp.onchange = () => {
-        const it = f.items[+inp.dataset.g], g = +inp.value; if (!(g >= 0) || !it.grams) return;
-        const k = g / it.grams; ['carbs_g', 'protein_g', 'fat_g', 'kcal'].forEach(x => it[x] = Math.round(it[x] * k)); it.grams = Math.round(g);
-        if (!isNew) { save(d); render(); } draw();
+      // 改克数：只更新这一行和合计，不重画整个面板（原来会跳回顶部、键盘也会收起）；按第一次的每克营养算，改多少次都不累积误差
+      m.querySelectorAll('[data-g]').forEach(inp => inp.oninput = () => {
+        const i = +inp.dataset.g, it = f.items[i], g = +inp.value; if (!(g >= 0) || inp.value === '') return;
+        if (!it._per) it._per = { carbs_g: it.carbs_g / it.grams, protein_g: it.protein_g / it.grams, fat_g: it.fat_g / it.grams, kcal: it.kcal / it.grams };
+        ['carbs_g', 'protein_g', 'fat_g', 'kcal'].forEach(x => it[x] = Math.round(it._per[x] * g)); it.grams = Math.round(g);
+        recompute(f);
+        const q = sel => m.querySelector(sel);
+        q(`[data-c="${i}"]`).textContent = it.carbs_g; q(`[data-p="${i}"]`).textContent = it.protein_g; q(`[data-k="${i}"]`).textContent = it.kcal; q('#fs-tot').innerHTML = tot();
+        if (!isNew) save(d);
       });
+      if (!isNew) m.querySelectorAll('[data-g]').forEach(inp => inp.onchange = () => render());
       const sv = m.querySelector('#fs-save'); if (sv) sv.onclick = () => saveEntry(d, mealOf(d, f.meal), f);
       const dl = m.querySelector('#fs-del'); if (dl) dl.onclick = () => { rec(d).food.splice(idx, 1); save(d); close(); render(); toast('已删除'); };
     });

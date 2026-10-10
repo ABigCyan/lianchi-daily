@@ -12,9 +12,16 @@ function days(n) { const out = []; for (let i = n - 1; i >= 0; i--) out.push(E.a
 function energyRows(n) { return days(n).map(d => { if (d < S.profile.startDate) return { d, none: true }; const i = intakeOf(d), b = burnOf(d), t = targetOf(d); return { d, in: i.kcal, c: i.c, p: i.p, out: b.total, target: t.kcal, tc: t.c, tp: t.p, logged: ((peek(d) || {}).food || []).length > 0 }; }); }
 const maxDays = () => Math.max(30, Math.min(365, Math.round((E.pd(today()) - E.pd(S.profile.startDate)) / 864e5) + 1));
 function rangeCtl(id, title) {
+  if (id === 'energy') return rangeRow(id, Kit.foldHead('energy', title)) + Kit.foldBody(sliderRow(id) + energyChart(energyRows(rng.energy)));
+  return rangeRow(id, title ? `<span class="t-title3" style="margin-right:auto">${title}</span>` : '') + sliderRow(id);
+}
+function rangeRow(id, titleHtml) {
+  const n = rng[id];
+  return `<div class="rng">${titleHtml}<div class="segmented" data-rg="${id}">${[7, 14, 30].map(v => `<button data-v="${v}" aria-pressed="${n === v}">${v} 天</button>`).join('')}</div><button class="zoom-btn ${zoomOpen[id] || ![7, 14, 30].includes(n) ? 'on' : ''}" data-zoom="${id}" aria-label="自由缩放" aria-expanded="${zoomOpen[id]}">${I.search}</button></div>`;
+}
+function sliderRow(id) {
   const n = rng[id], max = maxDays();
-  return `<div class="rng">${title ? `<span class="t-title3" style="margin-right:auto">${title}</span>` : ''}<div class="segmented" data-rg="${id}">${[7, 14, 30].map(v => `<button data-v="${v}" aria-pressed="${n === v}">${v} 天</button>`).join('')}</div><button class="zoom-btn ${zoomOpen[id] || ![7, 14, 30].includes(n) ? 'on' : ''}" data-zoom="${id}" aria-label="自由缩放" aria-expanded="${zoomOpen[id]}">${I.search}</button></div>
-    <div class="rng-slider" ${zoomOpen[id] ? '' : 'hidden'}><input type="range" class="range" data-rs="${id}" min="3" max="${max}" step="1" value="${Math.min(n, max)}" aria-label="显示多少天"><span class="num" data-rv="${id}">${n} 天</span></div>`;
+  return `<div class="rng-slider" ${zoomOpen[id] ? '' : 'hidden'}><input type="range" class="range" data-rs="${id}" min="3" max="${max}" step="1" value="${Math.min(n, max)}" aria-label="显示多少天"><span class="num" data-rv="${id}">${n} 天</span></div>`;
 }
 function analysis(rows) {
   const L = rows.filter(r => r.logged), out = [];
@@ -114,12 +121,15 @@ function metricChart(m, n) {
   vals.forEach((v, i) => { if (v == null) return; if (real[i]) g += `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="3.2" fill="var(--ink)" stroke="var(--card-solid)" stroke-width="1.5"/>`; else if (list.length <= 31) g += `<circle cx="${X(i).toFixed(1)}" cy="${Y(v).toFixed(1)}" r="2.2" fill="var(--card-solid)" stroke="var(--ink)" stroke-width="1"/>`; });
   return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${m.name}趋势">${g}</svg><div class="legend"><span><i style="background:var(--ink)"></i>每次记录（虚线是补的）</span>${avg ? '<span><i class="band"></i>7 天平均</span>' : ''}</div>`;
 }
-function metricCard(m, n, of) {
+function metricCard(m, n, of, foldable) {
   const all = metricSeries(m.id), inWin = all.filter(x => x.d >= E.addDays(today(), -(n - 1)));
   const last = all.length ? all[all.length - 1].w : (m.id === 'weight' ? +S.profile.weight : null);
   const ref = inWin.length ? inWin[0].w : last, dl = last != null && ref != null ? last - ref : 0;
-  return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span class="t-title3">${m.name}${of ? `<span class="t-cap l3" style="margin-left:8px;font-weight:500">${of}</span>` : ''}</span><span class="num t-headline">${last != null ? `${(+last).toFixed(1)} ${m.unit}` : '—'} <span class="l2 t-sub">${inWin.length > 1 ? (dl > 0 ? '+' : '') + dl.toFixed(1) : ''}</span></span></div>
-    ${rangeCtl('m')}${metricChart(m, n)}${m.note ? `<p class="t-cap l3" style="margin:6px 0 0">${esc(m.note)}</p>` : ''}`;
+  const value = `<span class="num t-headline">${last != null ? `${(+last).toFixed(1)} ${m.unit}` : '—'} <span class="l2 t-sub">${inWin.length > 1 ? (dl > 0 ? '+' : '') + dl.toFixed(1) : ''}</span></span>`;
+  const body = `${rangeCtl('m')}${metricChart(m, n)}${m.note ? `<p class="t-cap l3" style="margin:6px 0 0">${esc(m.note)}</p>` : ''}`;
+  if (foldable) return `<div class="fold-row">${Kit.foldHead('metric', m.name)}${value}</div>${Kit.foldBody(body)}`;
+  return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span class="t-title3">${m.name}${of ? `<span class="t-cap l3" style="margin-left:8px;font-weight:500">${of}</span>` : ''}</span>${value}</div>
+    ${body}`;
 }
 /* 坚持日历：按月显示，‹ › 或左右滑切换月份 */
 let calMonth = null;
@@ -177,21 +187,21 @@ function viewData() {
   const ordered = cards.slice(insightIdx % cards.length).concat(cards.slice(0, insightIdx % cards.length));
   h += `<section class="section"><div class="section-h"><h2>洞察</h2><span class="t-foot l2">左右滑看下一条</span></div>${Kit.deck('insDeck', ordered, '', { r: '下一条', l: '下一条' })}
     ${an.sum ? `<div class="deck-ctrl" style="grid-template-columns:1fr"><button class="pill glass" id="aiWeek">${I.sparkles}AI 分析</button></div>` : ''}${aiText ? `<section class="note mat" style="white-space:pre-wrap">${esc(aiText)}<div class="t-cap l3" style="margin-top:6px">AI 分析仅供参考 · ${esc(S.ai.model)}</div></section>` : ''}</section>`;
-  h += `<section class="mat card">${rangeCtl('energy', '热量')}${energyChart(energyRows(rng.energy))}</section>`;
+  h += `<section class="mat card ${Kit.foldCls('energy')}">${rangeCtl('energy', '热量')}</section>`;
   // 身体数据：只记体重时和原来一样一张卡；多选了腰围等，就做成可以左右滑的卡组
   const ms = metricsOn();
-  if (ms.length === 1) h += `<section class="mat card metric-card">${metricCard(ms[0], rng.m)}</section>`;
+  if (ms.length === 1) h += `<section class="mat card metric-card ${Kit.foldCls('metric')}">${metricCard(ms[0], rng.m, '', true)}</section>`;
   else {
     const k = metricIdx % ms.length, ord = ms.slice(k).concat(ms.slice(0, k));
     h += `<section class="section"><div class="section-h"><h2>身体数据</h2><span class="t-foot l2">左右滑看下一项</span></div>${Kit.deck('mDeck', ord.map((m, i) => ({ key: m.id, cls: 'metric-card', html: metricCard(m, rng.m, `${(k + i) % ms.length + 1}/${ms.length}`) })), '', { r: '下一项', l: '上一项' })}</section>`;
   }
-  h += `<section class="mat card"><div style="display:flex;justify-content:space-between;align-items:baseline"><span class="t-title3">坚持</span><span class="t-sub l2">${lv.name} · <span class="num">${t.points}</span> 能量</span></div>
+  h += `<section class="mat card ${Kit.foldCls('streak')}"><div class="fold-row">${Kit.foldHead('streak', '坚持')}<span class="t-sub l2">${lv.name} · <span class="num">${t.points}</span> 能量</span></div>${Kit.foldBody(`
     <div class="stat-grid"><div class="stat"><span class="k">连续达标</span><span class="v">${t.cur}<small>天</small></span></div><div class="stat"><span class="k">最长连续</span><span class="v">${t.best}<small>天</small></span></div>
     <div class="stat"><span class="k">累计力训</span><span class="v">${t.lifts}<small>次</small></span></div><div class="stat"><span class="k">记录饮食</span><span class="v">${t.meals}<small>餐</small></span></div></div>
-    ${heat()}<div class="t-cap l3">颜色越深完成得越多，小点是练了力训；浅黄是节假日，不影响连续记录</div></section>`;
+    ${heat()}<div class="t-cap l3">颜色越深完成得越多，小点是练了力训；浅黄是节假日，不影响连续记录</div>`)}</section>`;
   const got = bs.filter(b => b.got).length;
-  h += `<section class="mat card"><div style="display:flex;justify-content:space-between;align-items:baseline"><span class="t-title3">奖章</span><span class="t-sub l2 num">${got} / ${bs.length}</span></div>
-    <div class="progress"><i style="width:${Math.round(got / bs.length * 100)}%"></i></div>${MEDAL_DEFS}<div class="medals">${bs.map((b, i) => `<button class="medal ${b.got ? 'got' : ''}" data-medal="${i}" aria-label="${esc(b.name)}，${b.got ? '已获得' : '还没获得'}">${medalArt(b)}<span class="mn">${esc(b.name)}</span><span class="mp">${b.got ? TIER[b.tier] : fmtProg(b)}</span></button>`).join('')}</div></section>`;
+  h += `<section class="mat card ${Kit.foldCls('medals')}"><div class="fold-row">${Kit.foldHead('medals', '奖章')}<span class="t-sub l2 num">${got} / ${bs.length}</span></div>
+    <div class="progress"><i style="width:${Math.round(got / bs.length * 100)}%"></i></div>${MEDAL_DEFS}${Kit.foldBody(`<div class="medals">${bs.map((b, i) => `<button class="medal ${b.got ? 'got' : ''}" data-medal="${i}" aria-label="${esc(b.name)}，${b.got ? '已获得' : '还没获得'}">${medalArt(b)}<span class="mn">${esc(b.name)}</span><span class="mp">${b.got ? TIER[b.tier] : fmtProg(b)}</span></button>`).join('')}</div>`)}</section>`;
   return h;
 }
 function bindData() {

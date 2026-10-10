@@ -422,11 +422,7 @@ window.Engine = (() => {
         });
         out.push({
           group: gp, entry: c.entry, v: c.v, ex, sets: base + (i < extra ? 1 : 0),
-          ...repsOf(ex, gp, c.v, { firstTwo, F, fresh: ctx.fresh }),
-          rest: ex.timed ? '30-60 秒' : ex.multi ? (['quad', 'ham', 'comp'].includes(gp.id) ? '2-3 分钟或更长' : '2-3 分钟') : '1-1.5 分钟',
-          restSrc: ex.multi ? '表21 C11：多关节动作' : '表21 C11：单关节动作',
-          fail: ex.noFail ? '不追求完全力竭，提前 1-2 次停' : '可以做到力竭',
-          failSrc: ex.noFail ? '表21 C13：可能砸伤的动作' : '表21 C13：无危险动作',
+          ...itemRules(ex, gp, c.v, { firstTwo, F, fresh: ctx.fresh }),
           alts, extAlts, optional, focus: pri,
           note: !gp.ext && ex.ext ? '原表动作和你的器械/伤病设置不符，用了补充动作' : '',
         });
@@ -449,6 +445,14 @@ window.Engine = (() => {
     if (o.F) return { reps: '10-15', repsSrc: '表21 C14' };
     if (!ex.multi && SMALL.has(gp.id)) return { reps: '12-15', repsSrc: '小肌群单关节动作用较轻配重（应用补充，在表21 C12 的 5-30 次范围内）' };
     return { reps: '8-12', repsSrc: '表21 C12' };
+  }
+  /* 一个动作的次数、组间休息、要不要力竭（换动作时也用它重新算） */
+  function itemRules(ex, gp, v, o) {
+    return { ...repsOf(ex, gp, v, o),
+      rest: ex.timed ? '30-60 秒' : ex.multi ? (['quad', 'ham', 'comp'].includes(gp.id) ? '2-3 分钟或更长' : '2-3 分钟') : '1-1.5 分钟',
+      restSrc: ex.multi ? '表21 C11：多关节动作' : '表21 C11：单关节动作',
+      fail: ex.noFail ? '不追求完全力竭，提前 1-2 次停' : '可以做到力竭',
+      failSrc: ex.noFail ? '表21 C13：可能砸伤的动作' : '表21 C13：无危险动作' };
   }
   /* 按“每次最多练多久”压缩【应用补充】：先把组数多的非重点动作每个减到不少于 2 组，还超时再去掉非重点的单关节动作。
      依据：表21 C10“组数偏多，可以酌减”；ACSM 2026：坚持比完美的计划更重要 */
@@ -596,6 +600,6 @@ window.Engine = (() => {
     return sex === 'F' ? weight / (1.0278 - 0.0278 * reps) : Math.pow(reps, 0.1) * weight;
   }
 
-  return { build, decideGoal, calories, macros, pickSheet, mealsFor, buildDays, dayName, foodsFor, sessionPlan, pickSplit, splitOf, estMinutes, weeklyVolume, fitTime, cardioPerHour, cardioWeekly, findCardio,
+  return { build, decideGoal, calories, macros, pickSheet, mealsFor, buildDays, dayName, foodsFor, sessionPlan, itemRules, pickSplit, splitOf, estMinutes, weeklyVolume, fitTime, cardioPerHour, cardioWeekly, findCardio,
     holidayOf, isWorkday, plannedLift, plannedCardio, advice, oneRM, SHEETS, tm, mt, ds, pd, dow, addDays, sessionsPerWeek };
 })();

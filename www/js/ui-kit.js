@@ -75,6 +75,8 @@ function setKb(h, dur) {
   const root = document.documentElement.style;
   root.setProperty('--kb-dur', (dur || 120) + 'ms'); root.setProperty('--kb', h + 'px');
   document.documentElement.classList.toggle('kb-open', h > 0);
+  // 动画期间加 kb-anim：CSS 里暂时去掉毛玻璃，减少掉帧
+  if (h !== kbH && dur) { const el = document.documentElement; el.classList.add('kb-anim'); clearTimeout(setKb.t); setKb.t = setTimeout(() => el.classList.remove('kb-anim'), dur + 80); }
   const was = kbH; kbH = h;
   if (was === h) return;
   kbListeners.forEach(fn => { try { fn(h, dur); } catch (e) { /* 忽略 */ } });
@@ -229,6 +231,22 @@ document.addEventListener('click', e => {
   });
 });
 
+/* ---------- 可以折叠的卡片（奖章、日历、曲线这类大卡片）：点标题收起/展开，记住每张卡的状态 ---------- */
+const foldedSet = new Set(lsGet('folded', []));
+const CHEV = '<svg class="fold-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+function foldCls(id) { return foldedSet.has(id) ? 'foldable folded' : 'foldable'; }
+function foldHead(id, title) { return `<button class="fold-h" data-fold="${id}" aria-expanded="${!foldedSet.has(id)}"><span class="t-title3">${title}</span>${CHEV}</button>`; }
+// 内容放在 fold-b 里：用 grid 的 0fr ↔ 1fr 做高度动画
+function foldBody(html) { return `<div class="fold-b"><div>${html}</div></div>`; }
+document.addEventListener('click', e => {
+  const b = e.target.closest && e.target.closest('[data-fold]'); if (!b) return;
+  const card = b.closest('.foldable'), id = b.dataset.fold; if (!card) return;
+  const on = !card.classList.contains('folded');
+  card.classList.toggle('folded', on); b.setAttribute('aria-expanded', !on);
+  if (on) foldedSet.add(id); else foldedSet.delete(id);
+  lsSet('folded', [...foldedSet]); haptic('light');
+});
+
 /* ---------- 横向滚动条两端的内容渐隐（只在那一侧还有内容时） ---------- */
 function fadeEdges(el) {
   if (!el) return;
@@ -238,5 +256,5 @@ function fadeEdges(el) {
   if (on && (on.offsetLeft + on.offsetWidth > el.clientWidth)) { el.scrollLeft = on.offsetLeft - 24; upd(); }
 }
 
-return { I, KIND, haptic, setHaptic, hapticMode: () => hapticMode, feel: () => feel, setFeel, feelInfo, onKeyboard, kbHeight: () => kbH, longPress, timeWheel, fadeEdges, largeTitle, setNav, rings, deck, bindDeck, chk, row, $, $$ };
+return { I, KIND, foldCls, foldHead, foldBody, haptic, setHaptic, hapticMode: () => hapticMode, feel: () => feel, setFeel, feelInfo, onKeyboard, kbHeight: () => kbH, longPress, timeWheel, fadeEdges, largeTitle, setNav, rings, deck, bindDeck, chk, row, $, $$ };
 })();

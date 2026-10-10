@@ -690,12 +690,15 @@ details.ref p{margin:4px 0}
 /* ---------- 键盘：跟着键盘动画平滑上移（--kb 键盘高度、--kb-dur 动画时长，见 ui-kit.js） ---------- */
 #sab-probe{position:fixed;left:0;bottom:0;width:0;height:var(--sab);pointer-events:none;visibility:hidden}
 .chat{bottom:var(--kb,0px);transition:bottom var(--kb-dur,250ms) cubic-bezier(.2,0,0,1)}
-.modal{padding-bottom:var(--kb,0px);transition:padding-bottom var(--kb-dur,250ms) cubic-bezier(.2,0,0,1)}
-.modal .sheet{max-height:calc(88vh - var(--kb,0px));transition:max-height var(--kb-dur,250ms) cubic-bezier(.2,0,0,1)}
+/* 底部面板用位移（只在合成层动，不重新排版）跟着键盘上移；高度上限直接变，不做动画 */
+.modal .sheet{max-height:calc(88vh - var(--kb,0px));transform:translateY(calc(-1 * var(--kb,0px)));transition:transform var(--kb-dur,250ms) cubic-bezier(.2,0,0,1)}
+/* 键盘动画进行时：暂时关掉毛玻璃（每帧重画模糊最耗时）；对话页单独成一个布局范围，动画时只重排它自己 */
+.kb-anim .sheet,.kb-anim .composer-in,.kb-anim .tabbar .glass{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--chrome-strong)}
+.chat{contain:layout paint}
 body{padding-bottom:var(--kb,0px)}
 .kb-open .tabbar{opacity:0;pointer-events:none;transition:opacity .15s}
 .kb-open .modal .fd-tray,.kb-open .modal .lib-tray{padding-bottom:12px}
-@media (prefers-reduced-motion: reduce){.chat,.modal,.modal .sheet{transition:none}}
+@media (prefers-reduced-motion: reduce){.chat,.modal .sheet{transition:none}}
 .hap-try{display:flex;gap:6px;justify-self:end;flex-wrap:wrap;justify-content:flex-end}
 .hap-try .tbtn{height:32px;padding:0 12px;font-size:13px}
 
@@ -762,3 +765,22 @@ pre{overflow-wrap:anywhere;word-break:break-word;white-space:pre-wrap}
 .cal-sum{display:flex;gap:16px;font-size:13px;color:var(--ink3)}
 .cal-sum b{color:var(--ink);font-weight:650}
 .guide-logo{width:88px;height:88px;border-radius:22px;box-shadow:0 16px 36px -14px rgba(14,16,19,.55)}
+
+/* ---------- 每组输入：杠铃类填每边的片（旁边显示总重）、自重只填次数 ---------- */
+.set-h{display:grid;grid-template-columns:20px 1fr 1fr 44px;gap:10px;font-size:11px;color:var(--ink3);margin-bottom:-2px}
+.set-h.none,.set.none{grid-template-columns:20px 1fr 44px}
+.wbox{position:relative;display:block;min-width:0}
+.wbox .field-in{padding-right:58px}
+.wbox em{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-style:normal;font-size:11px;color:var(--ink3);pointer-events:none;font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* ---------- 可折叠卡片 ---------- */
+.fold-h{display:inline-flex;align-items:center;gap:6px;margin-right:auto;padding:0;background:none;color:var(--ink);min-height:32px}
+.fold-chev{width:18px;height:18px;color:var(--ink3);transition:transform .25s cubic-bezier(.2,.9,.25,1)}
+.folded .fold-chev{transform:rotate(-90deg)}
+.fold-row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.fold-b{display:grid;grid-template-rows:1fr;transition:grid-template-rows .28s cubic-bezier(.2,.9,.25,1),opacity .2s;margin-top:-16px}
+.fold-b > div{min-height:0;overflow:hidden;display:grid;gap:16px;padding-top:16px}
+.folded .fold-b{grid-template-rows:0fr;opacity:0}
+.folded .rng .segmented,.folded .rng .zoom-btn{display:none}
+.folded.card{gap:10px}
+@media (prefers-reduced-motion: reduce){.fold-b,.fold-chev{transition:none}}

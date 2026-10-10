@@ -96,7 +96,7 @@ function todayInfo({ date }) {
   if (S.plan.training && (info.lift || (r.done && r.done.lift))) {
     const { si, items } = sessionItems(d);
     out.training = { name: si.custom ? '自选部位' : si.day.name, day_index: si.dayIdx, recommended: !!si.recommended,
-      exercises: items.map((it, i) => { const sg = C.suggestFor(it, d); return { order: i + 1, exercise_id: it.v, name: it.ex.n, group: it.group.name, sets: it.sets, reps: it.reps, rest: it.rest, to_failure: !/不追求/.test(it.fail), customized: !!it.custom, suggested: sg ? `${sg.w ? sg.w + 'kg × ' : ''}${sg.r}（${sg.why}）` : null, src: it.group.src }; }) };
+      exercises: items.map((it, i) => { const sg = C.suggestFor(it, d); const ld = C.loadOf(it.ex, it.v); return { order: i + 1, exercise_id: it.v, name: it.ex.n, group: it.group.name, weight_input: ld.mode === 'bar' ? `每边加片，杆 ${ld.bar}kg（记录里的重量是总重）` : C.LOADS[ld.mode], sets: it.sets, reps: it.reps, rest: it.rest, to_failure: !/不追求/.test(it.fail), customized: !!it.custom, suggested: sg ? `${sg.w ? sg.w + 'kg × ' : ''}${sg.r}（${sg.why}）` : null, src: it.group.src }; }) };
   }
   return out;
 }
@@ -316,7 +316,7 @@ const RUN = {
       const list = [...new Set(a.exercise_ids)].filter(v => window.EX[v] && !items.some(it => it.v === v));
       if (!list.length) return { ok: false, error: '这些动作都不存在或者今天已经有了' };
       if (!await ctx.confirm('添加动作', list.map(v => `添加 ${window.EX[v].n}（${sets} 组）`).concat([`范围：${scopeLabel(si, a.scope)}`]), a.reason)) return { ok: false, error: '用户取消了' };
-      applyMods(today(), si, a.scope, m => { m.hide = (m.hide || []).filter(x => !list.includes(x)); m.add = (m.add || []).filter(x => !list.includes(x.v)).concat(list.map(v => ({ v, sets }))); });
+      C.addExercises(today(), si, a.scope, list, sets);
       return { ok: true, done: `加了 ${list.length} 个动作`, today_exercises: sessionItems(d).items.map(it => `${it.ex.n} ${it.sets}组`) };
     }
     if (!a.exercise_id) return { ok: false, error: '缺少 exercise_id' };
@@ -331,7 +331,7 @@ const RUN = {
     const apply = m => {
       m.hide = m.hide || []; m.add = m.add || []; m.sets = m.sets || {};
       if (a.action === 'remove') { if (!m.hide.includes(v)) m.hide.push(v); m.add = m.add.filter(x => x.v !== v); }
-      if (a.action === 'add') { m.hide = m.hide.filter(x => x !== v); if (!m.add.some(x => x.v === v)) m.add.push({ v, sets }); }
+      if (a.action === 'add') { [S.custom.train[si.key], (peek(d) || {}).ex].forEach(x => { if (x && x.hide) x.hide = x.hide.filter(y => y !== v); }); m.hide = m.hide.filter(x => x !== v); if (!m.add.some(x => x.v === v)) m.add.push({ v, sets }); }
       if (a.action === 'set_sets') m.sets[v] = sets;
     };
     if (a.scope === 'always') { S.custom.train[si.key] = S.custom.train[si.key] || {}; apply(S.custom.train[si.key]); saveCustom(); }
@@ -463,8 +463,10 @@ const DEFS_MORE = [
   { name: 'get_training_log', description: '读取用户练过的重量和次数（训练记录）：不给 exercise_id 时列出每个动作最近一次和最重的一组；给了就列出这个动作最近几次的每一组和下次的建议重量。', parameters: { type: 'object', properties: { exercise_id: { type: 'string' }, days: { type: 'integer', description: '看多少天，默认 60' } } } },
   { name: 'reorder_training', description: '调整今天训练动作的顺序：order 给出完整的 exercise_id 顺序；或者 exercise_id + position（从 1 开始）把一个动作挪到第几个。scope=today 只改今天，always 以后练这一天都这样。会先让用户确认。', parameters: { type: 'object', properties: {
     order: { type: 'array', items: { type: 'string' } }, exercise_id: { type: 'string' }, position: { type: 'integer' }, scope: { type: 'string', enum: ['today', 'always'] }, reason: { type: 'string' } }, required: ['scope'] } },
-  { name: 'set_exercise_params', description: '调整一个动作的每组次数、组间休息、要不要做到力竭（对这个动作一直有效），reset=true 恢复套表默认。套表规则：配重选能做 8-12 次力竭的、女性 10-15、适应新动作 12-15（表21 C12/C14），多关节组间休息 2-3 分钟、单关节 1-1.5 分钟（表21 C11），自由卧推/深蹲/推举不做到完全力竭（表21 C13）；和套表不同时在 reason 里说明。会先让用户确认。', parameters: { type: 'object', properties: {
-    exercise_id: { type: 'string' }, reps: { type: 'string', description: '例如 "10-12"' }, rest: { type: 'string', description: '例如 "90 秒"、"2-3 分钟"' }, to_failure: { type: 'boolean' }, reset: { type: 'boolean' }, reason: { type: 'string' } }, required: ['exercise_id'] } },
+  { name: 'set_exercise_params', description: '调整一个动作的每组次数、组间休息、要不要做到力竭、重量怎么记（杠铃填每边的片/单只/配重/自重）和杆重（对这个动作一直有效），reset=true 恢复套表默认。套表规则：配重选能做 8-12 次力竭的、女性 10-15、适应新动作 12-15（表21 C12/C14），多关节组间休息 2-3 分钟、单关节 1-1.5 分钟（表21 C11），自由卧推/深蹲/推举不做到完全力竭（表21 C13）；和套表不同时在 reason 里说明。会先让用户确认。', parameters: { type: 'object', properties: {
+    exercise_id: { type: 'string' }, reps: { type: 'string', description: '例如 "10-12"' }, rest: { type: 'string', description: '例如 "90 秒"、"2-3 分钟"' }, to_failure: { type: 'boolean' },
+    load: { type: 'string', enum: ['bar', 'db', 'stack', 'none'], description: '重量怎么记：bar 杠铃类（填每边的片，杆重另算）、db 单只、stack 器械配重、none 自重只记次数' }, bar_kg: { type: 'number', description: 'load=bar 时的杆重' },
+    reset: { type: 'boolean' }, reason: { type: 'string' } }, required: ['exercise_id'] } },
   { name: 'swap_exercise', description: '把今天训练里的一个动作换成另一个（最好是 exercise_info 里同一肌群的备选），以后练这一天也用新动作。会先让用户确认。', parameters: { type: 'object', properties: { from_id: { type: 'string' }, to_id: { type: 'string' }, reason: { type: 'string' } }, required: ['from_id', 'to_id'] } },
   { name: 'log_body', description: '记某天（默认今天）的身体数据：weight 体重 kg、waist 腰围、hip 臀围、chest 胸围、arm 臂围、thigh 大腿围（cm）、fat 体脂率 %。会先让用户确认。', parameters: { type: 'object', properties: {
     date: { type: 'string' }, weight: { type: 'number' }, waist: { type: 'number' }, hip: { type: 'number' }, chest: { type: 'number' }, arm: { type: 'number' }, thigh: { type: 'number' }, fat: { type: 'number' }, reason: { type: 'string' } } } },
@@ -501,6 +503,8 @@ Object.assign(RUN, {
     if (a.reps != null) { const m = String(a.reps).match(/^(\d+)\s*[-~到至]\s*(\d+)$/); if (!m || +m[1] < 1 || +m[2] < +m[1] || +m[2] > 50) return { ok: false, error: 'reps 要写成 "8-12"' }; cfg.reps = `${m[1]}-${m[2]}`; if (cfg.reps !== it.reps) lines.push(`每组次数：${it.reps} → ${cfg.reps}`); }
     if (a.rest != null && String(a.rest).trim()) { cfg.rest = String(a.rest).trim().slice(0, 20); if (cfg.rest !== it.rest) lines.push(`组间休息：${it.rest} → ${cfg.rest}`); }
     if (a.to_failure != null) { cfg.fail = !!a.to_failure; const was = !/不追求/.test(it.fail); if (cfg.fail !== was) lines.push(`做到力竭：${was ? '是' : '否'} → ${cfg.fail ? '是' : '否'}`); }
+    if (a.load != null) { const was = C.loadOf(ex, v); cfg.load = a.load; if (a.load !== was.mode) lines.push(`重量怎么记：${C.LOADS[was.mode]} → ${C.LOADS[a.load]}`); }
+    if (a.bar_kg != null && +a.bar_kg >= 0 && +a.bar_kg <= 60) { const was = C.loadOf(ex, v).bar; cfg.bar = +a.bar_kg; if (+a.bar_kg !== was) lines.push(`杆重：${was}kg → ${a.bar_kg}kg`); }
     if (!lines.length) return { ok: false, error: '和现在一样，不用改' };
     if (ex.noFail && cfg.fail) lines.push('注意：套表建议这个动作不要做到完全力竭，提前 1-2 次停（表21 C13）');
     lines.push(`套表默认：${def.reps} 次、休息 ${def.rest}`);
@@ -516,11 +520,7 @@ Object.assign(RUN, {
     if (!to) return { ok: false, error: '没有 to_id 这个动作，先 list_exercises' };
     if (items.some(x => x.v === a.to_id)) return { ok: false, error: `${to.n} 今天已经有了` };
     if (!await ctx.confirm('换动作', [`${it.ex.n} → ${to.n}`, `${it.sets} 组；${scopeLabel(si, 'always')}`], a.reason)) return { ok: false, error: '用户取消了' };
-    const g = it.group;
-    if (g.sheet !== 'extra') { S.choices[g.sheet + ':' + g.id] = items.filter(x => x.group === g).map(x => x.v === it.v ? a.to_id : x.v).filter((v, i, arr) => arr.indexOf(v) === i); LS.set('choices', S.choices); }
-    // 不是这个肌群的备选（或者是自己加的动作）：当作删掉旧的、加上新的
-    if (!sessionItems(d).items.some(x => x.v === a.to_id)) applyMods(d, si, 'always', m => { m.hide = (m.hide || []).filter(x => x !== a.to_id).concat(it.v); m.add = (m.add || []).filter(x => x.v !== a.to_id && x.v !== it.v).concat({ v: a.to_id, sets: it.sets }); });
-    C.replaceInOrder(d, si.key, it.v, a.to_id);
+    C.swapExercise(d, si, it.v, a.to_id);
     return { ok: true, done: `${it.ex.n} 换成了 ${to.n}`, today_exercises: sessionItems(d).items.map(x => x.ex.n) };
   },
   async log_body(a, ctx) {

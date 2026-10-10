@@ -48,25 +48,45 @@ function exBody(it, idx, n, r, d, future) {
   return `<div class="ex-hero"><img data-anim="${esc(ex.img)}" src="${imgUrl(ex, 0)}" alt="${esc(ex.n)}"><span class="badge">${idx + 1} / ${n} · ${esc(it.group.name)}</span></div>
     <div><div class="dc-title" style="font-size:24px">${esc(ex.n)}</div><div class="dc-sub">${it.sets} 组 × ${esc(it.reps)}${ex.timed ? '' : ' 次'} · 组间休息 ${esc(it.rest)}</div></div>
     <div class="ex-tags"><span class="xt ${/不追求/.test(it.fail) ? 'warn' : ''}">${/不追求/.test(it.fail) ? '不做到力竭，留 1-2 次' : '可以做到力竭'}</span><span class="xt">${ex.multi ? '多关节' : '单关节'}</span><span class="xt">${esc(ex.eq)}</span>${it.custom ? '<span class="xt mine">你改过</span>' : ''}${it.fresh ? '<span class="xt">新动作</span>' : ''}</div>
-    ${sg ? `<div class="ex-sug">${Kit.I.sparkles}<span>建议 <b class="num">${sg.w ? sg.w + ' kg × ' : ''}${sg.r} 次</b> · ${esc(sg.why)}<br><span class="l3">上次（${esc(sg.last.d.slice(5).replace('-', '/'))}）${esc(sg.lastText)}</span></span></div>` : ''}
+    ${sg ? `<div class="ex-sug">${Kit.I.sparkles}<span>建议 <b class="num">${sg.side != null ? `每边 ${sg.side} kg（总 ${sg.w}）× ` : sg.w ? sg.w + ' kg × ' : ''}${sg.r} 次</b> · ${esc(sg.why)}<br><span class="l3">上次（${esc(sg.last.d.slice(5).replace('-', '/'))}）${esc(sg.lastText)}</span></span></div>` : ''}
     ${ex.ext ? `<div class="t-foot l2">${src('补充 · ' + ex.kindName, 1)} ${esc(ex.basis)}</div>` : ''}${it.note ? `<div class="t-foot l2">${esc(it.note)}</div>` : ''}${rmLine(it, r, d)}
-    <div class="sets">${[...Array(it.sets)].map((_, i) => { const s = sets[i] || {}; return `<div class="set"><span class="n">${i + 1}</span><input class="field-in" data-set="${it.v}|${i}|w" value="${esc(s.w || '')}" placeholder="${sg && sg.w ? sg.w : 'kg'}" inputmode="decimal" aria-label="第${i + 1}组重量" ${future ? 'disabled' : ''}><input class="field-in" data-set="${it.v}|${i}|r" value="${esc(s.r || '')}" placeholder="${sg ? sg.r : lo || '次数'}" inputmode="numeric" aria-label="第${i + 1}组次数" ${future ? 'disabled' : ''}><button class="hit" data-sd="${it.v}|${i}" aria-label="第${i + 1}组完成" ${future ? 'disabled' : ''}>${Kit.chk(!!s.done)}</button></div>`; }).join('')}</div>
+    ${setsHtml(it, sets, sg, lo, future)}
     ${sg ? '<div class="t-foot l3">灰色数字是按上次算的建议，直接打勾就按建议记下</div>' : ''}
     <div class="ghost-row">${nAlts(it) ? `<button class="tbtn" data-swap="${it.v}">换动作（${nAlts(it)}）</button>` : ''}<button class="tbtn" data-cfg="${it.v}">调整</button><button class="tbtn" data-big="${it.v}">动作图</button></div>
     <details class="ex-why"><summary>为什么是这些数</summary><p>${esc(why)}</p></details>`;
+}
+/* 每组的输入：按“重量怎么记”分——杠铃类填每边的片（杆重另算，旁边显示总重）、单只、配重、自重只填次数 */
+function setsHtml(it, sets, sg, lo, future) {
+  const ld = C.loadOf(it.ex, it.v), dis = future ? 'disabled' : '', none = ld.mode === 'none';
+  const head = `<div class="set-h ${none ? 'none' : ''}"><span></span>${none ? '' : `<span>${esc(ld.label)}</span>`}<span>${it.ex.timed ? '秒' : '次数'}</span><span></span></div>`;
+  const rows = [...Array(it.sets)].map((_, i) => {
+    const s = sets[i] || {};
+    const reps = `<input class="field-in" data-set="${it.v}|${i}|r" value="${esc(s.r || '')}" placeholder="${sg ? sg.r : lo || '次数'}" inputmode="numeric" aria-label="第${i + 1}组${it.ex.timed ? '秒数' : '次数'}" ${dis}>`;
+    let w = '';
+    if (ld.mode === 'bar') {
+      const side = s.p != null && s.p !== '' ? s.p : +s.w ? Math.max(0, (+s.w - ld.bar) / 2) : '';
+      w = `<label class="wbox"><input class="field-in" data-set="${it.v}|${i}|p" value="${esc(side)}" placeholder="${sg && sg.side != null ? sg.side : '片'}" inputmode="decimal" aria-label="第${i + 1}组每边加的片" ${dis}><em data-tot="${it.v}|${i}">${+s.w ? '总 ' + s.w : ''}</em></label>`;
+    } else if (!none) w = `<input class="field-in" data-set="${it.v}|${i}|w" value="${esc(s.w || '')}" placeholder="${sg && sg.w ? sg.w : 'kg'}" inputmode="decimal" aria-label="第${i + 1}组${ld.mode === 'db' ? '单只' : ''}重量" ${dis}>`;
+    return `<div class="set ${none ? 'none' : ''}"><span class="n">${i + 1}</span>${w}${reps}<button class="hit" data-sd="${it.v}|${i}" aria-label="第${i + 1}组完成" ${dis}>${Kit.chk(!!s.done)}</button></div>`;
+  }).join('');
+  return `<div class="sets">${head}${rows}</div>`;
 }
 /* 调整一个动作：次数范围、组间休息、要不要做到力竭（对这个动作一直有效；恢复默认就回到套表规则） */
 function cfgSheet(it) {
   const c = Object.assign({}, (S.custom.exCfg || {})[it.v] || {}), def = it.def || it;
   const m0 = String(c.reps || it.reps).match(/(\d+)\s*-\s*(\d+)/) || [], RESTS = ['30-60 秒', '1 分钟', '1-1.5 分钟', '2 分钟', '2-3 分钟', '3 分钟以上'];
   let rest = c.rest || it.rest, fail = c.fail != null ? c.fail : !/不追求/.test(it.fail);
+  const ld0 = C.loadOf(it.ex, it.v); let load = ld0.mode; const bar = ld0.bar;
   sheet(`<h2>${esc(it.ex.n)}</h2><div class="sheet-sub">对这个动作一直有效，换到哪天练都一样</div>
     <div class="list" style="background:var(--fill3)">
       <div class="frow"><label for="cf-lo">每组次数</label><div class="cf-reps"><input id="cf-lo" inputmode="numeric" value="${m0[1] || ''}" aria-label="最少次数"><span>-</span><input id="cf-hi" inputmode="numeric" value="${m0[2] || ''}" aria-label="最多次数"><em>次</em></div></div>
       <div class="frow stack"><span class="lbl">组间休息</span><div class="chips">${RESTS.map(x => `<button data-rest="${x}" aria-pressed="${x === rest}">${x}</button>`).join('')}</div></div>
-      <div class="frow"><label for="cf-fail">做到力竭</label><input type="checkbox" class="switch" id="cf-fail" ${fail ? 'checked' : ''}></div></div>
+      <div class="frow"><label for="cf-fail">做到力竭</label><input type="checkbox" class="switch" id="cf-fail" ${fail ? 'checked' : ''}></div>
+      <div class="frow stack"><span class="lbl">重量怎么记</span><div class="segmented" data-load>${Object.entries(C.LOADS).map(([k, n]) => `<button data-v="${k}" aria-pressed="${load === k}">${n}</button>`).join('')}</div></div>
+      <div class="frow" id="cf-bar-row" ${load === 'bar' ? '' : 'hidden'}><label for="cf-bar">杆重 kg</label><input id="cf-bar" inputmode="decimal" value="${bar}"></div></div>
     <p class="t-foot l2" style="padding:0 6px">套表默认：${esc(def.reps)} 次（${esc(def.repsSrc || '')}）；休息 ${esc(def.rest)}（${esc(def.restSrc || '')}）；${esc(def.fail)}（${esc(def.failSrc || '')}）。${it.ex.noFail ? '这是可能砸伤的动作，套表建议不要做到完全力竭。' : ''}</p>
     <button class="pill ink wide" id="cf-ok">保存</button>${(S.custom.exCfg || {})[it.v] ? '<button class="pill glass wide" id="cf-reset">恢复套表默认</button>' : ''}`, m => {
+    m.querySelectorAll('[data-load] button').forEach(b => b.onclick = () => { load = b.dataset.v; m.querySelectorAll('[data-load] button').forEach(x => x.setAttribute('aria-pressed', x === b)); m.querySelector('#cf-bar-row').hidden = load !== 'bar'; Kit.haptic('light'); });
     m.querySelectorAll('[data-rest]').forEach(b => b.onclick = () => { rest = b.dataset.rest; m.querySelectorAll('[data-rest]').forEach(x => x.setAttribute('aria-pressed', x === b)); Kit.haptic('light'); });
     m.querySelector('#cf-ok').onclick = () => {
       const lo = +m.querySelector('#cf-lo').value, hi = +m.querySelector('#cf-hi').value, f = m.querySelector('#cf-fail').checked;
@@ -75,6 +95,11 @@ function cfgSheet(it) {
       if (!it.ex.timed && `${lo}-${hi}` !== def.reps) cfg.reps = `${lo}-${hi}`;
       if (rest !== def.rest) cfg.rest = rest;
       if (f !== !/不追求/.test(def.fail)) cfg.fail = f;
+      // 重量怎么记：和默认一样就不存
+      const saved = (S.custom.exCfg || {})[it.v] || {}, defLoad = (() => { const t = Object.assign({}, saved); delete S.custom.exCfg[it.v]; const x = C.loadOf(it.ex, it.v); if (Object.keys(t).length) S.custom.exCfg[it.v] = t; return x; })();
+      if (load !== defLoad.mode) cfg.load = load;
+      const bv = +m.querySelector('#cf-bar').value;
+      if (load === 'bar' && bv >= 0 && bv <= 60 && bv !== defLoad.bar) cfg.bar = bv;
       S.custom.exCfg = S.custom.exCfg || {};
       if (Object.keys(cfg).length) S.custom.exCfg[it.v] = cfg; else delete S.custom.exCfg[it.v];
       saveCustom(); close(); Kit.haptic('success'); render(); toast('已保存');
@@ -147,12 +172,26 @@ function setOf(d, v, k) { const r = rec(d); r.sets = r.sets || {}; r.sets[v] = r
 function modsOf(d, key, scope, fn) { if (scope === 'tpl') { const m = S.custom.train[key] || (S.custom.train[key] = {}); fn(m); saveCustom(); } else { const r = rec(d); r.ex = r.ex || {}; fn(r.ex); save(d); } }
 function ensureSession(d) { const r = rec(d); if (!r.session) { const si = sessionInfo(d); r.session = { split: training().split.key, dayIdx: si.dayIdx }; } }
 function bindSetInputs(root, d, items) {
-  root.querySelectorAll('[data-set]').forEach(i => i.oninput = () => { const [v, k, f] = i.dataset.set.split('|'); setOf(d, v, +k)[f] = i.value.trim(); ensureSession(d); save(d); });
+  root.querySelectorAll('[data-set]').forEach(i => i.oninput = () => {
+    const [v, k, f] = i.dataset.set.split('|'), s = setOf(d, v, +k), val = i.value.trim();
+    s[f] = val;
+    // 杠铃类：填的是每边的片，总重 = 杆 + 片 × 2（记录、建议、预测最大力量都用总重）
+    if (f === 'p') { const bar = C.loadOf(window.EX[v], v).bar; s.w = val === '' ? '' : String(Math.round((bar + 2 * +val) * 100) / 100); const t = root.querySelector(`[data-tot="${v}|${k}"]`); if (t) t.textContent = s.w ? '总 ' + s.w : ''; }
+    ensureSession(d); save(d);
+  });
   root.querySelectorAll('[data-sd]').forEach(b => b.onclick = () => {
     const [v, k] = b.dataset.sd.split('|'); const s = setOf(d, v, +k); s.done = !s.done; ensureSession(d);
     const it = items.find(x => x.v === v), r = rec(d);
     // 没填就打勾：按建议（上次的重量和次数）记下
-    if (s.done && !s.w && !s.r) { const sg = suggestFor(it, d); if (sg) { if (sg.w) s.w = String(sg.w); s.r = String(sg.r); const row = b.closest('.set'); if (row) { const [wi, ri] = row.querySelectorAll('input'); if (wi && s.w) wi.value = s.w; if (ri) ri.value = s.r; } } }
+    if (s.done && !s.w && !s.r && !s.p) {
+      const sg = suggestFor(it, d);
+      if (sg) {
+        if (sg.w) s.w = String(sg.w); if (sg.side != null) s.p = String(sg.side); s.r = String(sg.r);
+        const q = f => root.querySelector(`[data-set="${v}|${k}|${f}"]`);
+        if (q('w') && s.w) q('w').value = s.w; if (q('p') && s.p != null) q('p').value = s.p; if (q('r')) q('r').value = s.r;
+        const t = root.querySelector(`[data-tot="${v}|${k}"]`); if (t && s.w) t.textContent = '总 ' + s.w;
+      }
+    }
     save(d); Kit.haptic(s.done ? 'medium' : 'light');
     b.innerHTML = Kit.chk(s.done);
     if (doneSets(r, it) === it.sets) { toast(`${it.ex.n} 完成`); setTimeout(() => { close(); afterSets(d, items); }, 350); }
@@ -192,7 +231,10 @@ function bindTrain() {
   // 编辑模式：删除、组数、拖动排序都按上面选的范围（只改今天 / 以后都这样）
   const scopeText = () => S.trainScope === 'tpl' ? `以后练“${si.custom ? '自选部位' : si.day.name}”都这样` : '只改今天';
   $$('[data-tscope] button').forEach(b => b.onclick = () => { S.trainScope = b.dataset.v; Kit.haptic('light'); $$('[data-tscope] button').forEach(x => x.setAttribute('aria-pressed', x === b)); });
-  $$('[data-exdel]').forEach(b => b.onclick = () => { const v = b.dataset.exdel; modsOf(d, si.key, S.trainScope, m => { m.hide = (m.hide || []).concat(v); m.add = (m.add || []).filter(a => a.v !== v); }); stay(); toast(`已删除「${window.EX[v].n}」（${scopeText()}）`); });
+  $$('[data-exdel]').forEach(b => b.onclick = () => { const v = b.dataset.exdel;
+    // 两层里加过的都去掉，再在选的那一层删掉（否则“只改今天”加回来的会盖住“以后都这样”的删除）
+    [S.custom.train[si.key], (peek(d) || {}).ex].forEach(m => { if (m && m.add) m.add = m.add.filter(a => a.v !== v); });
+    modsOf(d, si.key, S.trainScope, m => { m.hide = (m.hide || []).filter(x => x !== v).concat(v); }); stay(); toast(`已删除「${window.EX[v].n}」（${scopeText()}）`); });
   $$('[data-st]').forEach(b => b.onclick = () => { const [v, dir] = b.dataset.st.split('|'); const it = items.find(x => x.v === v); modsOf(d, si.key, S.trainScope, m => { m.sets = m.sets || {}; m.sets[v] = Math.max(1, Math.min(10, it.sets + +dir)); }); Kit.haptic('light'); stay(); });
   const exList = $('#exList');
   if (exList && S.edit) dragSort(exList, (from, to) => {
@@ -201,7 +243,7 @@ function bindTrain() {
   });
   // 动作库可以一次选好几个，再一起问“只改今天 / 以后都这样”
   const add = $('#addEx'); if (add) add.onclick = () => library(list => askScope(list.length === 1 ? `添加「${window.EX[list[0]].n}」` : `添加 ${list.length} 个动作`, sc => {
-    modsOf(d, si.key, sc, m => { m.add = (m.add || []).filter(a => !list.includes(a.v)).concat(list.map(v => ({ v, sets: 3 }))); m.hide = (m.hide || []).filter(x => !list.includes(x)); });
+    C.addExercises(d, si, sc, list, 3);
     render(); toast(`已添加 ${list.length} 个动作`);
   }), items.map(it => it.v));
   $('#finish').onclick = () => finish(!(peek(d) && peek(d).done && peek(d).done.lift));
@@ -256,9 +298,8 @@ function swap(items, idx) {
   const more = ext.length ? `<div class="t-foot l2">补充备选（非套表训练计划，依据见每个动作的标签）</div><div class="libgrid">${ext.map(v => libItem(v, 'data-alt')).join('')}</div>` : '';
   sheet(`<h2>替换动作</h2><div class="sheet-sub">${esc(it.ex.n)} 的备选</div>${orig}${more}`, m => {
     m.querySelectorAll('[data-alt]').forEach(b => b.onclick = () => {
-      const key = g.sheet + ':' + g.id, nv = b.dataset.alt;
-      S.choices[key] = items.filter(x => x.group === g).map(x => x.v === it.v ? nv : x.v).filter((v, i, a) => a.indexOf(v) === i);
-      LS.set('choices', S.choices); C.replaceInOrder(S.day, sessionItems(S.day).si.key, it.v, nv); close(); Kit.haptic('light'); render(); toast('已换成 ' + window.EX[nv].n);
+      const nv = b.dataset.alt;
+      C.swapExercise(S.day, sessionItems(S.day).si, it.v, nv); close(); Kit.haptic('light'); render(); toast(`已换成 ${window.EX[nv].n}（以后练这一天也用它）`);
     });
   });
 }
