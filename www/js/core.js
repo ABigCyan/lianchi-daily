@@ -235,12 +235,16 @@ function trainedBefore(d) {
    bar 杠铃类：填每边加的片，杆重另算（杠铃 20kg、EZ 杠 10kg、史密斯 15kg，可改），总重 = 杆 + 片 × 2；
    db 单只：哑铃、壶铃、杠铃片填单只的重量；stack 配重：器械、龙门架填插销那格的重量；none 自重：卷腹、平板支撑这类只记次数（或秒） */
 const LOADS = { bar: '杆 + 片', db: '单只', stack: '配重', none: '自重' };
+/* 杆重统一设置一次：所有杠铃类动作共用（卧推、深蹲、划船……），每组只填单边的片 */
+const BAR_KINDS = [['bar', '杠铃杆', 20], ['ez', 'EZ 曲杆', 10], ['smith', '史密斯杆', 15]];
+function barsOf() { const v = LS.get('bars') || {}; return Object.fromEntries(BAR_KINDS.map(([k, , d]) => [k, v[k] != null ? +v[k] : d])); }
+function setBars(v) { LS.set('bars', Object.assign(barsOf(), v)); }
 function loadOf(ex, v) {
   const c = (S.custom.exCfg || {})[v] || {}, e = ex.eq || '';
   let mode = c.load;
   if (!mode) mode = ex.timed || /徒手|瑜伽垫|健腹轮|平凳或|罗马椅|GHR|瑜伽球|弹力带/.test(e) || /^(单杠|双杠)/.test(e) ? 'none'
     : /杠铃片/.test(e) ? 'db' : /EZ|史密斯|杠铃/.test(e) ? 'bar' : /哑铃|壶铃/.test(e) ? 'db' : 'stack';
-  const bar = c.bar != null ? +c.bar : /EZ/.test(e) ? 10 : /史密斯/.test(e) ? 15 : 20;
+  const kind = /EZ/.test(e) ? 'ez' : /史密斯/.test(e) ? 'smith' : 'bar', bar = c.bar != null ? +c.bar : barsOf()[kind];
   return { mode, bar, label: { bar: `每边片 kg · 杆 ${bar}`, db: /杠铃片/.test(e) ? '杠铃片 kg' : '单只 kg', stack: '配重 kg', none: '自重，只记次数' }[mode] };
 }
 // 配重加减的幅度（应用补充：常见器械的最小加重档）
@@ -391,9 +395,54 @@ function celebrate(before) { const after = badges().filter(b => b.got); if (afte
 let toastT;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; t.style.animation = 'none'; t.offsetHeight; t.style.animation = ''; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2200); }
 function sheet(html, onBind) {
-  const m = $('#modal'); m.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><span class="grab"></span>${html}</div>`; m.hidden = false;
+  const m = $('#modal'); m.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><span class="grab" aria-hidden="true"></span>${html}</div>`; m.hidden = false; m.style.setProperty('--dim', '1');
   m.onclick = e => { if (e.target === m) close(); };
   if (onBind) onBind(m);
+  dragToClose(m, m.querySelector('.sheet'));
+}
+/* 下拉关闭：按住顶部的横条往下拖，或者内容已经在最上面时往下拖；松手时拖得够远或够快就收起，否则弹回。
+   拖动中只改 transform（不重新排版），每帧最多改一次；收起时走面板原来的“点空白处关闭”，各个面板自己的收尾照常执行 */
+function dragToClose(m, sh) {
+  if (!sh) return;
+  let y0 = 0, x0 = 0, dy = 0, t0 = 0, active = false, decided = false, raf = 0, fromGrab = false;
+  const paint = () => { raf = 0; sh.style.setProperty('--drag', dy + 'px'); m.style.setProperty('--dim', String(Math.max(0, 1 - dy / (sh.offsetHeight || 1)))); };
+  const start = (y, grab, x) => { y0 = y; x0 = x || 0; dy = 0; t0 = performance.now(); active = true; decided = grab; fromGrab = grab; if (grab) sh.classList.add('dragging'); };
+  const move = (y, ev, x) => {
+    if (!active) return;
+    const d = y - y0;
+    if (!decided) {
+      if (Math.abs(d) < 6 && Math.abs((x || 0) - x0) < 6) return;
+      // 只有往下拖（不是横着滑）、而且内容已经在最上面时才接管；否则交给面板自己滚动或横滑
+      if (d < 0 || sh.scrollTop > 0 || Math.abs((x || 0) - x0) > Math.abs(d)) { active = false; return; }
+      decided = true; sh.classList.add('dragging'); y0 = y; t0 = performance.now();
+    }
+    if (ev && ev.cancelable) ev.preventDefault();
+    dy = Math.max(0, y - y0);
+    if (!raf) raf = requestAnimationFrame(paint);
+  };
+  const end = () => {
+    if (!active) return; active = false;
+    if (!decided) return;
+    const v = dy / Math.max(1, performance.now() - t0);   // 像素/毫秒
+    sh.classList.remove('dragging');
+    if (dy > Math.min(140, sh.offsetHeight * .3) || (v > .55 && dy > 30)) {
+      sh.classList.add('leaving'); sh.style.setProperty('--drag', sh.offsetHeight + 40 + 'px'); m.style.setProperty('--dim', '0');
+      Kit.haptic('light');
+      setTimeout(() => { if (m.contains(sh)) m.dispatchEvent(new MouseEvent('click', { bubbles: true })); }, 220);
+    } else { sh.style.setProperty('--drag', '0px'); m.style.setProperty('--dim', '1'); }
+    dy = 0;
+  };
+  const grab = sh.querySelector('.grab');
+  // 顶部横条：用 pointer 事件，横条区域 touch-action:none，不会和滚动抢
+  if (grab) {
+    grab.addEventListener('pointerdown', e => { grab.setPointerCapture(e.pointerId); start(e.clientY, true); });
+    grab.addEventListener('pointermove', e => move(e.clientY));
+    grab.addEventListener('pointerup', end); grab.addEventListener('pointercancel', end);
+  }
+  // 面板内容：用 touch 事件，在最上面往下拉时阻止滚动、接管成拖动
+  sh.addEventListener('touchstart', e => { if (fromGrab && active) return; if (e.target.closest('.grab,input[type=range],.fd-list,.fd-sel')) return; start(e.touches[0].clientY, false, e.touches[0].clientX); }, { passive: true });
+  sh.addEventListener('touchmove', e => { if (!fromGrab) move(e.touches[0].clientY, e, e.touches[0].clientX); }, { passive: false });
+  sh.addEventListener('touchend', () => { if (!fromGrab) end(); }); sh.addEventListener('touchcancel', () => { if (!fromGrab) end(); });
 }
 function close() { const m = $('#modal'); m.hidden = true; m.innerHTML = ''; }
 /* 操作表：只改今天 / 以后都这样 */
@@ -427,6 +476,6 @@ function bindHead() { $$('[data-ai]').forEach(b => b.onclick = () => { Kit.hapti
 function render() { window.__render(); }
 
 return { APP_VERSION, REPO, E, $, $$, esc, today, DAY_START, dayMin, DOW, uid, src, LS, S, month, peek, rec, save, saveCustom, allDays, ICON, holiday, dayInfo, TYPE,
-  tasksFor, setTaskTime, scoreDay, pctOf, training, sessionInfo, sessionItems, weekOf, LIB, extraItem, replaceInOrder, swapExercise, addExercises, LOADS, loadOf, lastSession, suggestFor, trainedBefore, METRICS, metricsOn, metricSeries, burnOf, intakeOf, targetOf, streaks, totals, weights,
+  tasksFor, setTaskTime, scoreDay, pctOf, training, sessionInfo, sessionItems, weekOf, LIB, extraItem, replaceInOrder, swapExercise, addExercises, LOADS, loadOf, BAR_KINDS, barsOf, setBars, lastSession, suggestFor, trainedBefore, METRICS, metricsOn, metricSeries, burnOf, intakeOf, targetOf, streaks, totals, weights,
   badges, levelOf, celebrate, toast, sheet, close, askScope, confetti, imgUrl, dateLabel, head, bindHead, render };
 })();

@@ -58,18 +58,32 @@ function exBody(it, idx, n, r, d, future) {
 /* 每组的输入：按“重量怎么记”分——杠铃类填每边的片（杆重另算，旁边显示总重）、单只、配重、自重只填次数 */
 function setsHtml(it, sets, sg, lo, future) {
   const ld = C.loadOf(it.ex, it.v), dis = future ? 'disabled' : '', none = ld.mode === 'none';
-  const head = `<div class="set-h ${none ? 'none' : ''}"><span></span>${none ? '' : `<span>${esc(ld.label)}</span>`}<span>${it.ex.timed ? '秒' : '次数'}</span><span></span></div>`;
+  const head = `<div class="set-h ${none ? 'none' : ''}"><span></span>${none ? '' : ld.mode === 'bar' ? `<button class="set-bar" data-bars>单边片 kg · 杆 ${ld.bar}<span aria-hidden="true">›</span></button>` : `<span>${esc(ld.label)}</span>`}<span>${it.ex.timed ? '秒' : '次数'}</span><span></span></div>`;
   const rows = [...Array(it.sets)].map((_, i) => {
     const s = sets[i] || {};
     const reps = `<input class="field-in" data-set="${it.v}|${i}|r" value="${esc(s.r || '')}" placeholder="${sg ? sg.r : lo || '次数'}" inputmode="numeric" aria-label="第${i + 1}组${it.ex.timed ? '秒数' : '次数'}" ${dis}>`;
     let w = '';
     if (ld.mode === 'bar') {
       const side = s.p != null && s.p !== '' ? s.p : +s.w ? Math.max(0, (+s.w - ld.bar) / 2) : '';
-      w = `<label class="wbox"><input class="field-in" data-set="${it.v}|${i}|p" value="${esc(side)}" placeholder="${sg && sg.side != null ? sg.side : '片'}" inputmode="decimal" aria-label="第${i + 1}组每边加的片" ${dis}><em data-tot="${it.v}|${i}">${+s.w ? '总 ' + s.w : ''}</em></label>`;
+      w = `<label class="wbox"><input class="field-in" data-set="${it.v}|${i}|p" value="${esc(side)}" placeholder="${sg && sg.side != null ? sg.side : '单边片'}" inputmode="decimal" aria-label="第${i + 1}组单边加的片" ${dis}><em data-tot="${it.v}|${i}">${+s.w ? '总 ' + s.w : ''}</em></label>`;
     } else if (!none) w = `<input class="field-in" data-set="${it.v}|${i}|w" value="${esc(s.w || '')}" placeholder="${sg && sg.w ? sg.w : 'kg'}" inputmode="decimal" aria-label="第${i + 1}组${ld.mode === 'db' ? '单只' : ''}重量" ${dis}>`;
     return `<div class="set ${none ? 'none' : ''}"><span class="n">${i + 1}</span>${w}${reps}<button class="hit" data-sd="${it.v}|${i}" aria-label="第${i + 1}组完成" ${dis}>${Kit.chk(!!s.done)}</button></div>`;
   }).join('');
   return `<div class="sets">${head}${rows}</div>`;
+}
+/* 杆重：杠铃杆、EZ 曲杆、史密斯杆各设一次，所有用这种杆的动作共用；每组只填单边的片，总重 = 杆 + 片 × 2 */
+function barSheet() {
+  const b = C.barsOf();
+  sheet(`<h2>杆重</h2><div class="sheet-sub">设一次，所有杠铃类动作共用</div><div class="list" style="background:var(--fill3)">
+    ${C.BAR_KINDS.map(([k, n]) => `<div class="frow"><label for="bar-${k}">${n}</label><div class="bar-in"><div class="chips">${[20, 15, 10].map(v => `<button data-bk="${k}|${v}" aria-pressed="${b[k] === v}">${v}</button>`).join('')}</div><input id="bar-${k}" inputmode="decimal" value="${b[k]}" aria-label="${n}重量"><em>kg</em></div></div>`).join('')}</div>
+    <p class="t-foot l2" style="padding:0 6px">每组填单边加了多少片（比如两边各一片 10kg 就填 10），总重自动算成 杆 + 片 × 2。改杆重不影响已经记下的组。</p>
+    <button class="pill ink wide" id="bar-ok">保存</button>`, m => {
+    m.querySelectorAll('[data-bk]').forEach(x => x.onclick = () => { const [k, v] = x.dataset.bk.split('|'); m.querySelector('#bar-' + k).value = v; m.querySelectorAll(`[data-bk^="${k}|"]`).forEach(y => y.setAttribute('aria-pressed', y === x)); Kit.haptic('light'); });
+    m.querySelector('#bar-ok').onclick = () => {
+      const v = {}; for (const [k, n] of C.BAR_KINDS) { const x = +m.querySelector('#bar-' + k).value; if (!(x >= 0 && x <= 60)) { toast(`${n}要在 0-60kg`); return; } v[k] = x; }
+      C.setBars(v); close(); Kit.haptic('success'); const y = scrollY; render(); scrollTo(0, y); toast('杆重已保存');
+    };
+  });
 }
 /* 调整一个动作：次数范围、组间休息、要不要做到力竭（对这个动作一直有效；恢复默认就回到套表规则） */
 function cfgSheet(it) {
@@ -83,10 +97,11 @@ function cfgSheet(it) {
       <div class="frow stack"><span class="lbl">组间休息</span><div class="chips">${RESTS.map(x => `<button data-rest="${x}" aria-pressed="${x === rest}">${x}</button>`).join('')}</div></div>
       <div class="frow"><label for="cf-fail">做到力竭</label><input type="checkbox" class="switch" id="cf-fail" ${fail ? 'checked' : ''}></div>
       <div class="frow stack"><span class="lbl">重量怎么记</span><div class="segmented" data-load>${Object.entries(C.LOADS).map(([k, n]) => `<button data-v="${k}" aria-pressed="${load === k}">${n}</button>`).join('')}</div></div>
-      <div class="frow" id="cf-bar-row" ${load === 'bar' ? '' : 'hidden'}><label for="cf-bar">杆重 kg</label><input id="cf-bar" inputmode="decimal" value="${bar}"></div></div>
+      <button class="row" id="cf-bar-row" data-bars style="grid-template-columns:1fr auto" ${load === 'bar' ? '' : 'hidden'}><span class="row-main"><span class="row-title">杆重</span><span class="row-sub">所有杠铃类动作统一设置，每组只填单边的片</span></span><span class="row-val chev">${bar} kg</span></button></div>
     <p class="t-foot l2" style="padding:0 6px">套表默认：${esc(def.reps)} 次（${esc(def.repsSrc || '')}）；休息 ${esc(def.rest)}（${esc(def.restSrc || '')}）；${esc(def.fail)}（${esc(def.failSrc || '')}）。${it.ex.noFail ? '这是可能砸伤的动作，套表建议不要做到完全力竭。' : ''}</p>
     <button class="pill ink wide" id="cf-ok">保存</button>${(S.custom.exCfg || {})[it.v] ? '<button class="pill glass wide" id="cf-reset">恢复套表默认</button>' : ''}`, m => {
     m.querySelectorAll('[data-load] button').forEach(b => b.onclick = () => { load = b.dataset.v; m.querySelectorAll('[data-load] button').forEach(x => x.setAttribute('aria-pressed', x === b)); m.querySelector('#cf-bar-row').hidden = load !== 'bar'; Kit.haptic('light'); });
+    m.querySelectorAll('[data-bars]').forEach(b => b.onclick = () => barSheet());
     m.querySelectorAll('[data-rest]').forEach(b => b.onclick = () => { rest = b.dataset.rest; m.querySelectorAll('[data-rest]').forEach(x => x.setAttribute('aria-pressed', x === b)); Kit.haptic('light'); });
     m.querySelector('#cf-ok').onclick = () => {
       const lo = +m.querySelector('#cf-lo').value, hi = +m.querySelector('#cf-hi').value, f = m.querySelector('#cf-fail').checked;
@@ -98,8 +113,7 @@ function cfgSheet(it) {
       // 重量怎么记：和默认一样就不存
       const saved = (S.custom.exCfg || {})[it.v] || {}, defLoad = (() => { const t = Object.assign({}, saved); delete S.custom.exCfg[it.v]; const x = C.loadOf(it.ex, it.v); if (Object.keys(t).length) S.custom.exCfg[it.v] = t; return x; })();
       if (load !== defLoad.mode) cfg.load = load;
-      const bv = +m.querySelector('#cf-bar').value;
-      if (load === 'bar' && bv >= 0 && bv <= 60 && bv !== defLoad.bar) cfg.bar = bv;
+      if (saved.bar != null) cfg.bar = saved.bar;   // 以前单独设过的杆重（助手可以改）保留
       S.custom.exCfg = S.custom.exCfg || {};
       if (Object.keys(cfg).length) S.custom.exCfg[it.v] = cfg; else delete S.custom.exCfg[it.v];
       saveCustom(); close(); Kit.haptic('success'); render(); toast('已保存');
@@ -199,6 +213,7 @@ function bindSetInputs(root, d, items) {
   root.querySelectorAll('[data-swap]').forEach(b => b.onclick = () => swap(items, items.findIndex(x => x.v === b.dataset.swap)));
   root.querySelectorAll('[data-big]').forEach(b => b.onclick = () => bigImage(items.find(x => x.v === b.dataset.big).ex));
   root.querySelectorAll('[data-cfg]').forEach(b => b.onclick = () => cfgSheet(items.find(x => x.v === b.dataset.cfg)));
+  root.querySelectorAll('[data-bars]').forEach(b => b.onclick = () => barSheet());
 }
 function afterSets(d, items) {
   const r = rec(d);
@@ -346,5 +361,5 @@ function animate() {
   // 只让最上面那张卡片的动作图动；切到后台就停
   let f = 0; animT = setInterval(() => { if (document.hidden || window.scrollY > 900) return; f = 1 - f; $$('.dc.top img[data-anim]').forEach(img => img.src = `img/ex/${img.dataset.anim}/${f}.jpg`); }, 1400);
 }
-window.Train = { view: viewTrain, bind: bindTrain, stop: () => clearInterval(animT) };
+window.Train = { view: viewTrain, bind: bindTrain, stop: () => clearInterval(animT), barSheet };
 })();

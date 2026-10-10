@@ -465,7 +465,7 @@ const DEFS_MORE = [
     order: { type: 'array', items: { type: 'string' } }, exercise_id: { type: 'string' }, position: { type: 'integer' }, scope: { type: 'string', enum: ['today', 'always'] }, reason: { type: 'string' } }, required: ['scope'] } },
   { name: 'set_exercise_params', description: '调整一个动作的每组次数、组间休息、要不要做到力竭、重量怎么记（杠铃填每边的片/单只/配重/自重）和杆重（对这个动作一直有效），reset=true 恢复套表默认。套表规则：配重选能做 8-12 次力竭的、女性 10-15、适应新动作 12-15（表21 C12/C14），多关节组间休息 2-3 分钟、单关节 1-1.5 分钟（表21 C11），自由卧推/深蹲/推举不做到完全力竭（表21 C13）；和套表不同时在 reason 里说明。会先让用户确认。', parameters: { type: 'object', properties: {
     exercise_id: { type: 'string' }, reps: { type: 'string', description: '例如 "10-12"' }, rest: { type: 'string', description: '例如 "90 秒"、"2-3 分钟"' }, to_failure: { type: 'boolean' },
-    load: { type: 'string', enum: ['bar', 'db', 'stack', 'none'], description: '重量怎么记：bar 杠铃类（填每边的片，杆重另算）、db 单只、stack 器械配重、none 自重只记次数' }, bar_kg: { type: 'number', description: 'load=bar 时的杆重' },
+    load: { type: 'string', enum: ['bar', 'db', 'stack', 'none'], description: '重量怎么记：bar 杠铃类（填每边的片，杆重另算）、db 单只、stack 器械配重、none 自重只记次数' }, bar_kg: { type: 'number', description: '杆重：统一设置，同一种杆（杠铃杆 / EZ 曲杆 / 史密斯杆）的所有动作共用' },
     reset: { type: 'boolean' }, reason: { type: 'string' } }, required: ['exercise_id'] } },
   { name: 'swap_exercise', description: '把今天训练里的一个动作换成另一个（最好是 exercise_info 里同一肌群的备选），以后练这一天也用新动作。会先让用户确认。', parameters: { type: 'object', properties: { from_id: { type: 'string' }, to_id: { type: 'string' }, reason: { type: 'string' } }, required: ['from_id', 'to_id'] } },
   { name: 'log_body', description: '记某天（默认今天）的身体数据：weight 体重 kg、waist 腰围、hip 臀围、chest 胸围、arm 臂围、thigh 大腿围（cm）、fat 体脂率 %。会先让用户确认。', parameters: { type: 'object', properties: {
@@ -504,12 +504,14 @@ Object.assign(RUN, {
     if (a.rest != null && String(a.rest).trim()) { cfg.rest = String(a.rest).trim().slice(0, 20); if (cfg.rest !== it.rest) lines.push(`组间休息：${it.rest} → ${cfg.rest}`); }
     if (a.to_failure != null) { cfg.fail = !!a.to_failure; const was = !/不追求/.test(it.fail); if (cfg.fail !== was) lines.push(`做到力竭：${was ? '是' : '否'} → ${cfg.fail ? '是' : '否'}`); }
     if (a.load != null) { const was = C.loadOf(ex, v); cfg.load = a.load; if (a.load !== was.mode) lines.push(`重量怎么记：${C.LOADS[was.mode]} → ${C.LOADS[a.load]}`); }
-    if (a.bar_kg != null && +a.bar_kg >= 0 && +a.bar_kg <= 60) { const was = C.loadOf(ex, v).bar; cfg.bar = +a.bar_kg; if (+a.bar_kg !== was) lines.push(`杆重：${was}kg → ${a.bar_kg}kg`); }
+    // 杆重是统一设置（同一种杆的所有动作共用），不单独存在这个动作上
+    let barSet = null;
+    if (a.bar_kg != null && +a.bar_kg >= 0 && +a.bar_kg <= 60) { const e = ex.eq || '', kind = /EZ/.test(e) ? 'ez' : /史密斯/.test(e) ? 'smith' : 'bar', was = C.barsOf()[kind]; if (+a.bar_kg !== was) { barSet = { [kind]: +a.bar_kg }; lines.push(`${(C.BAR_KINDS.find(x => x[0] === kind) || [])[1]}杆重（所有用这种杆的动作）：${was}kg → ${a.bar_kg}kg`); } delete cfg.bar; }
     if (!lines.length) return { ok: false, error: '和现在一样，不用改' };
     if (ex.noFail && cfg.fail) lines.push('注意：套表建议这个动作不要做到完全力竭，提前 1-2 次停（表21 C13）');
     lines.push(`套表默认：${def.reps} 次、休息 ${def.rest}`);
     if (!await ctx.confirm('调整动作：' + ex.n, lines, a.reason)) return { ok: false, error: '用户取消了' };
-    S.custom.exCfg[v] = cfg; saveCustom();
+    S.custom.exCfg[v] = cfg; saveCustom(); if (barSet) C.setBars(barSet);
     const now = sessionItems(today()).items.find(x => x.v === v) || it;
     return { ok: true, done: lines.slice(0, -1).join('；'), now: { reps: now.reps, rest: now.rest, fail: now.fail } };
   },

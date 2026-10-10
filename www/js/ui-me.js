@@ -22,7 +22,7 @@ function viewMe() {
     <div class="stats"><div><span class="k">目标</span><span class="v">${pl.goal === 'cut' ? '减脂' : '增肌'}</span></div><div><span class="k">应吃 kcal</span><span class="v">${pl.f1}</span></div><div><span class="k">蛋白质 g</span><span class="v">${pl.prot}</span></div></div></section>`;
   const head = (t, body) => `<section class="fsec"><h3>${t}</h3><div class="list mat">${body}</div></section>`;
   const track = C.metricsOn().map(m => m.name).join('、');
-  h += head('计划', item('profile', I.person2, '', '编辑资料', '身体、训练、饮食') + item('plan', I.calendar, '', '我的计划', esc(pl.sheet.name)) + item('rules', I.doc, '', '规则与出处', '套表表号') + item('holiday', I.globe, '', '节假日', Object.keys(Object.assign({}, window.HOLIDAYS_BUNDLED, S.holidays)).length + ' 天'));
+  h += head('计划', item('profile', I.person2, '', '编辑资料', '身体、训练、饮食') + item('plan', I.calendar, '', '我的计划', esc(pl.sheet.name)) + item('rules', I.doc, '', '规则与出处', '套表表号') + `<button class="row" data-barsheet>${ico(I.train, '')}<span class="row-main"><span class="row-title">杆重</span></span><span class="row-val chev"><span class="rv">杠铃杆 ${C.barsOf().bar} kg</span></span></button>` + item('holiday', I.globe, '', '节假日', Object.keys(Object.assign({}, window.HOLIDAYS_BUNDLED, S.holidays)).length + ' 天'));
   h += head('助手', item('assistant', I.sparkles, '', '和助手聊', '问套表、改计划') + item('ai', I.globe, '', '大模型接口', esc(S.ai.model || '未设置')) + item('localai', I.stack, '', '内置模型', LocalAI.prefs().enabled ? '已开启' : '未开启') + item('memory', I.heart, '', 'AI 记忆', Memory.list().length + ' 条'));
   h += head('记录与提醒', item('track', I.scale, '', '每日记录', esc(track)) + `<div class="row">${ico(I.bell, '')}<span class="row-main"><span class="row-title">按时间线提醒</span>${native ? '' : '<span class="row-sub">只在手机 App 里有效</span>'}</span><input type="checkbox" class="switch" id="nt-on" ${S.notify.on ? 'checked' : ''} ${native ? '' : 'disabled'} aria-label="按时间线提醒"></div>`);
   h += head('外观与操作', item('look', I.photo, '', '外观与头像', '') + item('feel', I.gear, '', '震动与键盘', { all: '震动开', long: '仅长按震动', off: '震动关' }[Kit.hapticMode()]));
@@ -33,6 +33,7 @@ function viewMe() {
 function bindMe() {
   if (S.sub && SUB[S.sub]) { $$('[data-back]').forEach(b => b.onclick = () => { S.sub = S.firstImport ? null : null; S.firstImport = false; render(); scrollTo(0, 0); }); return SUB[S.sub].bind && SUB[S.sub].bind(); }
   $$('[data-sub]').forEach(b => b.onclick = () => { if (b.dataset.sub === 'assistant') return Assistant.open(); S.subBack = null; S.sub = b.dataset.sub; render(); scrollTo(0, 0); });
+  $$('[data-barsheet]').forEach(b => b.onclick = () => Train.barSheet());
   const nt = $('#nt-on'); if (nt) nt.onchange = async () => { Kit.haptic('light'); S.notify.on = nt.checked; LS.set('notify', S.notify); if (nt.checked) { const ok = await scheduleNotifs(true); if (!ok) { S.notify.on = false; LS.set('notify', S.notify); nt.checked = false; } } else cancelNotifs(); };
 }
 

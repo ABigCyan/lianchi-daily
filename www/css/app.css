@@ -691,7 +691,13 @@ details.ref p{margin:4px 0}
 #sab-probe{position:fixed;left:0;bottom:0;width:0;height:var(--sab);pointer-events:none;visibility:hidden}
 .chat{bottom:var(--kb,0px);transition:bottom var(--kb-dur,250ms) cubic-bezier(.2,0,0,1)}
 /* 底部面板用位移（只在合成层动，不重新排版）跟着键盘上移；高度上限直接变，不做动画 */
-.modal .sheet{max-height:calc(88vh - var(--kb,0px));transform:translateY(calc(-1 * var(--kb,0px)));transition:transform var(--kb-dur,250ms) cubic-bezier(.2,0,0,1)}
+.modal .sheet{max-height:calc(88vh - var(--kb,0px));transform:translateY(calc(var(--drag,0px) - var(--kb,0px)));transition:transform var(--kb-dur,250ms) cubic-bezier(.2,0,0,1)}
+/* 下拉关闭：拖动时跟手（不做过渡），松手后弹回或滑出；背景跟着变淡 */
+.modal .sheet.dragging{transition:none;will-change:transform}
+.modal .sheet.leaving{transition:transform .22s cubic-bezier(.4,0,1,1)}
+.modal{background:rgba(14,16,19,calc(.22 * var(--dim,1)))}
+.sheet .grab{position:relative;touch-action:none;cursor:grab}
+.sheet .grab::after{content:"";position:absolute;left:-60px;right:-60px;top:-14px;bottom:-14px}
 /* 键盘动画进行时：暂时关掉毛玻璃（每帧重画模糊最耗时）；对话页单独成一个布局范围，动画时只重排它自己 */
 .kb-anim .sheet,.kb-anim .composer-in,.kb-anim .tabbar .glass{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--chrome-strong)}
 .chat{contain:layout paint}
@@ -784,3 +790,9 @@ pre{overflow-wrap:anywhere;word-break:break-word;white-space:pre-wrap}
 .folded .rng .segmented,.folded .rng .zoom-btn{display:none}
 .folded.card{gap:10px}
 @media (prefers-reduced-motion: reduce){.fold-b,.fold-chev{transition:none}}
+.set-bar{justify-self:start;padding:0;background:none;font-size:11px;color:var(--accent);font-weight:600;display:inline-flex;gap:3px;align-items:center}
+.bar-in{display:flex;align-items:center;gap:8px;justify-self:end}
+.bar-in .chips{flex-wrap:nowrap;gap:4px}
+.bar-in .chips button{height:30px;padding:0 10px;font-size:13px}
+.bar-in input{width:52px!important;height:32px!important;border-radius:10px!important;background:var(--fill)!important;text-align:center!important;color:var(--ink)!important}
+.bar-in em{font-style:normal;font-size:13px;color:var(--ink3)}
