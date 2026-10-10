@@ -1,5 +1,5 @@
 /*
- * 练吃日课 · 视觉系统 “Quiet Glass”
+ * 练好吃对 · 视觉系统 “Quiet Glass”
  * 中性冷灰底 + 靠高光边与柔和阴影表现的玻璃面板；墨黑为主色，蓝色只用于可点击，绿色只用于“完成”。
  * 8pt 网格；页面左右 20；面板内边距 20；所有统计“标签在上、数字在下、左对齐、等宽列”。
  */
@@ -303,11 +303,29 @@ td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .heat{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
 .heat .h{aspect-ratio:1;border-radius:10px;background:var(--fill);display:grid;place-items:center;font-size:11px;color:var(--ink3);max-width:100%;font-variant-numeric:tabular-nums}
 .heat .hd{font-size:11px;color:var(--ink3);text-align:center;letter-spacing:.04em}
-.medals{display:grid;grid-template-columns:repeat(4,1fr);gap:18px 8px}
-.medal{display:grid;justify-items:center;gap:8px;text-align:center;font-size:11px;color:var(--ink3);line-height:1.3}
-.medal .m{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;border:1.5px dashed var(--ink4);font-size:13px;font-weight:500;color:var(--ink4)}
-.medal.got .m{border:0;background:var(--primary);color:var(--on-primary);box-shadow:0 8px 18px -10px rgba(14,16,19,.6)}
-.medal.got{color:var(--ink)}
+.medals{display:grid;grid-template-columns:repeat(4,1fr);gap:18px 6px}
+.medal{display:grid;justify-items:center;gap:4px;text-align:center;min-width:0;padding:0;background:none}
+.medal:active .md{transform:scale(.94)}
+.medal .mn{font-size:12px;font-weight:600;color:var(--ink3);line-height:1.25;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.medal .mp{font-size:11px;color:var(--ink4);font-variant-numeric:tabular-nums}
+.medal.got .mn{color:var(--ink)}
+.medal.got .mp{color:var(--ink3)}
+.md{position:relative;width:60px;height:60px;display:block;transition:transform .18s cubic-bezier(.2,.9,.25,1.2)}
+.md.big{width:120px;height:120px}
+.md svg{position:absolute;inset:0;width:100%;height:100%}
+.md-rim{fill:var(--fill2)}
+.md-face{fill:var(--card-solid);stroke:var(--hair);stroke-width:.6}
+.md-prog{fill:none;stroke:var(--accent);stroke-width:2.6;stroke-linecap:round}
+.md-ico{position:absolute;inset:0;display:grid;place-items:center;color:var(--ink4)}
+.md-ico svg{width:24px;height:24px;position:static}
+.md.big .md-ico svg{width:48px;height:48px}
+.got .md{filter:drop-shadow(0 6px 10px rgba(30,24,10,.18))}
+.got .md.t1 .md-ico{color:#fff}
+.got .md.t2 .md-ico{color:#4A5361}
+.got .md.t3 .md-ico{color:#6B470C}
+.got .md.t4 .md-ico{color:#fff}
+.md-sheet{display:grid;justify-items:center;gap:10px;padding:6px 0 4px}
+.md-sheet h2{margin-top:4px}
 
 /* 底部面板 */
 .modal{position:fixed;inset:0;z-index:40;background:rgba(14,16,19,.22);display:grid;align-items:end;justify-items:center;animation:fade .25s}
@@ -387,7 +405,14 @@ td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .lp-bg i:nth-child(3){width:90px;height:22px;border-radius:99px;left:40%;bottom:14%;background:var(--ok)}
 .lp-card{gap:12px}
 
-.plan-why{font-size:12px;line-height:1.55;color:var(--ink3);padding:0 6px;margin-top:-6px}
+.plan-why{font-size:13px;line-height:1.5;color:var(--ink2);padding:0 6px;margin-top:-6px;display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:2px 12px}
+.plan-why details{font-size:12px;color:var(--ink3)}
+.plan-why details[open]{flex-basis:100%}
+.plan-why summary{cursor:pointer;color:var(--accent);list-style:none;font-weight:500}
+.plan-why summary::-webkit-details-marker{display:none}
+.plan-why details[open] summary{margin-bottom:6px}
+.plan-why ul{margin:0;padding:10px 12px 10px 26px;border-radius:14px;background:var(--fill);display:grid;gap:6px;line-height:1.5;color:var(--ink2)}
+.plan-why .pw-src{color:var(--ink4);font-size:11px;white-space:nowrap}
 
 /* 只有浮在滚动内容上面的地方才用实时模糊（标签栏、顶部导航、底部面板、输入框） */
 .tabbar .glass,.navbar .glass,.composer-in{-webkit-backdrop-filter:blur(var(--blur)) saturate(1.5);backdrop-filter:blur(var(--blur)) saturate(1.5)}
@@ -709,3 +734,31 @@ body{padding-bottom:var(--kb,0px)}
 .mem-add{display:grid;grid-template-columns:1fr auto;gap:8px}
 .mem-add .tbtn{height:44px;border-radius:14px;padding:0 18px}
 .legend i.band{width:16px;height:7px;border-radius:4px;background:var(--accent);opacity:.25}
+
+/* ---------- 列表行：图标和文字靠近一些，分隔线从文字开始（和系统设置一致），不再从图标下面开始 ---------- */
+.row:has(> .row-ico),.row[data-sub]:not([style]):has(> .row-ico){grid-template-columns:28px minmax(max-content,1fr) minmax(0,auto);gap:14px}
+.row + .row:has(> .row-ico)::before{left:62px}
+/* 长文字（提示词、原文）不撑破卡片 */
+.card > *,details.card > *{min-width:0;max-width:100%}
+pre{overflow-wrap:anywhere;word-break:break-word;white-space:pre-wrap}
+
+/* ---------- 坚持日历（按月） ---------- */
+.cal-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:-4px}
+.cal-h b{font-size:15px;font-weight:650;letter-spacing:.01em}
+.cal-h .gbtn{width:36px;height:36px;border-radius:50%;background:var(--fill);display:grid;place-items:center;color:var(--ink2)}
+.cal-h .gbtn svg{width:16px;height:16px}
+.cal-h .gbtn:disabled{opacity:.3}
+.heat{touch-action:pan-y}
+.heat .h{position:relative;font-size:12px}
+.heat .h.blank{background:none}
+.heat .h.l1{background:color-mix(in srgb,var(--ink) 16%,transparent);color:var(--ink2)}
+.heat .h.l2{background:color-mix(in srgb,var(--ink) 58%,transparent);color:var(--bg)}
+.heat .h.l3{background:var(--ink);color:var(--bg)}
+.heat .h.hol{background:color-mix(in srgb,var(--amber) 22%,transparent)}
+.heat .h.fut{opacity:.35}
+.heat .h.now{box-shadow:inset 0 0 0 1.5px var(--accent);font-weight:700;color:var(--ink)}
+.heat .h.now.l2,.heat .h.now.l3{color:var(--bg)}
+.heat .h .lift{position:absolute;bottom:5px;left:50%;width:4px;height:4px;border-radius:50%;background:currentColor;transform:translateX(-50%);opacity:.7}
+.cal-sum{display:flex;gap:16px;font-size:13px;color:var(--ink3)}
+.cal-sum b{color:var(--ink);font-weight:650}
+.guide-logo{width:88px;height:88px;border-radius:22px;box-shadow:0 16px 36px -14px rgba(14,16,19,.55)}

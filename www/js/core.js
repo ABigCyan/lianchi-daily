@@ -308,7 +308,7 @@ function totals() {
   const st = streaks(); points += Math.floor(st.best / 7) * 50;
   return { lifts, km: Math.round(km * 10) / 10, weighs, perfect, points, meals, ...st };
 }
-/* ---------- 每日身体数据：体重必记，腰围等可选（我的 → 设置 → 每日记录） ---------- */
+/* ---------- 每日身体数据：体重必记，腰围等可选（我的 → 每日记录） ---------- */
 const METRICS = [
   { id: 'weight', name: '体重', unit: 'kg', min: 20, max: 300, note: '只比较 1-2 周的平均值（表17 B91）' },
   { id: 'waist', name: '腰围', unit: 'cm', min: 40, max: 200, note: '空腹量肚脐一圈，同一时间量' },
@@ -321,19 +321,24 @@ const METRICS = [
 function metricsOn() { const t = Array.isArray(S.profile.track) ? S.profile.track : []; return METRICS.filter(m => m.id === 'weight' || t.includes(m.id)); }
 function metricSeries(id) { return allDays().map(d => ({ d, w: +(peek(d) || {})[id] || null })).filter(x => x.w); }
 function weights() { return allDays().map(d => ({ d, w: +(peek(d) || {}).weight || null })).filter(x => x.w); }
+/* 奖章：每种一组台阶（铜 → 银 → 金 → 白金），带进度。kind 决定图标 */
 function badges() {
   const t = totals(), ws = weights(), p = S.profile, cut = S.plan.goal === 'cut';
-  const w0 = +p.startWeight || +p.weight, wl = ws.length ? ws[ws.length - 1].w : w0;
-  const B = [
-    ['第一天', t.best >= 1], ['连续 3 天', t.best >= 3], ['连续 7 天', t.best >= 7], ['连续 14 天', t.best >= 14],
-    ['连续 30 天', t.best >= 30], ['连续 100 天', t.best >= 100], ['7 个满分日', t.perfect >= 7], ['力训 10 次', t.lifts >= 10],
-    ['力训 30 次', t.lifts >= 30], ['力训 60 次', t.lifts >= 60], ['跑满 50km', t.km >= 50], ['称重 30 天', t.weighs >= 30],
-    ['记录 50 餐', t.meals >= 50],
-  ];
-  if (cut) B.push(['减掉 2kg', w0 - wl >= 2], ['减掉 5kg', w0 - wl >= 5], ['减掉 10kg', w0 - wl >= 10]);
-  else B.push(['增重 1kg', wl - w0 >= 1], ['增重 3kg', wl - w0 >= 3]);
-  if (+p.targetWeight) B.push(['到达目标', cut ? wl <= +p.targetWeight : wl >= +p.targetWeight]);
-  return B.map(([name, got]) => ({ name, got }));
+  const w0 = +p.startWeight || +p.weight, wl = ws.length ? ws[ws.length - 1].w : w0, lost = Math.round((w0 - wl) * 10) / 10, gained = -lost;
+  const B = [];
+  const tiers = (kind, cur, list, name, desc) => list.forEach((need, i) => B.push({ kind, cur, need, tier: kind === 'first' ? 1 : Math.max(1, 4 - (list.length - 1 - i)) /* 最高一档是白金，往下依次金、银、铜 */, name: name(need), desc: desc(need) }));
+  tiers('first', t.best, [1], () => '第一天', () => '完成第一天的安排');
+  tiers('streak', t.best, [3, 7, 30, 100], n => `连续 ${n} 天`, n => `连续 ${n} 天完成当天八成以上的安排`);
+  tiers('perfect', t.perfect, [7, 30], n => `${n} 个满分日`, n => `累计 ${n} 天把当天的安排全部完成`);
+  tiers('lift', t.lifts, [10, 30, 60, 100], n => `力训 ${n} 次`, n => `累计完成 ${n} 次力量训练`);
+  tiers('run', t.km, [50, 200], n => `跑满 ${n}km`, n => `跑步累计 ${n} 公里`);
+  tiers('scale', t.weighs, [30, 100], n => `称重 ${n} 天`, n => `累计 ${n} 天记录体重`);
+  tiers('meal', t.meals, [50, 200], n => `记录 ${n} 餐`, n => `累计记录 ${n} 餐饮食`);
+  if (cut) tiers('down', Math.max(0, lost), [2, 5, 10], n => `减掉 ${n}kg`, n => `比开始时轻 ${n}kg`);
+  else tiers('up', Math.max(0, gained), [1, 3, 5], n => `增重 ${n}kg`, n => `比开始时重 ${n}kg`);
+  if (+p.targetWeight) B.push({ kind: 'target', tier: 4, cur: (cut ? wl <= +p.targetWeight : wl >= +p.targetWeight) ? 1 : 0, need: 1, name: '到达目标', desc: `体重到达目标 ${p.targetWeight}kg` });
+  B.forEach(b => { b.got = b.cur >= b.need; b.pct = Math.max(0, Math.min(1, b.cur / b.need)); });
+  return B;
 }
 const LEVELS = ['新手', '入门', '坚持者', '自律者', '硬核', '铁人', '传奇'];
 function levelOf(pts) { const lv = Math.min(LEVELS.length - 1, Math.floor(pts / 600)); return { lv, name: LEVELS[lv], into: pts - lv * 600, need: 600, max: lv === LEVELS.length - 1 }; }

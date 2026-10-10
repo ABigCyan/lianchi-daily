@@ -121,15 +121,54 @@ function metricCard(m, n, of) {
   return `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><span class="t-title3">${m.name}${of ? `<span class="t-cap l3" style="margin-left:8px;font-weight:500">${of}</span>` : ''}</span><span class="num t-headline">${last != null ? `${(+last).toFixed(1)} ${m.unit}` : '—'} <span class="l2 t-sub">${inWin.length > 1 ? (dl > 0 ? '+' : '') + dl.toFixed(1) : ''}</span></span></div>
     ${rangeCtl('m')}${metricChart(m, n)}${m.note ? `<p class="t-cap l3" style="margin:6px 0 0">${esc(m.note)}</p>` : ''}`;
 }
+/* 坚持日历：按月显示，‹ › 或左右滑切换月份 */
+let calMonth = null;
 function heat() {
-  const td = today(); let start = E.addDays(td, -27); start = E.addDays(start, -E.dow(start));
+  const td = today(), ym = calMonth || td.slice(0, 7), first = ym + '-01';
+  const [y, m] = ym.split('-').map(Number), n = new Date(y, m, 0).getDate();
+  const minYm = S.profile.startDate.slice(0, 7), maxYm = td.slice(0, 7);
   let h = DOW.map(x => `<div class="hd">${x}</div>`).join('');
-  for (let d = start; d <= E.addDays(td, 6 - E.dow(td)); d = E.addDays(d, 1)) {
-    const pc = pctOf(peek(d)), fut = d > td || d < S.profile.startDate, hol = C.holiday(d);
-    const bg = fut ? 'var(--fill)' : pc >= 1 ? 'var(--ink)' : pc >= .8 ? 'color-mix(in srgb,var(--ink) 60%,transparent)' : pc > 0 ? 'color-mix(in srgb,var(--ink) 18%,transparent)' : hol && hol.off ? 'color-mix(in srgb,var(--amber) 22%,transparent)' : 'var(--fill)';
-    h += `<div class="h" style="background:${bg};${pc >= .8 && !fut ? 'color:var(--bg);' : ''}${d === td ? 'box-shadow:inset 0 0 0 1.5px var(--accent);' : ''}${fut ? 'opacity:.35' : ''}">${E.pd(d).getDate()}</div>`;
+  for (let i = 0; i < E.dow(first); i++) h += '<div class="h blank" aria-hidden="true"></div>';
+  let good = 0, lifts = 0, meals = 0;
+  for (let k = 1; k <= n; k++) {
+    const d = ym + '-' + String(k).padStart(2, '0'), r = peek(d), pc = pctOf(r), fut = d > td || d < S.profile.startDate, hol = C.holiday(d);
+    if (!fut) { if (pc >= .8) good++; if (r && r.done && r.done.lift) lifts++; if (r && (r.food || []).length) meals++; }
+    const lv = fut ? 'fut' : pc >= 1 ? 'l3' : pc >= .8 ? 'l2' : pc > 0 ? 'l1' : hol && hol.off ? 'hol' : '';
+    h += `<div class="h ${lv} ${d === td ? 'now' : ''}" title="${d}">${k}${!fut && r && r.done && r.done.lift ? '<i class="lift"></i>' : ''}</div>`;
   }
-  return `<div class="heat">${h}</div>`;
+  return `<div class="cal-h"><button class="gbtn" data-cal="-1" aria-label="上个月" ${ym <= minYm ? 'disabled' : ''}>${I.left}</button><b>${y} 年 ${m} 月</b><button class="gbtn" data-cal="1" aria-label="下个月" ${ym >= maxYm ? 'disabled' : ''}>${I.right}</button></div>
+    <div class="heat" id="cal">${h}</div><div class="cal-sum"><span>达标 <b class="num">${good}</b> 天</span><span>力训 <b class="num">${lifts}</b> 次</span><span>记饮食 <b class="num">${meals}</b> 天</span></div>`;
+}
+function shiftMonth(dir) {
+  const td = today(), ym = calMonth || td.slice(0, 7), [y, m] = ym.split('-').map(Number), dt = new Date(y, m - 1 + dir, 1);
+  const nym = dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0');
+  if (nym < S.profile.startDate.slice(0, 7) || nym > td.slice(0, 7)) return false;
+  calMonth = nym; return true;
+}
+/* ---------- 奖章：铜 / 银 / 金 / 白金四档金属色的徽章，没拿到的是浅灰底 + 进度环 ---------- */
+const TIER = { 1: '铜', 2: '银', 3: '金', 4: '白金' };
+const MEDAL_DEFS = `<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>${[
+  [1, '#F3CDA6', '#B97A45'], [2, '#F4F6F9', '#A2ABB7'], [3, '#FCE7A6', '#CC962C'], [4, '#6B7380', '#1B1F25']].map(([t, a, b]) =>
+  `<linearGradient id="md${t}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient><linearGradient id="mf${t}" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient>`).join('')}</defs></svg>`;
+// 外圈是 20 个齿的花边（像奖章的边），里面一个圆面放图标
+const ROSETTE = (() => { const pts = []; for (let i = 0; i < 40; i++) { const a = Math.PI * i / 20 - Math.PI / 2, r = i % 2 ? 28.2 : 30.5; pts.push(`${(32 + r * Math.cos(a)).toFixed(2)},${(32 + r * Math.sin(a)).toFixed(2)}`); } return pts.join(' '); })();
+const STAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M12 3.6l2.5 5.3 5.8.7-4.3 4 1.1 5.7L12 16.5l-5.1 2.8 1.1-5.7-4.3-4 5.8-.7z"/></svg>';
+const TREND = up => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="${up ? 'M4 17l6-6 4 4 6-7M15 8h5v5' : 'M4 7l6 6 4-4 6 7M15 16h5v-5'}"/></svg>`;
+const FLAG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 21V4M6 4.5h11l-2.2 4 2.2 4H6"/></svg>';
+const MICON = { first: STAR, streak: I.flame, perfect: STAR, lift: I.train, run: I.run, scale: I.scale, meal: I.food, down: TREND(false), up: TREND(true), target: FLAG };
+function medalArt(b, big) {
+  const C2 = 2 * Math.PI * 26, t = b.tier;
+  return `<span class="md ${big ? 'big' : ''} t${t}"><svg viewBox="0 0 64 64" aria-hidden="true">
+    <polygon points="${ROSETTE}" class="md-rim" ${b.got ? `style="fill:url(#md${t})"` : ''}/>
+    <circle cx="32" cy="32" r="22.5" class="md-face" ${b.got ? `style="fill:url(#mf${t});stroke:rgba(255,255,255,.35)"` : ''}/>
+    ${b.got ? '<ellipse cx="26" cy="22" rx="11" ry="6" fill="#fff" opacity=".22" transform="rotate(-25 26 22)"/>' : `<circle cx="32" cy="32" r="26" class="md-prog" stroke-dasharray="${(C2 * b.pct).toFixed(1)} ${C2.toFixed(1)}" transform="rotate(-90 32 32)"/>`}
+  </svg><span class="md-ico">${MICON[b.kind] || STAR}</span></span>`;
+}
+const fmtProg = b => b.kind === 'target' ? '未到' : `${b.kind === 'down' || b.kind === 'up' || b.kind === 'run' ? Math.round(b.cur * 10) / 10 : Math.floor(b.cur)} / ${b.need}`;
+function medalSheet(b) {
+  C.sheet(`<div class="md-sheet ${b.got ? 'got' : ''}">${medalArt(b, true)}<h2>${esc(b.name)}</h2><div class="sheet-sub">${b.got ? TIER[b.tier] + '牌 · 已获得' : '还没获得'}</div>
+    <p class="t-sub l2" style="text-align:center;margin:0">${esc(b.desc)}</p>
+    ${b.got ? '' : `<div class="progress" style="width:100%"><i style="width:${Math.round(b.pct * 100)}%"></i></div><div class="t-foot l2">进度 ${fmtProg(b)}</div>`}</div>`);
 }
 function viewData() {
   const rows = energyRows(Math.max(7, rng.energy)).filter(r => !r.none), an = analysis(rows), t = totals(), lv = levelOf(t.points), bs = badges();
@@ -149,8 +188,10 @@ function viewData() {
   h += `<section class="mat card"><div style="display:flex;justify-content:space-between;align-items:baseline"><span class="t-title3">坚持</span><span class="t-sub l2">${lv.name} · <span class="num">${t.points}</span> 能量</span></div>
     <div class="stat-grid"><div class="stat"><span class="k">连续达标</span><span class="v">${t.cur}<small>天</small></span></div><div class="stat"><span class="k">最长连续</span><span class="v">${t.best}<small>天</small></span></div>
     <div class="stat"><span class="k">累计力训</span><span class="v">${t.lifts}<small>次</small></span></div><div class="stat"><span class="k">记录饮食</span><span class="v">${t.meals}<small>餐</small></span></div></div>
-    ${heat()}<div class="t-cap l3">颜色越深完成得越多；浅黄是节假日，不影响连续记录</div></section>`;
-  h += `<section class="mat card"><div style="display:flex;justify-content:space-between;align-items:baseline"><span class="t-title3">奖章</span><span class="t-sub l2 num">${bs.filter(b => b.got).length}/${bs.length}</span></div><div class="medals">${bs.map((b, i) => `<div class="medal ${b.got ? 'got' : ''}"><span class="m">${b.got ? I.check.replace('<svg', '<svg width="24" height="24"') : i + 1}</span>${esc(b.name)}</div>`).join('')}</div></section>`;
+    ${heat()}<div class="t-cap l3">颜色越深完成得越多，小点是练了力训；浅黄是节假日，不影响连续记录</div></section>`;
+  const got = bs.filter(b => b.got).length;
+  h += `<section class="mat card"><div style="display:flex;justify-content:space-between;align-items:baseline"><span class="t-title3">奖章</span><span class="t-sub l2 num">${got} / ${bs.length}</span></div>
+    <div class="progress"><i style="width:${Math.round(got / bs.length * 100)}%"></i></div>${MEDAL_DEFS}<div class="medals">${bs.map((b, i) => `<button class="medal ${b.got ? 'got' : ''}" data-medal="${i}" aria-label="${esc(b.name)}，${b.got ? '已获得' : '还没获得'}">${medalArt(b)}<span class="mn">${esc(b.name)}</span><span class="mp">${b.got ? TIER[b.tier] : fmtProg(b)}</span></button>`).join('')}</div></section>`;
   return h;
 }
 function bindData() {
@@ -164,6 +205,12 @@ function bindData() {
     sl.oninput = () => { const v = +sl.value; $$(`[data-rv="${id}"]`).forEach(x => x.textContent = v + ' 天'); if (v !== rng[id]) { rng[id] = v; Kit.haptic('tick'); const card = sl.closest('.card,.dc'); const svg = card && card.querySelector('svg.chart'); if (svg) { const tmp = document.createElement('div'); tmp.innerHTML = id === 'energy' ? energyChart(energyRows(v)) : metricChart(metricsOn().find(m => m.id === (card.dataset.key || metricsOn()[metricIdx % metricsOn().length].id)) || metricsOn()[0], v); const ns = tmp.querySelector('svg.chart'); if (ns) svg.replaceWith(ns); } } };
     sl.onchange = keep(() => {});
   });
+  const bs = badges();
+  $$('[data-medal]').forEach(b => b.onclick = () => { Kit.haptic('light'); medalSheet(bs[+b.dataset.medal]); });
+  // 日历：按钮或左右滑切换月份
+  $$('[data-cal]').forEach(b => b.onclick = keep(() => { if (shiftMonth(+b.dataset.cal)) Kit.haptic('light'); }));
+  const cal = $('#cal');
+  if (cal) { let x0 = null; cal.addEventListener('pointerdown', e => { x0 = e.clientX; }); cal.addEventListener('pointerup', e => { if (x0 == null) return; const dx = e.clientX - x0; x0 = null; if (Math.abs(dx) > 50 && shiftMonth(dx < 0 ? 1 : -1)) { Kit.haptic('light'); keep(() => {})(); } }); }
   const ms = metricsOn();
   if (ms.length > 1) Kit.bindDeck('mDeck', () => { metricIdx++; render(); }, () => { metricIdx = (metricIdx + ms.length - 1) % ms.length; render(); });
   const ab = $('#aiWeek');

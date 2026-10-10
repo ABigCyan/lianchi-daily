@@ -185,6 +185,25 @@ function foodAnswer(items) {
     return `- **${f.n} ${a}${f.unit === 'g' ? 'g' : f.unit}**：碳水 ${m.c}g、蛋白质 ${m.p}g、脂肪 ${m.f}g，约 ${m.kcal} kcal（${f.src}）${x.amt ? '' : f.unit === 'g' ? '（没说分量，按 100g 算）' : ''}`;
   }).join('\n') + '\n热量按 碳水×4 + 蛋白质×4 + 脂肪×9 算。';
 }
+/* ---------- 看图（内置图文模型）：描述照片；饭菜照片按“食物 克数”列出来，再按表19 算 ---------- */
+const VISION_SYS = '用中文一两句话说出照片里是什么。是健身器械就说名称和主要练哪里；是动作就说动作名称；是食物就说名称和大概分量。照片里没有的东西不要提，看不清就说看不清，不超过 60 字。';
+const FOOD_SYS = '你在看一张照片，找出里面的食物。每种食物只写一行，格式是“食物名 克数g”，例如“米饭 200g”“鸡腿 1个”“西兰花 100g”。克数按熟重估。同一种食物不要重复写，最多写 8 行。照片里没有食物，就只回答“没有食物”。只输出这些行，不要别的话。';
+async function describePhoto(q, image, signal) {
+  const r = await LocalAI.chat([{ role: 'system', content: VISION_SYS }, { role: 'user', content: q || '这是什么？' }], { image, signal, maxTokens: 200, temperature: 0.2 });
+  return { text: LocalAI.clean(r.text).trim(), stats: r.stats };
+}
+async function foodsFromPhoto(image, signal) {
+  const r = await LocalAI.chat([{ role: 'system', content: FOOD_SYS }, { role: 'user', content: '照片里有哪些食物，各多少克？' }], { image, signal, maxTokens: 140, temperature: 0.1 });
+  const raw = LocalAI.clean(r.text).trim(), items = [], unknown = [];
+  if (/没有食物/.test(raw)) return { items, unknown, raw: '照片里没看到食物', stats: r.stats };
+  const seen = new Set();
+  raw.split(/\n+/).map(l => l.replace(/^[-*•\d.、\s]+/, '').trim()).filter(l => l && !seen.has(l.replace(/[\d.\sg克个]+$/i, '')) && seen.add(l.replace(/[\d.\sg克个]+$/i, ''))).slice(0, 8).forEach(l => {
+    const p = FoodDB.parse(l);
+    p.items.forEach(x => { if (!items.some(y => y.f === x.f)) items.push(x); });
+    if (!p.items.length) { const n = l.replace(/\d+(\.\d+)?\s*(g|克)?/gi, '').trim(); if (n && n.length <= 12) unknown.push(n); }
+  });
+  return { items, unknown, raw, stats: r.stats };
+}
 /* ---------- 训练动作：按名字在动作库里找 ---------- */
 const norm = s => String(s || '').replace(/（.*?）|\(.*?\)|\s/g, '');
 // 在 text 里找动作名（最长的优先）；pool 是限定范围（比如今天的动作）
@@ -313,5 +332,5 @@ async function runActions(list, q, ctx) {
   }
   return out;
 }
-return { useLocal, EDIT_RE, PERSONAL_RE, planBrief, localRetrieve, LP, HELLO_RE, THANKS_RE, WHO_RE, LOCAL_HELP, FOOD_VERB, KCAL_Q, dateIn, timeIn, findItem, findEx, ruleEdits, trainEdits, checkActions, parseActions, runActions, foodAnswer };
+return { describePhoto, foodsFromPhoto, useLocal, EDIT_RE, PERSONAL_RE, planBrief, localRetrieve, LP, HELLO_RE, THANKS_RE, WHO_RE, LOCAL_HELP, FOOD_VERB, KCAL_Q, dateIn, timeIn, findItem, findEx, ruleEdits, trainEdits, checkActions, parseActions, runActions, foodAnswer };
 })();

@@ -1,4 +1,4 @@
-# 内置大模型：编译 llama.cpp（只要库，不要工具）+ JNI 桥 llm.cpp
+# 内置大模型：编译 llama.cpp（只要库，不要工具）+ 看图库 mtmd + 核心 llm-core.cpp + JNI 桥 llm.cpp
 cmake_minimum_required(VERSION 3.22.1)
 project(lianchi_llm C CXX)
 
@@ -19,8 +19,11 @@ set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
 set(LLAMA_BUILD_APP OFF CACHE BOOL "" FORCE)
 set(LLAMA_CURL OFF CACHE BOOL "" FORCE)
+# 看图（Qwen3.5 是图文模型）：只编 mtmd 库，不要视频（要 ffmpeg）
+set(LLAMA_BUILD_MTMD ON CACHE BOOL "" FORCE)
+set(MTMD_VIDEO OFF CACHE BOOL "" FORCE)
 add_subdirectory(${LLAMA_DIR} llama)
 
-add_library(lianchi_llm SHARED llm.cpp)
+add_library(lianchi_llm SHARED llm.cpp llm-core.cpp)
 target_compile_features(lianchi_llm PRIVATE cxx_std_17)
-target_link_libraries(lianchi_llm PRIVATE llama log android)
+target_link_libraries(lianchi_llm PRIVATE llama mtmd log android)

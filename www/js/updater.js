@@ -86,7 +86,7 @@ async function install(path, r) {
   if (!ins) { toast('安装组件不可用，请用浏览器下载'); window.open(r.apk.browser_download_url, '_blank'); return; }
   const { allowed } = await ins.canInstall();
   if (!allowed) {
-    sheet(`<h2>需要允许安装</h2><p class="t-sub l2" style="text-align:center">第一次在 App 内更新，需要在系统设置里允许“练吃日课”安装应用。允许后回到这里继续。</p>
+    sheet(`<h2>需要允许安装</h2><p class="t-sub l2" style="text-align:center">第一次在 App 内更新，需要在系统设置里允许“练好吃对”安装应用。允许后回到这里继续。</p>
       <button class="pill glass wide" id="up-set">去设置里允许</button><button class="pill ink wide" id="up-ins">已允许，开始安装</button>`, m => {
       m.querySelector('#up-set').onclick = () => ins.openInstallSettings();
       m.querySelector('#up-ins').onclick = async () => { const c = await ins.canInstall(); if (!c.allowed) { toast('还没有允许'); return; } close(); await ins.install({ path }); };

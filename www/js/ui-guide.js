@@ -16,7 +16,7 @@ function view() {
   const top = `<div class="guide-top">${step > 0 ? `<button class="back" data-gback>${I.left}${TITLES[step - 1]}</button>` : '<span></span>'}${step < 4 ? `<button class="link" data-gskip style="color:var(--ink3)">${step === 3 ? '跳过这一步' : '跳过引导'}</button>` : '<span></span>'}</div>`;
   let h = top + progress;
   if (step === 0) {
-    h += `<div class="guide-hero"><div class="guide-mark">${I.train}</div><h1>练吃日课</h1><p>按《健身Excel超级套表》的规则，算好你每天吃什么、练什么，再一项项打勾完成。</p></div>
+    h += `<div class="guide-hero"><img class="guide-logo" src="img/icon-512.png" alt=""><h1>练好吃对</h1><p>按《健身Excel超级套表》的规则，算好你每天吃什么、练什么，再一项项打勾完成。</p></div>
       <section class="list mat">${[[I.calendar, '每天一张时间线', '称重、每餐分量、训练、有氧，到点提醒'], [I.train, '训练照着做', '动作、组数、次数、换动作，都来自原表'], [I.food, '吃了什么随手记', '拍照、相册或手动，热量自动算']].map(([ic, t, s]) => `<div class="row menu-row" style="grid-template-columns:48px 1fr"><span class="row-ico">${ic}</span><span class="row-main"><span class="row-title">${t}</span><span class="row-sub">${s}</span></span></div>`).join('')}</section>
       <div class="guide-actions"><button class="pill ink wide" data-gnext>开始设置</button><button class="pill glass wide" id="g-import">${I.download}我有备份，直接导入</button><input type="file" id="g-file" accept=".json,application/json,text/plain" hidden>
       <p class="t-cap l3" style="text-align:center">数据只保存在这台手机上</p></div>`;

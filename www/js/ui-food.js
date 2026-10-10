@@ -142,13 +142,26 @@ function addSheet(mealKey, mode, preset) {
   };
   draw();
 }
-function pickImage(mealKey, camera) {
-  if (!S.ai.key || !S.ai.model) { toast('先到“我的 → 大模型接口”设置'); return; }
+async function pickImage(mealKey, camera) {
+  // 有云端看图模型就用云端；没有（或没网）但下载了内置模型的看图组件，就在手机上识别
+  const cloud = S.ai.key && S.ai.model && navigator.onLine, local = !cloud && LocalAI.prefs().enabled && await LocalAI.visionReady();
+  if (!cloud && !local) { toast('先到“我的 → 大模型接口”设置，或在“我的 → 内置模型”下载看图组件'); return; }
   const d = S.day, m = mealOf(d, mealKey || nearestMeal(d).key), inp = $('#photoInput');
   if (camera) inp.setAttribute('capture', 'environment'); else inp.removeAttribute('capture');
   inp.value = '';
-  inp.onchange = async () => { const f = inp.files && inp.files[0]; if (!f) return; try { runAI(d, m, await AI.compress(f)); } catch (e) { toast(e.message); } };
+  inp.onchange = async () => { const f = inp.files && inp.files[0]; if (!f) return; try { const data = await AI.compress(f); if (local) runLocal(d, m, data); else runAI(d, m, data); } catch (e) { toast(e.message); } };
   inp.click();
+}
+/* 离线拍照：内置图文模型列出“食物 克数”，按表19 算，打开“选食物”让你核对分量再添加 */
+async function runLocal(d, meal, dataUrl) {
+  sheet(`<h2>正在识别</h2><div class="sheet-sub">内置模型在手机上看照片，一般 10-60 秒</div><img class="bigimg" src="${dataUrl}" alt="餐食照片"><div class="progress"><i style="width:60%;animation:fade 1s infinite alternate"></i></div>`);
+  try {
+    const r = await LocalBrain.foodsFromPhoto(dataUrl);
+    if (!r.items.length) { sheet(`<h2>没认出表19 里的食物</h2><p class="t-sub l2" style="text-align:center">${esc(r.raw || '照片看不清')}</p><button class="pill glass wide" id="x">用“选食物”自己选</button>`, mm => mm.querySelector('#x').onclick = () => addSheet(meal.key, 'manual')); return; }
+    Kit.haptic('success');
+    addSheet(meal.key, 'manual', r.items.map(x => ({ f: x.f, amt: x.amt || FoodDB.defAmt(x.f), ask: '照片估的分量，核对一下' })));
+    if (r.unknown.length) toast(`表19 里没有：${r.unknown.join('、')}，可以用“自己填”补上`);
+  } catch (err) { sheet(`<h2>识别失败</h2><p class="t-sub l2" style="text-align:center">${esc(err.message || err)}</p><button class="pill glass wide" id="x">好</button>`, mm => mm.querySelector('#x').onclick = close); }
 }
 async function runAI(d, meal, dataUrl, text) {
   if (!S.ai.key || !S.ai.model) { close(); toast('先到“我的 → 大模型接口”设置'); return; }

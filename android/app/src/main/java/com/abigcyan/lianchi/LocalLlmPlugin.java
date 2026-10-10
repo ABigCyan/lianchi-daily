@@ -42,7 +42,9 @@ public class LocalLlmPlugin extends Plugin {
     }
 
     private static native long nativeLoad(String path, int nCtx, int threads);
-    private static native byte[] nativeGenerate(long handle, byte[][] roles, byte[][] contents, int maxTokens, float temp, boolean noThink, Callback cb);
+    private static native byte[] nativeGenerate(long handle, byte[][] roles, byte[][] contents, int maxTokens, float temp, boolean noThink, String imagePath, Callback cb);
+    /** 看图：加载视觉投影文件（mmproj），之后 nativeGenerate 可以带一张图片 */
+    private static native boolean nativeLoadVision(long handle, String mmprojPath, int threads);
     private static native void nativeStop(long handle);
     private static native void nativeFree(long handle);
 
@@ -58,6 +60,7 @@ public class LocalLlmPlugin extends Plugin {
     private volatile boolean dlRunning = false;
     private volatile long handle = 0;
     private volatile String loadedPath = "";
+    private volatile String loadedVision = "";
 
     /** 编译时用了 armv8.2 dotprod 指令，旧 CPU 不支持会直接崩溃，所以先检查 */
     private static String cpuFeatures() {
@@ -101,18 +104,27 @@ public class LocalLlmPlugin extends Plugin {
         final String path = pathOf(call.getString("path"));
         final int nCtx = call.getInt("nCtx", 4096);
         final int threads = call.getInt("threads", 4);
+        final String mmproj = pathOf(call.getString("mmproj", ""));
         if (!new File(path).exists()) { call.reject("模型文件不存在：" + path); return; }
+        if (!mmproj.isEmpty() && !new File(mmproj).exists()) { call.reject("看图文件不存在：" + mmproj); return; }
         worker.execute(() -> {
             try {
-                if (handle != 0 && path.equals(loadedPath)) { JSObject r = new JSObject(); r.put("ms", 0); call.resolve(r); return; }
-                if (handle != 0) { nativeFree(handle); handle = 0; loadedPath = ""; }
                 long t0 = System.currentTimeMillis();
-                long h = nativeLoad(path, nCtx, threads);
-                if (h == 0) { call.reject("模型加载失败（文件可能没下载完整，或内存不够）"); return; }
-                handle = h;
-                loadedPath = path;
+                if (handle == 0 || !path.equals(loadedPath)) {
+                    if (handle != 0) { nativeFree(handle); handle = 0; loadedPath = ""; loadedVision = ""; }
+                    long h = nativeLoad(path, nCtx, threads);
+                    if (h == 0) { call.reject("模型加载失败（文件可能没下载完整，或内存不够）"); return; }
+                    handle = h;
+                    loadedPath = path;
+                }
+                // 要看图时才加载视觉部分（多占几百 MB 内存），加载过就不再加载
+                if (!mmproj.isEmpty() && !mmproj.equals(loadedVision)) {
+                    if (!nativeLoadVision(handle, mmproj, threads)) { call.reject("看图组件加载失败（文件可能没下载完整，或内存不够）"); return; }
+                    loadedVision = mmproj;
+                }
                 JSObject r = new JSObject();
                 r.put("ms", System.currentTimeMillis() - t0);
+                r.put("vision", !loadedVision.isEmpty());
                 call.resolve(r);
             } catch (Throwable t) {
                 call.reject("模型加载失败：" + t.getMessage());
@@ -127,6 +139,23 @@ public class LocalLlmPlugin extends Plugin {
         final int maxTokens = call.getInt("maxTokens", 512);
         final float temp = call.getFloat("temperature", 0.3f);
         final boolean noThink = call.getBoolean("noThink", true);
+        // 图片：JS 传 base64（可以带 data: 前缀），写到缓存目录再交给原生层
+        String imagePath = null;
+        String img = call.getString("image", "");
+        if (img != null && !img.isEmpty()) {
+            if (loadedVision.isEmpty()) { call.reject("看图组件还没加载"); return; }
+            try {
+                int comma = img.indexOf(',');
+                byte[] data = android.util.Base64.decode(comma >= 0 ? img.substring(comma + 1) : img, android.util.Base64.DEFAULT);
+                File f = new File(getContext().getCacheDir(), "llm-image.jpg");
+                try (java.io.FileOutputStream fo = new java.io.FileOutputStream(f)) { fo.write(data); }
+                imagePath = f.getAbsolutePath();
+            } catch (Exception e) {
+                call.reject("图片读不出来");
+                return;
+            }
+        }
+        final String image = imagePath;
         final byte[][] roles, contents;
         try {
             int n = msgs.length();
@@ -146,7 +175,7 @@ public class LocalLlmPlugin extends Plugin {
             final long[] prefillAt = {0};
             final int[] counts = {0, 0};  // 提示词 token 数、生成的段数
             try {
-                byte[] out = nativeGenerate(handle, roles, contents, maxTokens, temp, noThink, new Callback() {
+                byte[] out = nativeGenerate(handle, roles, contents, maxTokens, temp, noThink, image, new Callback() {
                     @Override
                     public void onToken(byte[] text) {
                         counts[1]++;
@@ -297,7 +326,7 @@ public class LocalLlmPlugin extends Plugin {
         String name = call.getString("file", "");
         if (name.contains("/")) { call.reject("参数不对"); return; }
         File f = new File(modelDir(), name), part = new File(modelDir(), name + ".part");
-        if (handle != 0 && loadedPath.equals(f.getAbsolutePath())) { nativeStop(handle); worker.execute(() -> { nativeFree(handle); handle = 0; loadedPath = ""; }); }
+        if (handle != 0 && (loadedPath.equals(f.getAbsolutePath()) || loadedVision.equals(f.getAbsolutePath()))) { nativeStop(handle); worker.execute(() -> { nativeFree(handle); handle = 0; loadedPath = ""; loadedVision = ""; }); }
         f.delete();
         part.delete();
         call.resolve();
@@ -313,7 +342,7 @@ public class LocalLlmPlugin extends Plugin {
     public void unload(PluginCall call) {
         if (handle != 0) nativeStop(handle);
         worker.execute(() -> {
-            if (handle != 0) { nativeFree(handle); handle = 0; loadedPath = ""; }
+            if (handle != 0) { nativeFree(handle); handle = 0; loadedPath = ""; loadedVision = ""; }
             call.resolve();
         });
     }

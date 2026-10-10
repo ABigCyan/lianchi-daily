@@ -91,6 +91,8 @@ for (const [name, over] of cases) {
       d.groups.forEach(g => ok(/^表2[1-4] C\d+/.test(g.src), tag + '出处 ' + g.src));
     });
     if (p.parts.legs === false) ok(!tr.days.some(d => d.groups.some(g => LEG.includes(g.id))), tag + '不练腿却有腿');
+    // 去掉部位后少了一天时：其他天里不应该还混着能单独拿出来的手臂、肩（应该已经拆成单独一天）
+    if (!tr.ext && tr.days.length < E.splitOf(p, tr.split.key).days.length) ok(!tr.days.some(d => !d.made && d.groups.some(g => ['bi', 'tri', 'front', 'side', 'rear'].includes(g.id)) && d.groups.some(g => !['bi', 'tri', 'front', 'side', 'rear', 'abs', 'core'].includes(g.id))), tag + '少了一天却没有重排');
     // 不练腿但练手臂的三分化：仍是三天一轮（背 / 胸 / 大臂 + 腹），不是去掉腿日只剩两天
     if (p.parts.legs === false && p.parts.arm !== false && ['three', 'home'].includes(tr.split.key)) ok(tr.days.length === 3 && /大臂/.test(tr.days[2].name), tag + '不练腿三分化 ' + tr.days.map(d => d.name).join('|'));
     // 第 1 周和第 6 周的具体安排：组数随周数增加（表21 C10 新手先少做），每个动作都有备选且来自同一肌群

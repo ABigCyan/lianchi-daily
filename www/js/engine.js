@@ -268,45 +268,54 @@ window.Engine = (() => {
     const sp = pickSplit(p);
     const split = splitOf(p, sp.key);
     const ok = allowedGroups(p);
-    let moved = null;
-    let days = split.days.map((d, i) => {
-      const groups = d.groups.filter(gp => ok.has(gp.id));
-      return { ...d, idx: i, groups };
-    });
-    // 不练腿的三分化（应用补充）：直接去掉腿日只剩两天轮换；改成“背 / 胸 / 大臂 + 腹”三天一轮，
-    // 安排参照表23 四分化（手臂单练版）的“大臂 + 腹”日，肌群、组数、动作仍是原来三分化（表21 / 表24）里的
-    const LEGS = ['quad', 'ham', 'glute'], ARMS = ['bi', 'tri'];
-    const noLeg = !split.ext && ['three', 'home'].includes(sp.key) && !LEGS.some(g => ok.has(g)) && ARMS.some(g => ok.has(g));
-    if (noLeg) {
-      const arm = [], abs = [];
-      days.forEach(d => { d.groups.forEach(gp => { if (ARMS.includes(gp.id)) arm.push(gp); else if (gp.id === 'abs') abs.push(gp); }); d.groups = d.groups.filter(gp => !ARMS.includes(gp.id) && gp.id !== 'abs'); });
-      days = days.filter(d => d.groups.length);
-      const order = ['bi', 'tri'];
-      days.push({ name: '大臂 + 腹', src: (arm[0] || {}).src || '', idx: -1, made: true, groups: arm.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)).concat(abs) });
-    }
-    // 去掉腿日后，原来和腿一起练的腹移到剩余最后一天（应用补充）
-    if (!split.ext && !noLeg) days.forEach(d => {
-      const hasLeg = d.groups.some(gp => ['quad', 'ham', 'glute', 'comp'].includes(gp.id));
-      const onlyAbs = d.groups.length && d.groups.every(gp => gp.id === 'abs');
-      if (onlyAbs && !hasLeg) { moved = d.groups; d.groups = []; }
-    });
+    const N = split.days.length;
+    let days = split.days.map((d, i) => ({ ...d, idx: i, groups: d.groups.filter(gp => ok.has(gp.id)), notes: [] }));
+    const removed = window.PARTS.filter(pt => (p.parts || {})[pt.id] === false).map(pt => pt.name);
+    // 原来和腿一起练的腹：腿去掉后这一天只剩腹，腹先拿出来，等下放到合适的一天（应用补充）
+    const orphanAbs = [];
+    let absFrom = '';
+    if (!split.ext) days.forEach(d => { if (d.groups.length && d.groups.every(gp => gp.id === 'abs')) { orphanAbs.push(...d.groups); d.groups = []; absFrom = d.name; } });
     days = days.filter(d => d.groups.length);
-    if (moved && days.length) {
-      const last = days[days.length - 1];
-      last.groups = last.groups.concat(moved.map(gp => ({ ...gp, movedNote: '原本和腿一起练，你不练腿，所以移到这一天（应用补充）' })));
+    /* 去掉某个部位后少了一天（应用补充）：不直接删掉那一天，而是把其他天里能单独练的肌群拿出来单独成一天，
+       保持原来几天一轮。先拿手臂（肱二头、肱三头 → “大臂”，参照表23 四分化手臂单练版），不够再拿肩（参照表22 肩单练版）。
+       肌群、组数、动作都还是原来分化里的。 */
+    const PULL = [{ ids: ['bi', 'tri'], name: '大臂', ref: '表23 B72' }, { ids: ['front', 'side', 'rear'], name: '肩', ref: '表22 B76' }];
+    const made = [];
+    if (!split.ext && sp.key !== 'mine' && days.length && days.length < N) {
+      for (const P of PULL) {
+        if (days.length >= N) break;
+        const taken = [];
+        days.forEach(d => {
+          const out = d.groups.filter(gp => P.ids.includes(gp.id)), keep = d.groups.filter(gp => !P.ids.includes(gp.id));
+          // 本来就是这几个肌群单独的一天（比如四分化的肩日、大臂 + 腹日），拿走后只剩腹或什么都不剩：不动
+          if (!out.length || !keep.length || keep.every(gp => ['abs', 'core'].includes(gp.id))) return;
+          d.groups = keep; out.forEach(gp => taken.push({ gp, from: d }));
+        });
+        if (!taken.length) continue;
+        const nd = { name: P.name, src: P.ref, idx: -1, made: true, ref: P.ref, notes: [], groups: taken.map(x => x.gp).sort((a, b) => P.ids.indexOf(a.id) - P.ids.indexOf(b.id)) };
+        [...new Set(taken.map(x => x.from))].forEach(from => { const names = taken.filter(x => x.from === from).map(x => x.gp.name).join('、'); from.notes.push(() => `${names}挪到了“${nd.name}”那天`); nd.notes.push(`${names}原来在“${from.name}”那天`); });
+        days.push(nd); made.push(nd);
+      }
     }
-    // 名称按你实际保留的肌群生成；原表的标题留在 tableName 里（去掉部位后名称会跟着变）
-    // 补充分化的名称（全身 A、上肢 B…）在没删部位时保留
+    if (orphanAbs.length && days.length) {
+      const to = made.find(d => d.groups.some(gp => ['bi', 'tri'].includes(gp.id))) || days[days.length - 1];
+      to.groups = to.groups.concat(orphanAbs.map(gp => ({ ...gp, movedNote: '原本和腿一起练，你不练腿，所以放到这一天（应用补充）' })));
+      to.notes.push(`腹原来在“${absFrom}”那天`);
+    }
+    // 名称按你实际保留的肌群生成；原表的标题留在 tableName 里。补充分化的名称（全身 A、上肢 B…）在没删部位时保留
     days.forEach(d => {
-      if (d.made) { d.tableName = '大臂 + 腹（不练腿时单独一天，参照表23 B72）'; d.name = dayName(d.groups); d.changed = true; return; }
-      const full = split.days[d.idx].groups.length;
+      if (d.made) { d.name = dayName(d.groups); d.tableName = `${d.name}（为了保持 ${N} 天一轮单独拿出来，参照${d.ref}）`; d.changed = true; return; }
+      const orig = split.days[d.idx], full = orig.groups.length;
       d.tableName = d.name;
       d.name = split.ext && d.groups.length === full ? d.name : dayName(d.groups);
       d.changed = split.ext ? d.groups.length !== full : d.name.replace(/\s/g, '') !== d.tableName.replace(/\s/g, '');
+      const gone = orig.groups.filter(gp => !ok.has(gp.id)).map(gp => gp.name);
+      if (gone.length) d.notes.unshift(`原表这天还有${[...new Set(gone)].join('、')}，你没选`);
     });
-    return { split: sp, splitName: split.name + (noLeg ? '（不练腿）' : ''), ext: !!split.ext,
-      noLeg: noLeg ? '你不练腿：三分化去掉腿日后只剩两天轮换，所以改成“背 / 胸 / 大臂 + 腹”三天一轮（参照表23 四分化手臂单练版），肌群和组数仍按原来的三分化（应用补充）' : '', splitMeta: { refs: split.refs || [], rel: split.rel || '', fit: split.fit || '', why: split.why || '' },
-      days, removed: window.PARTS.filter(pt => (p.parts || {})[pt.id] === false).map(pt => pt.name) };
+    days.forEach(d => { d.notes = d.notes.map(x => typeof x === 'function' ? x() : x); });
+    const reshaped = made.length ? `你没选${removed.join('、')}：没有直接去掉那一天，改成 ${days.map(d => d.name.replace(/ /g, '')).join(' / ')} ${days.length} 天一轮（应用补充，肌群和组数仍按原来的分化）` : '';
+    return { split: sp, splitName: split.name + (made.length && removed.length ? `（不练${removed.join('、')}）` : ''), ext: !!split.ext, reshaped,
+      splitMeta: { refs: split.refs || [], rel: split.rel || '', fit: split.fit || '', why: split.why || '' }, days, removed };
   }
   /* 由肌群得出这天练什么：胸 / 背 / 肩（前中后束）/ 肱二头、肱三头 / 腿臀 / 腹，按原表顺序 */
   function dayName(groups) {

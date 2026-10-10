@@ -83,15 +83,24 @@ function cfgSheet(it) {
   });
 }
 /* 为什么是这个安排：分化怎么选的、今天为什么练这些、和原表有什么不同 */
-function whyLine(tr, si) {
-  if (si.custom) return tr.ext ? '自选部位：从当前分化的肌群里挑' : '自选部位：从当前分化的肌群里挑，组数按原表';
-  const d = si.day, parts = [`${tr.split.why}${tr.split.src ? '（' + tr.split.src + '）' : ''}`];
-  if (tr.noLeg) parts.push(tr.noLeg);
-  parts.push(si.recommended ? '接着上次练到的往下排，休息日自己安排（表21 C8）' : '你选的这一天');
-  if (tr.ext) parts.push(`${d.changed ? `你没选${tr.removed.join('、') || '部分肌群'}，这天只练保留的肌群；` : ''}肌群和动作来自表21-24 + 补充动作，组数为应用补充（依据见“规则与出处”）`);
-  else if (d.made) parts.push('这天的肱二头、肱三头来自原来的背日和胸日，腹来自腿臀日，组数和动作都按原表');
-  else parts.push(d.changed ? `原表这天是“${d.tableName.replace(/\s/g, '')}”（${d.src}），你没选${tr.removed.join('、') || '部分肌群'}，所以按你保留的肌群改成现在这样` : `原表 ${d.src}`);
-  return parts.join(' · ');
+/* 为什么是这个安排：一句话说清楚，细节收在“为什么这样安排”里，每条一行，出处用小字 */
+function whyBlock(tr, si) {
+  const cite = x => x ? ` <span class="pw-src">${esc(x)}</span>` : '';
+  const items = [];
+  let main;
+  if (si.custom) { main = '自选部位：从当前分化的肌群里挑'; items.push(tr.ext ? '组数按补充分化' : '组数和动作按原表'); }
+  else {
+    const d = si.day, i = tr.days.indexOf(d) + 1;
+    main = `${tr.splitName.replace('健身房', '')} · 第 ${i}/${tr.days.length} 天${si.recommended ? '，按顺序轮到这天' : '，你选的这天'}`;
+    items.push(`为什么用这个分化：${esc(tr.split.why)}${cite(tr.split.src)}`);
+    if (tr.reshaped) items.push(esc(tr.reshaped.replace(/（应用补充.*?）/, '')) + cite('应用补充'));
+    (d.notes || []).forEach(n => items.push(esc(n)));
+    if (tr.ext) items.push(`肌群和动作来自表21-24 和补充动作，组数是应用补充${cite('规则与出处')}`);
+    else if (!d.made) items.push(`肌群、组数、动作来自原表${cite(d.src)}`);
+    else items.push(`肌群、组数、动作仍按原来的分化，单独成一天参照${cite(d.ref)}`);
+  }
+  items.push(`休息日自己安排，不用一轮练完才休息${cite('表21 C8')}`);
+  return `<div class="plan-why"><span>${esc(main)}</span><details><summary>为什么这样安排</summary><ul>${items.map(x => `<li>${x}</li>`).join('')}</ul></details></div>`;
 }
 function viewTrain() {
   const p = S.profile, d = S.day;
@@ -102,7 +111,7 @@ function viewTrain() {
   const total = items.reduce((s, x) => s + x.sets, 0), setsDone = items.reduce((s, it) => s + doneSets(r, it), 0);
   let h = head('训练', d, tr.splitName.replace('健身房', ''));
   h += `<div class="seg-wrap glass"><div class="seg-scroll" id="daySeg">${tr.days.map((dd, i) => `<button data-day="${i}" aria-pressed="${!si.custom && si.dayIdx === i}">${esc(dd.name)}${si.recommended && si.dayIdx === i ? '<span class="rec">推荐</span>' : ''}</button>`).join('')}<button data-day="custom" aria-pressed="${!!si.custom}">自选部位</button></div></div>`;
-  h += `<p class="plan-why">${esc(whyLine(tr, si))}</p>`;
+  h += whyBlock(tr, si);
   if (!info.lift && !doneLift) h += `<section class="note mat">${info.h && info.h.off ? `今天是${esc(info.h.name)}，力训已自动跳过。` : '今天没有安排力训。'} <button class="link" data-ov="lift">今天加练</button></section>`;
   if (femaleSkip) h += '<section class="note warn mat">女性每两轮三分化跳过一次胸日，这次可以换别的部位（表21 C14）</section>';
   if (skipped.length) h += `<section class="note warn mat">${esc(skipped.join('、'))}：按你设置的器械和伤病，没有能做的动作，这次先不练。可以在“我的 → 编辑资料 → 定制”里调整。</section>`;

@@ -20,7 +20,7 @@ function persist() {
 }
 function sysPrompt() {
   return [
-    '你是“练吃日课”App 里的助手，以《健身Excel超级套表》（B站好人松松）为准回答健身、饮食、训练问题；套表没写的，可以查补充资料（国际指南、立场声明、Meta 分析的共识）。也能帮用户修改计划、按用户情况定制训练。',
+    '你是“练好吃对”App 里的助手，以《健身Excel超级套表》（B站好人松松）为准回答健身、饮食、训练问题；套表没写的，可以查补充资料（国际指南、立场声明、Meta 分析的共识）。也能帮用户修改计划、按用户情况定制训练。',
     '规则：',
     '1. 先查再答。涉及用户自己的数字（热量、碳水、蛋白质、今天练什么）用 get_my_plan / get_today / get_history；涉及方法、原则、常见问题用 search_excel，必要时用 read_excel_rows 读完整回答。',
     '2. 只转述工具返回的原文和 App 算出的数字。不要自己推断后果或补充理由（比如“会导致失衡”“影响体态”“更安全”），原文没写的一律不说。每个要点后面用括号标出处，照抄工具给的 src，例如（表17 第32行）。',
@@ -35,7 +35,7 @@ function sysPrompt() {
     '5. 用户要改计划（目标、目标体重、训练日、部位、分化、动作、组数、今天练什么）：直接调用 update_profile / edit_training / set_today_training，App 会弹出确认卡，由用户决定改不改，你不用再口头问“要不要改”。和套表建议冲突时，把冲突和出处写进 reason，照样调用工具。一次请求里有几项修改，就都放进同一次调用。',
     '13. 训练动作：调顺序用 reorder_training，换动作用 swap_exercise（先 exercise_info 看同一肌群的备选），加/删动作和组数用 edit_training（add 可以一次加多个），每个动作的次数、组间休息、是否力竭用 set_exercise_params（默认按表21 C11-C14，改得和套表不同要在 reason 里说明）。',
     '14. 训练记录：问到用过多重、该用多重、进步了没有，用 get_training_log；建议重量按表21 C12（每组都做到次数上限就加一档，有一组不到下限就减一档）。',
-    '15. 记忆：用户说“记住…”，或者透露了长期有效的信息（伤病、器械、作息、饮食习惯、目标），用 remember 记一条；说“忘掉…”或信息过时用 forget。回答时参考下面的记忆，但以用户这次说的为准。记体重、腰围这些当天的数用 log_body，不要用 remember。',
+    '15. 记忆：要主动记。用户说“记住…”，或者话里带出了长期有效的信息（伤病、忌口、器械和场地、作息、目标、偏好），不用等用户要求，直接用 remember 记一条；说“忘掉…”或信息过时用 forget。回答时参考下面的记忆，但以用户这次说的为准。记体重、腰围这些当天的数用 log_body，不要用 remember。',
     '6. 中文回答，先结论后理由，一般不超过 250 字。可以用“- ”列要点、用 **粗体** 强调，不要用表格和标题。',
     '补充动作和补充分化都要说明“补充”。',
     Harness.context(),
@@ -48,6 +48,10 @@ function confirmCard(title, lines, reason, okText) {
     st.view.push({ k: 'confirm', id, title, lines, reason, state: 'wait', ok: okText });
     st.pending[id] = resolve; draw();
   });
+}
+/* 主动记忆：用户话里带出的伤病、忌口、器械、作息、目标，自动记下并在对话里提示一句（可以到“我的 → AI 记忆”删） */
+function autoRemember(q) {
+  Memory.auto(q).forEach(x => { const it = Memory.add(x.text, x.tag, 'auto'); if (it) { st.view.push({ k: 'step', t: `记住了：${it.text}（可以在“我的 → AI 记忆”里删）` }); draw(); } });
 }
 /* 给工具用的界面接口：步骤、确认卡、中止信号 */
 function uiCtx(ctl, via, q) {
@@ -138,6 +142,8 @@ async function ask(q) {
     }
     st.msgs.push({ role: 'user', content });
     const ans = await Harness.runCloud({ cfg, messages: st.msgs, ctx: uiCtx(ctl, 'cloud', q) });
+    // 主动记忆的兜底：模型这轮没调用 remember，但用户的话里有值得记的事，就按规则记下
+    if (!ctl.signal.aborted && !Harness.trace.some(t => t.name === 'remember')) autoRemember(q);
     if (!ctl.signal.aborted) st.view.push({ k: 'bot', t: ans || '（没有回答）' });
   } catch (e) {
     st.view.push({ k: 'err', t: e.stopped || ctl.signal.aborted ? '已停止' : (e.message || String(e)) });
@@ -161,11 +167,36 @@ async function askLocal(q, img) {
   try {
     let question = q;
     if (img) {
-      if (!(S.ai.key && S.ai.model) || !navigator.onLine) throw new Error('离线模式不能看图片：内置小模型不支持图片，联网并设置云端看图模型后再发');
-      st.view.push({ k: 'step', t: '看图片（云端看图模型）' }); draw();
-      question = `${q}\n（图片内容：${await AI.describeImage(S.ai, img.data, q, ctl.signal)}）`;
+      // 内置的 Qwen3.5 是图文模型：下载了看图组件就在手机上看；没有的话联网用云端看图模型
+      if (await LocalAI.visionReady()) {
+        // 饭菜照片问热量 / 要记：按“食物 克数”列出来，再按表19 算
+        if (/吃|热量|卡|碳水|蛋白|饭|菜|记/.test(q)) {
+          st.view.push({ k: 'step', t: '看图片（内置模型）：找出食物和分量' }); draw();
+          const fp = await B.foodsFromPhoto(img.data, ctl.signal);
+          if (fp.items.length) {
+            const sum = fp.items.reduce((t, x) => t + FoodDB.calc(x.f, x.amt || (x.f.unit === 'g' ? 100 : 1)).kcal, 0);
+            const unknownNote = fp.unknown.length ? `\n表19 里没有：${fp.unknown.join('、')}，没算进去。` : '';
+            if (B.FOOD_VERB.test(q) || /记/.test(q)) {
+              const meal = FoodDB.mealOf(q) || 'extra';
+              const r = await Harness.call('log_food', { date: d, meal_key: tasksFor(d).meals.some(m => m.key === meal) ? meal : 'extra', foods: fp.items.map(x => ({ name: x.f.n, amount: x.amt || (x.f.unit === 'g' ? 100 : 1) })) }, ctx);
+              return reply((r.ok ? `已记好：${r.done}。\n${r.day_total}。` : r.error === '用户取消了' ? '好的，没有记。' : '没记上：' + r.error) + unknownNote);
+            }
+            return reply(`照片里大约有：\n${B.foodAnswer(fp.items)}\n合计约 ${sum} kcal（分量是模型估的，可以在饮食页改克数）。${unknownNote}`, statLine(fp.stats));
+          }
+          question = `${q}\n（图片内容：${fp.raw || '没认出食物'}）`;
+        } else {
+          st.view.push({ k: 'step', t: '看图片（内置模型）' }); draw();
+          const ds = await B.describePhoto(q, img.data, ctl.signal);
+          st.view.push({ k: 'bot', t: '图片里：' + (ds.text || '没看清') }); draw();
+          question = `${q}\n（图片内容：${ds.text}）`;
+        }
+      } else if (S.ai.key && S.ai.model && navigator.onLine) {
+        st.view.push({ k: 'step', t: '看图片（云端看图模型）' }); draw();
+        question = `${q}\n（图片内容：${await AI.describeImage(S.ai, img.data, q, ctl.signal)}）`;
+      } else throw new Error('离线看图要先在“我的 → 内置模型”里下载看图组件（或者联网用云端看图模型）');
     }
     const plain = q.replace(/\s+/g, ' ').trim();
+    if (!/^(请|帮我|你)?(要)?(记住|记着|记得|忘掉|忘记|别记|不用记)/.test(plain)) autoRemember(plain);
     // 1. 打招呼、道谢、问能做什么
     if (B.HELLO_RE.test(plain) || B.WHO_RE.test(plain)) return reply(B.LOCAL_HELP);
     if (B.THANKS_RE.test(plain)) return reply('不客气，有需要再叫我。');

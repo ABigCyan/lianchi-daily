@@ -1,6 +1,6 @@
 /*
  * AI 记忆：用户告诉助手、或让助手记住的长期信息（伤病、器械、作息、口味、目标……），存在本机。
- * 云端和离线助手回答前都会带上；“我的 → 设置 → AI 记忆”里可以查看、删除、自己加。
+ * 云端和离线助手回答前都会带上；“我的 → AI 记忆”里可以查看、删除、自己加。
  * 训练数据（每个动作练过的重量和次数）不在这里重复存，直接从每天的记录里算（见 core.js 的 lastSession / suggestFor）。
  */
 window.Memory = (() => {
@@ -36,7 +36,28 @@ function forget(text) {
   store(items.filter(x => !hit.includes(x))); return hit;
 }
 function clear() { store([]); }
+/* 主动记忆：从用户的话里挑出值得长期记住的事（伤病、忌口、器械场地、作息、目标），不用用户说“记住”。
+   只取第一人称的陈述，问句只留前半句（“我膝盖疼能练腿吗” → “我膝盖疼”）。返回 [{ text, tag }] */
+const AUTO = [
+  ['health', /(受过伤|伤过|扭伤|拉伤|骨折|半月板|韧带|腰椎|颈椎|椎间盘|膝盖疼|膝盖痛|腰疼|腰痛|肩疼|肩痛|手腕疼|手术|痛风|糖尿病|高血压|血压高|心脏病|哮喘|怀孕|备孕|哺乳|贫血|甲减|甲亢)/],
+  ['food', /(不吃|不能吃|不喝|吃素|素食|乳糖不耐|过敏|不爱吃|不喜欢吃|讨厌吃|戒了|忌口)/],
+  ['gear', /((家里|家)(只)?有|只有|没有|买了)[^，。]{0,8}(哑铃|杠铃|器械|单杠|弹力带|卧推凳|壶铃|健身房)|在家练|没有健身房|办了.{0,4}卡/],
+  ['time', /(上夜班|夜班|倒班|三班倒|经常出差|(每周|周)[一二三四五六日天、和]+[^，。]{0,6}(加班|没空|没时间|不能练)|每天[^，。]{0,6}(加班|只有|没时间))/],
+  ['goal', /(想|希望|目标是|打算|准备)[^，。]{0,10}(减到|瘦到|增到|练出|参加|比赛|婚礼|拍照|体检)/],
+];
+function auto(text) {
+  const out = [];
+  String(text || '').split(/[，,。！!？?；;\n]/).map(x => x.trim()).filter(Boolean).forEach(cl => {
+    if (!/^(我|本人|家里|家|最近|平时|每周|每天|周[一二三四五六日])/.test(cl) && !/我/.test(cl)) return;
+    if (/^(记住|忘掉|忘记|别记)/.test(cl)) return;
+    let c = cl.replace(/^(其实|对了|顺便说一下|另外|还有|但是|不过)/, '').replace(/(能不能|能|可以|可不可以|要不要|该不该|怎么|如何|吗|呢|吧).*$/, '').trim();
+    if (c.length < 4 || c.length > 40) return;
+    const hit = AUTO.find(([, re]) => re.test(c));
+    if (hit && !out.some(x => x.text === c)) out.push({ text: c, tag: hit[0] });
+  });
+  return out.slice(0, 2);
+}
 // 给提示词用：最近的若干条
 function brief(n) { return load().slice(-(n || 12)).map(x => `- [${TAGS[x.tag] || '其他'}] ${x.text}（id ${x.id}）`).join('\n'); }
-return { TAGS, list, add, remove, forget, clear, brief, guessTag };
+return { TAGS, list, add, remove, forget, clear, brief, guessTag, auto };
 })();
