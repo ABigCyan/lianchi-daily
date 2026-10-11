@@ -34,6 +34,7 @@ function sysPrompt() {
     '9. 需要教程视频时用 video_links 或 exercise_info，把链接原样给用户（Markdown 链接格式 [文字](网址)），不要自己编视频号。',
     '5. 用户要改计划（目标、目标体重、训练日、部位、分化、动作、组数、今天练什么）：直接调用 update_profile / edit_training / set_today_training，App 会弹出确认卡，由用户决定改不改，你不用再口头问“要不要改”。和套表建议冲突时，把冲突和出处写进 reason，照样调用工具。一次请求里有几项修改，就都放进同一次调用。',
     '13. 训练动作：调顺序用 reorder_training，换动作用 swap_exercise（先 exercise_info 看同一肌群的备选），加/删动作和组数用 edit_training（add 可以一次加多个），每个动作的次数、组间休息、是否力竭用 set_exercise_params（默认按表21 C11-C14，改得和套表不同要在 reason 里说明）。',
+    '16. 练到一半：用户问后面怎么练、要改练、换动作、加减组数时，先 get_today 看 training_progress 和每个动作的 done_sets / remaining_sets / logged，做完的动作不要再安排，只调整还没做的部分；参考前面几组的重量次数给建议。',
     '14. 训练记录：问到用过多重、该用多重、进步了没有，用 get_training_log；建议重量按表21 C12（每组都做到次数上限就加一档，有一组不到下限就减一档）。',
     '15. 记忆：要主动记。用户说“记住…”，或者话里带出了长期有效的信息（伤病、忌口、器械和场地、作息、目标、偏好），不用等用户要求，直接用 remember 记一条；说“忘掉…”或信息过时用 forget。回答时参考下面的记忆，但以用户这次说的为准。记体重、腰围这些当天的数用 log_body，不要用 remember。',
     '6. 中文回答，先结论后理由，一般不超过 250 字。可以用“- ”列要点、用 **粗体** 强调，不要用表格和标题。',
@@ -200,6 +201,11 @@ async function askLocal(q, img) {
     // 1. 打招呼、道谢、问能做什么
     if (B.HELLO_RE.test(plain) || B.WHO_RE.test(plain)) return reply(B.LOCAL_HELP);
     if (B.THANKS_RE.test(plain)) return reply('不客气，有需要再叫我。');
+    // 练到哪了 / 还剩什么：直接按今天的记录回答
+    if (/(还剩|剩下|还有哪|还要练|练到哪|练完了吗|进度|做了几组|做完了吗)/.test(plain) && C.training() && !B.EDIT_RE.test(plain.replace(/做完|练完/g, ''))) {
+      const items = C.sessionItems(d).items, line = B.progressLine(d, items);
+      if (items.length) return reply(line || `今天还没开始：${items.map(it => `${it.ex.n} ${it.sets} 组`).join('、')}。`);
+    }
     // 记住 / 忘掉：先于记饮食判断（“记住我早上不吃鸡蛋”不是记早饭）
     if (/^(请|帮我|你)?(要)?(记住|记着|记得|忘掉|忘记|别记|不用记)/.test(plain)) { const res = await B.runActions(B.ruleEdits(plain, d), q, ctx); return reply(res.join('\n') || '没听懂要记什么'); }
     // 2. 记饮食 / 问食物热量（按表19 规则拆，不用模型）

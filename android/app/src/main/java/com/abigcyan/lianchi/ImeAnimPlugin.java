@@ -99,6 +99,13 @@ public class ImeAnimPlugin extends Plugin {
         ViewCompat.setWindowInsetsAnimationCallback(
             decor,
             new WindowInsetsAnimationCompat.Callback(WindowInsetsAnimationCompat.Callback.DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
+                // 系统在动画开始前会先按最终状态派发一次 insets：这时就标记“动画中”，
+                // 免得那一次没有时长的更新让页面先瞬间跳到终点（看起来像闪一下）
+                @Override
+                public void onPrepare(@NonNull WindowInsetsAnimationCompat animation) {
+                    if (smooth && (animation.getTypeMask() & WindowInsetsCompat.Type.ime()) != 0) animating = true;
+                }
+
                 @NonNull
                 @Override
                 public WindowInsetsAnimationCompat.BoundsCompat onStart(

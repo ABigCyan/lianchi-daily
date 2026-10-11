@@ -1,6 +1,6 @@
 /* 核心：存储、每天的卡片、训练、能量计算、奖励（界面文件共用） */
 window.C = (() => {
-const APP_VERSION = '1.10.1';
+const APP_VERSION = '1.10.2';
 const REPO = 'ABigCyan/lianchi-daily';
 const E = window.Engine;
 const $ = s => document.querySelector(s);
@@ -394,42 +394,75 @@ function celebrate(before) { const after = badges().filter(b => b.got); if (afte
 /* ---------- 通用界面（HIG 风格：顶部胶囊提示、底部面板、操作表） ---------- */
 let toastT;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; t.style.animation = 'none'; t.offsetHeight; t.style.animation = ''; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2200); }
+let closeT = 0;
 function sheet(html, onBind) {
-  const m = $('#modal'); m.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><span class="grab" aria-hidden="true"></span>${html}</div>`; m.hidden = false; m.style.setProperty('--dim', '1');
+  clearTimeout(closeT);
+  // 外层 .sheet 是面板本身（底色、圆角、横条、拖动），内层 .sheet-in 负责滚动和上下渐隐
+  const m = $('#modal'); m.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><span class="grab" aria-hidden="true"></span><div class="sheet-in">${html}</div></div>`; m.hidden = false;
+  m.classList.remove('closing'); m.style.setProperty('--dim', '1');
   m.onclick = e => { if (e.target === m) close(); };
   if (onBind) onBind(m);
-  dragToClose(m, m.querySelector('.sheet'));
+  const sh = m.querySelector('.sheet');
+  dragToClose(m, sh, sh.querySelector('.sheet-in'));
+  edgeFade(sh.querySelector('.sheet-in'));
 }
-/* 下拉关闭：按住顶部的横条往下拖，或者内容已经在最上面时往下拖；松手时拖得够远或够快就收起，否则弹回。
-   拖动中只改 transform（不重新排版），每帧最多改一次；收起时走面板原来的“点空白处关闭”，各个面板自己的收尾照常执行 */
-function dragToClose(m, sh) {
+/* 关闭：面板往下滑出、背景淡出，动画完再真正关掉（点空白处、下拉、返回键都走这里）。
+   动画期间又打开了别的面板，就不关了 */
+function close() {
+  const m = $('#modal'), sh = m.querySelector('.sheet');
+  if (m.hidden) return;
+  if (!sh || matchMedia('(prefers-reduced-motion: reduce)').matches) { finishClose(); return; }
+  if (m.classList.contains('closing')) return;
+  m.classList.add('closing');
+  sh.classList.remove('dragging'); sh.classList.add('leaving');
+  void sh.offsetHeight;   // 先让当前位置生效，再设终点，过渡才会从当前位置开始
+  sh.style.setProperty('--drag', sh.offsetHeight + 40 + 'px'); m.style.setProperty('--dim', '0');
+  clearTimeout(closeT); closeT = setTimeout(finishClose, 260);
+}
+function finishClose() { const m = $('#modal'); clearTimeout(closeT); m.hidden = true; m.innerHTML = ''; m.classList.remove('closing'); }
+/* 内容可以滚动时，上下边缘渐隐（只在那一边还有内容时）；正在输入时不渐隐，免得把输入框盖住 */
+function edgeFade(sh) {
   if (!sh) return;
-  let y0 = 0, x0 = 0, dy = 0, t0 = 0, active = false, decided = false, raf = 0, fromGrab = false;
-  const paint = () => { raf = 0; sh.style.setProperty('--drag', dy + 'px'); m.style.setProperty('--dim', String(Math.max(0, 1 - dy / (sh.offsetHeight || 1)))); };
-  const start = (y, grab, x) => { y0 = y; x0 = x || 0; dy = 0; t0 = performance.now(); active = true; decided = grab; fromGrab = grab; if (grab) sh.classList.add('dragging'); };
+  const upd = () => { sh.classList.toggle('fade-t', sh.scrollTop > 2); sh.classList.toggle('fade-b', sh.scrollTop + sh.clientHeight < sh.scrollHeight - 2); };
+  sh.addEventListener('scroll', upd, { passive: true }); upd(); setTimeout(upd, 400);
+}
+/* 下拉关闭：按住顶部的横条往下拖，或者内容已经在最上面时往下拖。松手时拖过三分之一（或者往下甩得够快）就补完往下滑出的动画，
+   拖得少（可能是误触）就弹回。拖动中只改 transform（不重新排版），每帧最多改一次 */
+function dragToClose(m, sh, sc) {
+  if (!sh) return;
+  sc = sc || sh;   // 滚动的是内层
+  let y0 = 0, x0 = 0, dy = 0, last = [], active = false, decided = false, raf = 0, fromGrab = false;
+  const paint = () => { raf = 0; sh.style.setProperty('--drag', dy + 'px'); m.style.setProperty('--dim', String(Math.max(.15, 1 - dy / (sh.offsetHeight || 1)))); };
+  const start = (y, grab, x) => { y0 = y; x0 = x || 0; dy = 0; last = [[performance.now(), y]]; active = true; decided = grab; fromGrab = grab; if (grab) sh.classList.add('dragging'); };
   const move = (y, ev, x) => {
     if (!active) return;
     const d = y - y0;
     if (!decided) {
       if (Math.abs(d) < 6 && Math.abs((x || 0) - x0) < 6) return;
       // 只有往下拖（不是横着滑）、而且内容已经在最上面时才接管；否则交给面板自己滚动或横滑
-      if (d < 0 || sh.scrollTop > 0 || Math.abs((x || 0) - x0) > Math.abs(d)) { active = false; return; }
-      decided = true; sh.classList.add('dragging'); y0 = y; t0 = performance.now();
+      if (d < 0 || sc.scrollTop > 0 || Math.abs((x || 0) - x0) > Math.abs(d)) { active = false; return; }
+      decided = true; sh.classList.add('dragging'); y0 = y;
     }
     if (ev && ev.cancelable) ev.preventDefault();
     dy = Math.max(0, y - y0);
+    last.push([performance.now(), y]); if (last.length > 5) last.shift();
     if (!raf) raf = requestAnimationFrame(paint);
   };
   const end = () => {
     if (!active) return; active = false;
     if (!decided) return;
-    const v = dy / Math.max(1, performance.now() - t0);   // 像素/毫秒
+    // 松手前最后一小段的速度（像素/毫秒）
+    const [t1, y1] = last[0], [t2, y2] = last[last.length - 1], v = (y2 - y1) / Math.max(1, t2 - t1);
+    if (raf) { cancelAnimationFrame(raf); raf = 0; paint(); }
     sh.classList.remove('dragging');
-    if (dy > Math.min(140, sh.offsetHeight * .3) || (v > .55 && dy > 30)) {
-      sh.classList.add('leaving'); sh.style.setProperty('--drag', sh.offsetHeight + 40 + 'px'); m.style.setProperty('--dim', '0');
-      Kit.haptic('light');
-      setTimeout(() => { if (m.contains(sh)) m.dispatchEvent(new MouseEvent('click', { bubbles: true })); }, 220);
-    } else { sh.style.setProperty('--drag', '0px'); m.style.setProperty('--dim', '1'); }
+    const h = sh.offsetHeight || 1;
+    if ((dy > h / 3 && v > -0.2) || (v > .6 && dy > 40)) { Kit.haptic('light'); close(); }
+    else {
+      // 弹回：带一点回弹的过渡
+      sh.classList.add('spring'); void sh.offsetHeight;
+      sh.style.setProperty('--drag', '0px'); m.style.setProperty('--dim', '1');
+      setTimeout(() => sh.classList.remove('spring'), 380);
+    }
     dy = 0;
   };
   const grab = sh.querySelector('.grab');
@@ -444,7 +477,6 @@ function dragToClose(m, sh) {
   sh.addEventListener('touchmove', e => { if (!fromGrab) move(e.touches[0].clientY, e, e.touches[0].clientX); }, { passive: false });
   sh.addEventListener('touchend', () => { if (!fromGrab) end(); }); sh.addEventListener('touchcancel', () => { if (!fromGrab) end(); });
 }
-function close() { const m = $('#modal'); m.hidden = true; m.innerHTML = ''; }
 /* 操作表：只改今天 / 以后都这样 */
 function askScope(label, cb) {
   sheet(`<h2>${esc(label)}</h2><div class="list"><button class="row" data-sc="day" style="grid-template-columns:1fr"><span class="row-title" style="text-align:center;color:var(--blue)">只改今天</span></button><button class="row" data-sc="tpl" style="grid-template-columns:1fr"><span class="row-title" style="text-align:center;color:var(--blue);font-weight:600">以后都这样</span></button></div><button class="pill glass wide" data-sc="x">取消</button>`, () => {

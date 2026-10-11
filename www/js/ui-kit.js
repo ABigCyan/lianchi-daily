@@ -70,17 +70,25 @@ async function feelInfo() { try { const F = feelPlugin(); return F ? await F.inf
 let kbH = 0;
 const kbListeners = new Set();
 function onKeyboard(fn) { kbListeners.add(fn); return () => kbListeners.delete(fn); }
+let kbZeroT = 0;
 function setKb(h, dur) {
   h = Math.max(0, Math.round(h)); dur = Math.max(0, Math.min(600, dur || 0));
+  // 切换输入框、换输入法时，有的键盘会先报一下 0 再马上报回原来的高度：没有动画的“收起”先等一下，
+  // 期间又报了高度就当没发生，免得页面掉下去再弹上来
+  clearTimeout(kbZeroT);
+  if (h === 0 && !dur && kbH > 0) { kbZeroT = setTimeout(() => applyKb(0, 220), 180); return; }
+  applyKb(h, dur || (Math.abs(h - kbH) > 0 ? 200 : 0));
+}
+function applyKb(h, dur) {
   const root = document.documentElement.style;
-  root.setProperty('--kb-dur', (dur || 120) + 'ms'); root.setProperty('--kb', h + 'px');
+  root.setProperty('--kb-dur', (dur || 200) + 'ms'); root.setProperty('--kb', h + 'px');
   document.documentElement.classList.toggle('kb-open', h > 0);
   // 动画期间加 kb-anim：CSS 里暂时去掉毛玻璃，减少掉帧
   if (h !== kbH && dur) { const el = document.documentElement; el.classList.add('kb-anim'); clearTimeout(setKb.t); setKb.t = setTimeout(() => el.classList.remove('kb-anim'), dur + 80); }
   const was = kbH; kbH = h;
   if (was === h) return;
   kbListeners.forEach(fn => { try { fn(h, dur); } catch (e) { /* 忽略 */ } });
-  if (h > was) setTimeout(revealFocused, (dur || 120) + 30);
+  if (h > was) setTimeout(revealFocused, (dur || 200) + 30);
 }
 window.__ime = setKb;
 // 键盘出来以后：正在输入的框被挡住就滚上来（底部面板里的滚面板，页面上的滚页面）

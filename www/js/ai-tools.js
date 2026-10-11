@@ -93,10 +93,18 @@ function todayInfo({ date }) {
     meals: tasksFor(d).meals.map(m => ({ meal_key: m.key, name: m.name, time: m.time, carbs_g: m.c, protein_g: m.p, notes: m.notes || [] })),
     removed_items: hiddenOf(d), day_override: r.override || null, weight_kg: r.weight || null,
     intake: intakeOf(d), target: targetOf(d), burn_kcal: burnOf(d).total };
-  if (S.plan.training && (info.lift || (r.done && r.done.lift))) {
+  // 计划内的力训日、点过完成、或者今天已经开始练了（选过练哪天、记过组）都带上训练和进度
+  const started = r.session || Object.values(r.sets || {}).some(a => (a || []).some(x => x && (x.done || +x.w || +x.r)));
+  if (S.plan.training && (info.lift || (r.done && r.done.lift) || started)) {
     const { si, items } = sessionItems(d);
+    // 今天每个动作做到哪了：做完几组、还剩几组、每组填的重量次数（只打勾没填数字的也算做完）
+    const progress = it => { const S2 = ((r.sets || {})[it.v] || []).slice(0, it.sets); const done = S2.filter(x => x && x.done).length;
+      return { done_sets: done, remaining_sets: Math.max(0, it.sets - done), status: done >= it.sets ? '做完了' : done ? '做了一部分' : '还没做',
+        logged: S2.map((x, k) => x && (x.done || +x.w || +x.r) ? `第${k + 1}组 ${!+x.w && !+x.r ? '打了勾，没填数字' : `${+x.w ? x.w + 'kg × ' : ''}${+x.r || '?'} 次`}${x.done ? '' : '（填了没打勾）'}` : null).filter(Boolean) }; };
+    const prog = items.map(progress), doneSum = prog.reduce((a, x) => a + x.done_sets, 0), allSum = items.reduce((a, x) => a + x.sets, 0);
+    out.training_progress = `今天已做 ${doneSum}/${allSum} 组；做完的动作：${items.filter((it, i) => prog[i].status === '做完了').map(it => it.ex.n).join('、') || '无'}；还没做的：${items.filter((it, i) => prog[i].status === '还没做').map(it => it.ex.n).join('、') || '无'}${r.done && r.done.lift ? '；已点“完成训练”' : ''}`;
     out.training = { name: si.custom ? '自选部位' : si.day.name, day_index: si.dayIdx, recommended: !!si.recommended,
-      exercises: items.map((it, i) => { const sg = C.suggestFor(it, d); const ld = C.loadOf(it.ex, it.v); return { order: i + 1, exercise_id: it.v, name: it.ex.n, group: it.group.name, weight_input: ld.mode === 'bar' ? `每边加片，杆 ${ld.bar}kg（记录里的重量是总重）` : C.LOADS[ld.mode], sets: it.sets, reps: it.reps, rest: it.rest, to_failure: !/不追求/.test(it.fail), customized: !!it.custom, suggested: sg ? `${sg.w ? sg.w + 'kg × ' : ''}${sg.r}（${sg.why}）` : null, src: it.group.src }; }) };
+      exercises: items.map((it, i) => { const sg = C.suggestFor(it, d); const ld = C.loadOf(it.ex, it.v); return { order: i + 1, exercise_id: it.v, name: it.ex.n, ...prog[i], group: it.group.name, weight_input: ld.mode === 'bar' ? `每边加片，杆 ${ld.bar}kg（记录里的重量是总重）` : C.LOADS[ld.mode], sets: it.sets, reps: it.reps, rest: it.rest, to_failure: !/不追求/.test(it.fail), customized: !!it.custom, suggested: sg ? `${sg.w ? sg.w + 'kg × ' : ''}${sg.r}（${sg.why}）` : null, src: it.group.src }; }) };
   }
   return out;
 }
@@ -228,7 +236,7 @@ const TOOLS = [
   { name: 'read_excel_rows', description: '读套表某张表的连续几行原文（最多 40 行），用来看问答的完整回答或上下文。', parameters: { type: 'object', properties: { sheet: { type: 'string', description: '表号，例如 "17"' }, from_row: { type: 'integer' }, to_row: { type: 'integer' } }, required: ['sheet', 'from_row', 'to_row'] } },
   { name: 'search_refs', description: '在补充资料（非套表）里搜索：WHO/ACSM/中国指南、立场声明、Meta 分析、NSCA 教材的共识，例如热身、动作速度、老年人、睡眠、每周组数、频率、蛋白质 g/kg。只有套表没写、用户要求对照、或要定制计划时才用；每条结果带和套表的关系（一致/补充/有差异）。', parameters: { type: 'object', properties: { query: { type: 'string', description: '关键词，空格分开' } }, required: ['query'] } },
   { name: 'get_my_plan', description: '读取用户资料和 App 按套表算出的计划：减脂/增肌及理由、热量、碳水蛋白质脂肪、饮食表、每餐分量、训练分化和每天练的肌群（含 group_id、day_index）、警告。', parameters: { type: 'object', properties: {} } },
-  { name: 'get_today', description: '读取某一天（默认今天）的安排：是否力训日、时间线、训练动作（含 exercise_id）、已吃的碳水蛋白质热量、目标、消耗。', parameters: { type: 'object', properties: { date: { type: 'string', description: 'YYYY-MM-DD，可选' } } } },
+  { name: 'get_today', description: '读取某一天（默认今天）的安排：是否力训日、时间线、训练动作（含 exercise_id）和训练进度（每个动作做完几组、还剩几组、每组的重量次数）、已吃的碳水蛋白质热量、目标、消耗。', parameters: { type: 'object', properties: { date: { type: 'string', description: 'YYYY-MM-DD，可选' } } } },
   { name: 'get_history', description: '读取最近几天的体重、摄入、消耗、是否力训。', parameters: { type: 'object', properties: { days: { type: 'integer', description: '天数，默认 14，最多 60' } } } },
   { name: 'list_exercises', description: '列出动作库：套表表21-24 的动作 + 补充动作（标明依据）。可按部位、肌群、来源筛选，usable_for_user 表示按用户的器械和伤病设置能不能做。', parameters: { type: 'object', properties: {
     part: { type: 'string', enum: ['胸', '背', '肩', '手臂', '腿臀', '腹'] }, group_id: { type: 'string', description: '肌群 id，如 pull、row、mid_chest、quad、calf、core' }, source: { type: 'string', enum: ['all', 'excel', 'extra'] }, only_usable: { type: 'boolean' } } } },

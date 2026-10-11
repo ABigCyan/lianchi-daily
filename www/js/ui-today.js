@@ -84,7 +84,6 @@ function viewToday() {
   });
   if (S.edit) h += `<button class="row add" id="addTl"><span class="plus">+</span><span class="row-title">添加卡片</span></button>`;
   h += `</div></section>`;
-  h += `<section class="list mat">${Kit.row({ icon: I.heart, title: '身体数据', sub: [r.waist && `腰围 ${r.waist}`, r.sleep && `睡眠 ${r.sleep}h`, r.hunger && `饥饿 ${r.hunger}/5`].filter(Boolean).join(' · ') || '腰围、睡眠、饥饿感、备注', chev: true, attrs: 'data-body' })}</section>`;
   return h;
 }
 function toggleDone(d, id, on) {
@@ -130,21 +129,7 @@ function bindToday() {
   if (S.flash) { const el = $('.row.flash'); if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); setTimeout(() => { S.flash = null; }, 0); }
   $$('[data-mv]').forEach(b => b.onclick = () => { const [id, dir] = b.dataset.mv.split('|'); moveTask(d, id, +dir); });
   const add = $('#addTl'); if (add) add.onclick = () => addCard(d);
-  const bd = $('[data-body]'); if (bd) bd.onclick = () => bodySheet(d);
   $$('[data-burn]').forEach(b => b.onclick = () => burnSheet(d));
-}
-function bodySheet(d) {
-  const r = peek(d) || {}, dis = d > today() ? 'disabled' : '';
-  sheet(`<h2>身体数据</h2><div class="list" style="background:var(--fill3)">
-    <div class="frow"><label for="b-waist">腰围</label><input id="b-waist" data-b="waist" inputmode="decimal" placeholder="cm" value="${esc(r.waist || '')}" ${dis}></div>
-    <div class="frow"><label for="b-sleep">睡眠</label><input id="b-sleep" data-b="sleep" inputmode="decimal" placeholder="小时" value="${esc(r.sleep || '')}" ${dis}></div>
-    <div class="frow stack"><span class="lbl">饥饿感（1 不饿，5 很饿）</span><div class="chips">${[1, 2, 3, 4, 5].map(i => `<button data-hg="${i}" aria-pressed="${+r.hunger === i}" ${dis}>${i}</button>`).join('')}</div></div>
-    <div class="frow stack"><textarea class="field-in" data-b="note" style="height:80px;padding:10px 12px;font-family:var(--font)" placeholder="备注" ${dis}>${esc(r.note || '')}</textarea></div></div>
-    <p class="t-foot l2" style="padding:0 6px">常饿：选饱腹感高的主食、多吃蔬菜、瘦肉吃够（表17 第16问）。体脂秤数据不可信，看体重、腰围和外观（表17 B88）。</p>`, m => {
-    m.querySelectorAll('[data-b]').forEach(i => i.oninput = () => { rec(d)[i.dataset.b] = i.value.trim(); save(d); });
-    m.querySelectorAll('[data-hg]').forEach(b => b.onclick = () => { rec(d).hunger = +b.dataset.hg; save(d); m.querySelectorAll('[data-hg]').forEach(x => x.setAttribute('aria-pressed', x === b)); Kit.haptic('light'); });
-    m.onclick = e => { if (e.target === m) { close(); render(); } };
-  });
 }
 function burnSheet(d) {
   const b = burnOf(d), future = d > today(), kinds = window.CARDIO.filter(c => !c.run && !c.perSteps);

@@ -11,14 +11,28 @@ const { E, S, today, DOW, dayInfo, tasksFor, targetOf, sessionItems } = C;
 const { terms, srcOf, hiddenOf } = AITools;
 function useLocal() { const p = LocalAI.prefs(); return p.enabled && (p.use === 'local' || (p.use === 'auto' && !navigator.onLine)); }
 const EDIT_RE = /(改|调|换|删|去掉|不吃|不练|不做|加练|推迟|提前|挪|放到|移到|设成|设为|设置|取消|恢复|休息一天|别练|组|力竭|记住|忘掉|忘记)/;
+/* 今天练到哪了：每个动作做完几组、还剩几组、填过的重量次数 */
+function progressLine(d, items) {
+  const r = C.peek(d) || {}, parts = [];
+  let done = 0, all = 0;
+  items.forEach(it => {
+    const s = ((r.sets || {})[it.v] || []).slice(0, it.sets), n = s.filter(x => x && x.done).length;
+    done += n; all += it.sets;
+    const log = s.filter(x => x && (+x.w || +x.r)).map(x => `${+x.w ? x.w + 'kg×' : ''}${+x.r || '?'}次`).join('、');
+    parts.push(`${it.ex.n} ${n >= it.sets ? '做完了' : n ? `做了 ${n} 组，还剩 ${it.sets - n} 组` : '还没做'}${log ? `（${log}）` : ''}`);
+  });
+  return done ? `训练进度：已做 ${done}/${all} 组。${parts.join('；')}。` : '';
+}
 function planBrief(d) {
   const pl = S.plan, info = dayInfo(d), { meals } = tasksFor(d), t = targetOf(d);
-  const tr = pl.training && info.lift ? sessionItems(d) : null;
+  const r0 = C.peek(d) || {}, started = r0.session || Object.values(r0.sets || {}).some(a => (a || []).some(x => x && (x.done || +x.w || +x.r)));
+  const tr = pl.training && (info.lift || started || (r0.done && r0.done.lift)) ? sessionItems(d) : null;
   return [
     `今天 ${d}（周${DOW[E.dow(d)]}）是${info.lift ? '力训日' : '休息日'}${info.h ? '（' + info.h.name + '）' : ''}；目标：${pl.goal === 'cut' ? '减脂' : '增肌'}。`,
     `今天应吃：${t.kcal} kcal，碳水 ${t.c}g，蛋白质 ${t.p}g，脂肪 ${t.f}g（表5 E22-L23）。`,
     `今天各餐：${meals.map(m => `${m.time} ${m.name} 碳水${m.c}g 蛋白质${m.p}g`).join('；')}。`,
     tr ? `今天练：${tr.si.custom ? '自选部位' : tr.si.day.name.replace(/ /g, '')}，${tr.items.map(it => `${it.ex.n} ${it.sets}组×${it.reps}次（休息${it.rest}）`).join('、')}。` : (info.lift ? '' : '今天不练力训。'),
+    tr ? progressLine(d, tr.items) : '',
     `饮食表：${pl.sheet.sheet}《${pl.sheet.name}》；训练：${pl.training ? pl.training.splitName : '不做力训'}。`,
     Memory.list().length ? '你告诉过我的：' + Memory.list().slice(-8).map(x => x.text).join('；') + '。' : '',
   ].filter(Boolean).join('\n');
@@ -96,7 +110,7 @@ function windowAround(t, key) {
   return (bestA ? '…' : '') + t.slice(bestA, bestA + 500) + (bestA + 500 < t.length ? '…' : '');
 }
 // 问的是自己的数字或安排时，才把“我的计划”给模型（否则小模型容易整段复述计划）
-const PERSONAL_RE = /(今天|明天|昨天|这周|吃多少|该吃|几点|我的计划|我的目标|热量|卡路里|大卡|碳水|蛋白|脂肪|练什么|练哪|安排|摄入|消耗|几组|几次|体重多少|目标体重|分化|几天)/;
+const PERSONAL_RE = /(还剩|剩下|做完|练完|进度|练到|刚才|前面几组|后面|接下来|今天|明天|昨天|这周|吃多少|该吃|几点|我的计划|我的目标|热量|卡路里|大卡|碳水|蛋白|脂肪|练什么|练哪|安排|摄入|消耗|几组|几次|体重多少|目标体重|分化|几天)/;
 const LP = {
   // 问答：只根据资料，第一句给结论
   qa: personal => [
@@ -332,5 +346,5 @@ async function runActions(list, q, ctx) {
   }
   return out;
 }
-return { describePhoto, foodsFromPhoto, useLocal, EDIT_RE, PERSONAL_RE, planBrief, localRetrieve, LP, HELLO_RE, THANKS_RE, WHO_RE, LOCAL_HELP, FOOD_VERB, KCAL_Q, dateIn, timeIn, findItem, findEx, ruleEdits, trainEdits, checkActions, parseActions, runActions, foodAnswer };
+return { progressLine, describePhoto, foodsFromPhoto, useLocal, EDIT_RE, PERSONAL_RE, planBrief, localRetrieve, LP, HELLO_RE, THANKS_RE, WHO_RE, LOCAL_HELP, FOOD_VERB, KCAL_Q, dateIn, timeIn, findItem, findEx, ruleEdits, trainEdits, checkActions, parseActions, runActions, foodAnswer };
 })();
