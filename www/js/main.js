@@ -55,7 +55,14 @@ window.__goBack = goBack;
   if (!p || LS.get('guideNext')) Guide.start();
   render();
   if (S.profile) Updater.autoCheck();
-  document.addEventListener('visibilitychange', () => { if (!document.hidden && S.profile) { if (S.tab === 'today' && !S.edit && !S.sub && !S.guideOn) { S.day = today(); render(); } Me.scheduleNotifs(); } });
+  // 回到 App：过了 4 点换了一天，停在“今天”的页面跟着换到新的一天（哪个页都一样）；在对话页、正在输入时不重画
+  let seenDay = today();
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || !S.profile) return;
+    const t = today(), typing = /^(INPUT|TEXTAREA)$/.test((document.activeElement || {}).tagName || '');
+    if (t !== seenDay) { if (S.day === seenDay) S.day = t; seenDay = t; if (!S.chatOn && !S.guideOn && !S.edit && !typing && $('#modal').hidden) render(); }
+    Me.scheduleNotifs();
+  });
   if (S.profile) Me.scheduleNotifs();
 })();
 })();

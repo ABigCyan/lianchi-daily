@@ -241,7 +241,7 @@ function bindTrain() {
   $$('[data-extra]').forEach(b => b.onclick = () => { const r = rec(d); r.extra = r.extra || {}; r.extra[b.dataset.extra] = true; save(d); render(); });
   // 长按动作：有备选就换动作，没有就看大图
   $$('[data-exopen]').forEach(b => { const i = items.findIndex(x => x.v === b.dataset.exopen), row = b.closest('.row'); if (row && i >= 0) Kit.longPress(row, () => nAlts(items[i]) ? swap(items, i) : bigImage(items[i].ex)); });
-  $$('[data-exopen]').forEach(b => b.onclick = () => { const i = items.findIndex(x => x.v === b.dataset.exopen); sheet(`<div class="k-train" style="display:grid;gap:14px;padding-top:16px">${exBody(items[i], i, items.length, peek(d) || {}, d, d > today())}</div>`, m => { bindSetInputs(m, d, items); m.onclick = e => { if (e.target === m) { close(); render(); } }; }); });
+  $$('[data-exopen]').forEach(b => b.onclick = () => { const i = items.findIndex(x => x.v === b.dataset.exopen); sheet(`<div class="k-train" style="display:grid;gap:14px;padding-top:16px">${exBody(items[i], i, items.length, peek(d) || {}, d, d > today())}</div>`, m => bindSetInputs(m, d, items), () => { const y = scrollY; render(); scrollTo(0, y); }); });
   const stay = () => { const y = scrollY; render(); scrollTo(0, y); };
   // 编辑模式：删除、组数、拖动排序都按上面选的范围（只改今天 / 以后都这样）
   const scopeText = () => S.trainScope === 'tpl' ? `以后练“${si.custom ? '自选部位' : si.day.name}”都这样` : '只改今天';

@@ -611,7 +611,6 @@ details.ref summary{cursor:pointer;font-size:15px;font-weight:500;color:var(--in
 details.ref summary::-webkit-details-marker{display:none}
 details.ref[open] summary{margin-bottom:6px}
 details.ref p{margin:4px 0}
-=======
 /* 插件：内置模型 */
 #loc-box{display:grid;gap:16px}
 .loc-row{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:14px;align-items:center;padding:14px 16px 14px 18px}

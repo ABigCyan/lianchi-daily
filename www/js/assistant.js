@@ -47,7 +47,9 @@ function confirmCard(title, lines, reason, okText) {
   return new Promise(resolve => {
     const id = 'c' + Date.now();
     st.view.push({ k: 'confirm', id, title, lines, reason, state: 'wait', ok: okText });
-    st.pending[id] = resolve; draw();
+    st.pending[id] = resolve; draw(); persist();
+    // 人不在对话页：提示一下，通知栏也改成“等你确认”
+    if (!S.chatOn) { toast('助手要你确认一项修改，点右上角查看'); try { const P = busyPlugin(); if (P) P.start({ text: '助手等你确认一项修改，点开查看' }).catch(() => {}); } catch (e) { /* 忽略 */ } }
   });
 }
 /* 主动记忆：用户话里带出的伤病、忌口、器械、作息、目标，自动记下并在对话里提示一句（可以到“我的 → AI 记忆”删） */
@@ -143,7 +145,7 @@ async function ask(q) {
   if (!cfg.key || !(cfg.chatModel || cfg.model)) { toast('先在“我的 → 大模型接口”里设置'); return; }
   setDraft(''); st.img = null;
   const ctl = st.ctl = new AbortController();
-  setBusy(true); st.view.push({ k: 'user', t: q, img: img ? img.thumb : null });
+  setBusy(true); st.view.push({ k: 'user', t: q, img: img ? img.thumb : null }); persist();   // 先存下问题：万一 App 被系统关掉，回来还能看到问过什么
   if (!st.msgs.length || st.msgs[0].role !== 'system') st.msgs.unshift({ role: 'system', content: '' });
   st.msgs[0].content = sysPrompt();
   const mark = st.msgs.length;
@@ -173,7 +175,7 @@ async function ask(q) {
 async function askLocal(q, img) {
   const d = today(), ctl = st.ctl = new AbortController();
   setDraft(''); st.img = null; setBusy(true);
-  st.view.push({ k: 'user', t: q, img: img ? img.thumb : null }); draw();
+  st.view.push({ k: 'user', t: q, img: img ? img.thumb : null }); persist(); draw();
   const live = { k: 'bot', t: '', live: true };
   let raw = '', raf = 0;
   const paint = () => { raf = 0; const el = [...document.querySelectorAll('.msg.bot')].pop(); if (el && live.t) el.innerHTML = md(live.t); const l = $('#chat-list'); if (l) l.scrollTop = l.scrollHeight; };

@@ -166,7 +166,9 @@ function bindDeck(id, onRight, onLeft) {
     if (dx > 100) fly(1); else if (dx < -100 && onLeft) fly(-1); else { set(0); card.style.transform = ''; }
   };
   card.addEventListener('pointerup', end); card.addEventListener('pointercancel', end);
+  let flown = false;
   function fly(dir) {
+    if (flown) return; flown = true;   // 连点“完成”或点完又滑：只算一次
     haptic(dir > 0 ? 'success' : 'light');
     if (reduce) { (dir > 0 ? onRight : onLeft)(key); return; }
     card.style.transform = `translateX(${dir * innerWidth * 1.2}px) rotate(${dir * 24}deg)`; card.style.opacity = '0';
@@ -225,7 +227,7 @@ function timeWheel(value, title, cb) {
 function upgradeTimeInputs() {
   document.querySelectorAll('input[type="time"]').forEach(i => { i.type = 'text'; i.readOnly = true; i.size = 5; i.classList.add('tw-input'); i.setAttribute('inputmode', 'none'); });
 }
-new MutationObserver(upgradeTimeInputs).observe(document.documentElement, { childList: true, subtree: true });
+new MutationObserver(ms => { if (ms.some(m => [...m.addedNodes].some(n => n.nodeType === 1 && (n.matches('input[type=time]') || n.querySelector('input[type=time]'))))) upgradeTimeInputs(); }).observe(document.documentElement, { childList: true, subtree: true });
 document.addEventListener('click', e => {
   const i = e.target.closest && e.target.closest('input.tw-input');
   if (!i || i.disabled) return;

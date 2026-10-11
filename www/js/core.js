@@ -33,7 +33,10 @@ function month(ym) { if (!S.months[ym]) S.months[ym] = LS.get('m:' + ym) || {}; 
 function peek(d) { return month(d.slice(0, 7))[d]; }
 function rec(d) { const m = month(d.slice(0, 7)); return m[d] || (m[d] = { done: {} }); }
 const saveT = {};
-function save(d) { const ym = d.slice(0, 7); clearTimeout(saveT[ym]); saveT[ym] = setTimeout(() => LS.set('m:' + ym, S.months[ym]), 200); }
+function save(d) { const ym = d.slice(0, 7); clearTimeout(saveT[ym]); saveT[ym] = setTimeout(() => { delete saveT[ym]; LS.set('m:' + ym, S.months[ym]); }, 200); }
+// 切到后台 / 被关掉前，把还没写的立刻写进去（不然最后 0.2 秒内的改动会丢）
+function flushSaves() { Object.keys(saveT).forEach(ym => { clearTimeout(saveT[ym]); delete saveT[ym]; LS.set('m:' + ym, S.months[ym]); }); }
+addEventListener('pagehide', flushSaves); document.addEventListener('visibilitychange', () => { if (document.hidden) flushSaves(); });
 function saveCustom() { LS.set('custom', S.custom); }
 function allDays(to) { const out = []; const end = to || today(); for (let d = S.profile.startDate; d <= end; d = E.addDays(d, 1)) out.push(d); return out; }
 
@@ -398,18 +401,19 @@ let closeT = 0;
 /* 底部面板。结构：#modal > .scrim（变暗 + 虚化的背景）+ .sheet（面板：横条、圆角、位移）> .sheet-in（滚动、上下渐隐）。
    面板的位置只用 transform（只在合成层动，不重新排版），由 JS 直接写在面板自己身上：
    位移 = 下拉的距离 + 给键盘让的距离（lift，负数）。不用 CSS 变量，免得每帧整块内容重新算样式 */
-let lift = 0;
+let lift = 0, onClosed = null;
 const place = (sh, drag) => { sh.style.transform = `translateY(${(drag || 0) + lift}px)`; };
 const sheetMax = kb => `calc(88vh - ${kb}px)`;
-function sheet(html, onBind) {
+function sheet(html, onBind, afterClose) {
   clearTimeout(closeT);
   const m = $('#modal');
   m.innerHTML = `<div class="scrim"></div><div class="sheet" role="dialog" aria-modal="true"><span class="grab" aria-hidden="true"></span><div class="sheet-in">${html}</div></div>`;
-  m.hidden = false; m.classList.remove('closing');
+  m.hidden = false; m.classList.remove('closing'); onClosed = null;
   m.onclick = e => { if (e.target === m || e.target.classList.contains('scrim')) close(); };
   const sh = m.querySelector('.sheet');
   lift = -Kit.kbHeight(); sh.style.maxHeight = sheetMax(Kit.kbHeight()); place(sh, 0);
   if (onBind) onBind(m);
+  onClosed = afterClose || null;   // 面板关掉以后要做的事（比如刷新后面的页面），点空白、下拉、返回键关都会执行
   dragToClose(m, sh);
   edgeFade(sh.querySelector('.sheet-in'));
 }
@@ -456,7 +460,7 @@ function close() {
   if (scrim) scrim.style.opacity = '0';
   clearTimeout(closeT); closeT = setTimeout(finishClose, 280);
 }
-function finishClose() { const m = $('#modal'); clearTimeout(closeT); m.hidden = true; m.innerHTML = ''; m.classList.remove('closing'); }
+function finishClose() { const m = $('#modal'); clearTimeout(closeT); m.hidden = true; m.innerHTML = ''; m.classList.remove('closing'); const f = onClosed; onClosed = null; if (f) f(); }
 /* 内容可以滚动时，上下边缘渐隐（只在那一边还有内容时）；正在输入时不渐隐，免得把输入框盖住 */
 function edgeFade(sh) {
   if (!sh) return;

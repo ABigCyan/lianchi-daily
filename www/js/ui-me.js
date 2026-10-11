@@ -382,7 +382,7 @@ function doImport(text, keepAIArg) {
     const keepAI = keepAIArg != null ? keepAIArg : $('#im-ai').checked, entries = Object.entries(obj.data).filter(([k]) => k.startsWith('lcd:') && (keepAI || k !== 'lcd:ai'));
     sheet(`<h2>确认导入</h2><div class="sheet-sub">备份时间 ${esc((obj.at || '').slice(0, 16).replace('T', ' '))} · ${obj.days || '若干'} 天记录${obj.includesAI ? ' · 含大模型接口' : ''}</div><p class="t-sub l2" style="text-align:center">会覆盖这台手机上的同名数据</p><button class="pill ink wide" id="im-go">导入</button><button class="pill glass wide" id="im-x">取消</button>`, m => {
       m.querySelector('#im-x').onclick = close;
-      m.querySelector('#im-go').onclick = () => { entries.forEach(([k, v]) => localStorage.setItem(k, v)); localStorage.setItem('lcd:guideNext', 'false'); location.reload(); };
+      m.querySelector('#im-go').onclick = () => { try { entries.forEach(([k, v]) => localStorage.setItem(k, v)); localStorage.setItem('lcd:guideNext', 'false'); } catch (e) { toast('存储空间不够，只导入了一部分：' + e.message); } location.reload(); };
     });
   } catch (e) { const el = $('#im-err'); if (el) el.textContent = '导入失败：' + e.message; else toast('导入失败：' + e.message); }
 }
