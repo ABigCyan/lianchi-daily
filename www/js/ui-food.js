@@ -184,7 +184,7 @@ function showEntry(f, idx, dataUrl) {
   const isNew = idx < 0, d = S.day;
   const draw = () => {
     recompute(f);
-    const rows = f.items.map((it, i) => `<tr><td>${esc(it.name)}${it.category && it.category !== '其他' ? `<br><span class="t-cap l2">${esc(it.category)}</span>` : ''}</td><td class="n">${it.grams ? `<input class="field-in" style="width:70px;height:34px;text-align:right" data-g="${i}" value="${it.grams}" inputmode="decimal">` : '—'}</td><td class="n" data-c="${i}">${it.carbs_g}</td><td class="n" data-p="${i}">${it.protein_g}</td><td class="n" data-k="${i}">${it.kcal}</td></tr>`).join('');
+    const rows = f.items.map((it, i) => `<tr><td>${esc(it.name)}${it.category && it.category !== '其他' ? `<br><span class="t-cap l2">${esc(it.category)}</span>` : ''}</td><td class="n">${it.grams ? `<input class="field-in" style="width:58px;height:34px;text-align:right;padding:0 8px" data-g="${i}" value="${it.grams}" inputmode="decimal">` : '—'}</td><td class="n" data-c="${i}">${it.carbs_g}</td><td class="n" data-p="${i}">${it.protein_g}</td><td class="n" data-k="${i}">${it.kcal}</td></tr>`).join('');
     const tot = () => `<b class="num">${f.total.kcal} kcal</b> <span class="l2">· 碳水 ${f.total.carbs_g}g · 蛋白质 ${f.total.protein_g}g · 脂肪 ${f.total.fat_g}g</span>`;
     sheet(`<h2>${esc(f.mealName || '')}</h2>${f.source === 'ai' ? `<div class="sheet-sub">AI 估算 · 把握度 ${Math.round((f.confidence || 0) * 100)}%</div>` : ''}
       ${dataUrl ? `<img class="bigimg" src="${dataUrl}" alt="餐食照片">` : ''}

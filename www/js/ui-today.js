@@ -22,6 +22,7 @@ function body(t, r, d, future) {
   if (t.kind === 'train') return `<div class="ghost-row"><button class="pill tint" data-go="train">${I.train}开始训练</button></div>`;
   if (t.id === 'weigh') {
     const ms = metricsOn();
+    if (future) return `<div class="dc-body t-foot l2">到那天再记${ms.map(m => m.name).join('、')}</div>`;
     if (ms.length === 1) return `<div class="set" style="grid-template-columns:1fr auto"><input class="field-in" data-m="weight" inputmode="decimal" placeholder="体重 kg" value="${esc(r.weight || '')}" ${future ? 'disabled' : ''}><button class="pill tint" data-wok ${future ? 'disabled' : ''}>记录</button></div><div class="t-foot l2">只比较 1-2 周的平均值（表17 B91）</div>`;
     // 选了腰围等：每项一行，空着的不记
     return `<div class="mgrid">${ms.map(m => `<label class="mcell"><span>${m.name}</span><input class="field-in" data-m="${m.id}" inputmode="decimal" placeholder="${m.unit}" value="${esc(r[m.id] || '')}" ${future ? 'disabled' : ''}></label>`).join('')}</div>
@@ -63,7 +64,8 @@ function viewToday() {
   const pend = pending(d, tasks, r);
   const items = pend.map(t => ({ key: t.id, cls: 'k-' + kindOf(t), html: cardHtml(t, r, d, future) }));
   h += `<section class="section"><div class="section-h"><h2>接下来</h2><span class="t-foot l2">${pend.length ? `还剩 ${pend.length} 项` : ''}</span></div>
-    ${Kit.deck('todayDeck', items, future ? '这一天还没到' : `<div class="t-title3" style="color:var(--ink)">今天的安排都完成了</div><div class="t-foot">明天继续</div>`)}
+    ${Kit.deck('todayDeck', items, future ? '这一天还没到' : `<div class="t-title3" style="color:var(--ink)">今天的安排都完成了</div><div class="t-foot">明天继续</div>`, future ? { r: '下一张', l: '下一张' } : null)}
+    ${future && pend.length > 1 ? '<div class="deck-hint">左右滑看这天的其他安排，到那天再记录</div>' : ''}
     ${pend.length && !future ? `<div class="deck-ctrl"><button class="pill glass" data-later>${I.later}稍后</button><button class="pill ink" data-done>${I.check}完成</button></div><div class="deck-hint">也可以把卡片向右滑完成、向左滑放到后面</div>` : ''}</section>`;
   // 全部安排
   const liftLink = S.profile.lift !== false && !future && !S.edit ? (info.lift ? '<button class="link red" data-ov="rest">今天不练</button>' : '<button class="link" data-ov="lift">今天加练</button>') : '';
@@ -114,6 +116,7 @@ function bindToday() {
   const right = key => { toggleDone(d, key, true); render(); };
   const left = key => { const l = S.later[d] = (S.later[d] || []).filter(x => x !== key); l.push(key); Kit.haptic('light'); render(); };
   if (deckEl && d <= today()) { Kit.bindDeck('todayDeck', right, left); bindInputs(deckEl.querySelector('.dc.top'), d); }
+  else if (deckEl) Kit.bindDeck('todayDeck', left, left);   // 以后的日子：只能翻看，不能完成
   const dn = $('[data-done]'); if (dn) dn.onclick = () => deckEl.flyRight();
   const lt = $('[data-later]'); if (lt) lt.onclick = () => deckEl.flyLeft();
   $('#editTl').onclick = () => { S.edit = !S.edit; render(); };

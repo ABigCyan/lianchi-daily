@@ -1,6 +1,6 @@
 /* 核心：存储、每天的卡片、训练、能量计算、奖励（界面文件共用） */
 window.C = (() => {
-const APP_VERSION = '1.10.2';
+const APP_VERSION = '1.10.3';
 const REPO = 'ABigCyan/lianchi-daily';
 const E = window.Engine;
 const $ = s => document.querySelector(s);
@@ -395,87 +395,108 @@ function celebrate(before) { const after = badges().filter(b => b.got); if (afte
 let toastT;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; t.style.animation = 'none'; t.offsetHeight; t.style.animation = ''; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2200); }
 let closeT = 0;
+/* 底部面板。结构：#modal > .scrim（变暗 + 虚化的背景）+ .sheet（面板：横条、圆角、位移）> .sheet-in（滚动、上下渐隐）。
+   面板的位置只用 transform（只在合成层动，不重新排版），由 JS 直接写在面板自己身上：
+   位移 = 下拉的距离 + 给键盘让的距离（lift，负数）。不用 CSS 变量，免得每帧整块内容重新算样式 */
+let lift = 0;
+const place = (sh, drag) => { sh.style.transform = `translateY(${(drag || 0) + lift}px)`; };
+const sheetMax = kb => `calc(88vh - ${kb}px)`;
 function sheet(html, onBind) {
   clearTimeout(closeT);
-  // 外层 .sheet 是面板本身（底色、圆角、横条、拖动），内层 .sheet-in 负责滚动和上下渐隐
-  const m = $('#modal'); m.innerHTML = `<div class="sheet" role="dialog" aria-modal="true"><span class="grab" aria-hidden="true"></span><div class="sheet-in">${html}</div></div>`; m.hidden = false;
-  m.classList.remove('closing'); m.style.setProperty('--dim', '1');
-  m.onclick = e => { if (e.target === m) close(); };
-  if (onBind) onBind(m);
+  const m = $('#modal');
+  m.innerHTML = `<div class="scrim"></div><div class="sheet" role="dialog" aria-modal="true"><span class="grab" aria-hidden="true"></span><div class="sheet-in">${html}</div></div>`;
+  m.hidden = false; m.classList.remove('closing');
+  m.onclick = e => { if (e.target === m || e.target.classList.contains('scrim')) close(); };
   const sh = m.querySelector('.sheet');
-  dragToClose(m, sh, sh.querySelector('.sheet-in'));
+  lift = -Kit.kbHeight(); sh.style.maxHeight = sheetMax(Kit.kbHeight()); place(sh, 0);
+  if (onBind) onBind(m);
+  dragToClose(m, sh);
   edgeFade(sh.querySelector('.sheet-in'));
 }
-/* 关闭：面板往下滑出、背景淡出，动画完再真正关掉（点空白处、下拉、返回键都走这里）。
+/* 键盘弹出/收起：面板跟着键盘一起平滑上移，全程只动 transform。
+   - 面板放得下：直接整体上移键盘的高度；
+   - 面板太高要变矮（弹出时）：动画中先保持原高度、只上移到顶边该在的位置（底下多出来的一截正好藏在升起的键盘后面），
+     键盘停稳后再把高度上限改小——改的那截在键盘后面，看不出来；
+   - 面板可以变高（收起时）：先改高度上限、用位移把顶边钉在原处（多出来的一截在键盘后面），再动画到终点。
+   这样顶边、底边都不会闪 */
+let kbT = 0;
+Kit.onKeyboard((h, dur) => {
+  const m = $('#modal'), sh = m && !m.hidden && !m.classList.contains('closing') && m.querySelector('.sheet');
+  lift = -h; clearTimeout(kbT);
+  if (!sh || sh.classList.contains('dragging')) { if (sh) sh.style.maxHeight = sheetMax(h); return; }
+  const D = dur || 200, H = sh.offsetHeight, avail = innerHeight * .88 - h;
+  sh.style.transitionDuration = D + 'ms';
+  if (H > avail + 1) {
+    sh.style.transform = `translateY(${-(h - (H - avail))}px)`;
+    kbT = setTimeout(() => { sh.classList.add('snap'); sh.style.maxHeight = sheetMax(h); place(sh, 0); void sh.offsetHeight; sh.classList.remove('snap'); sh.style.transitionDuration = ''; }, D + 20);
+    return;
+  }
+  const top0 = sh.getBoundingClientRect().top;
+  sh.classList.add('snap');
+  sh.style.maxHeight = sheetMax(h);
+  sh.style.transform = 'none';
+  sh.style.transform = `translateY(${top0 - sh.getBoundingClientRect().top}px)`;   // 新高度下顶边留在原处
+  void sh.offsetHeight;
+  sh.classList.remove('snap');
+  place(sh, 0);
+  kbT = setTimeout(() => { sh.style.transitionDuration = ''; }, D + 20);
+});
+/* 关闭：面板往下滑出、背景同时淡出（虚化跟着一起慢慢消失），动画完再真正关掉（点空白处、下拉、返回键都走这里）。
    动画期间又打开了别的面板，就不关了 */
 function close() {
-  const m = $('#modal'), sh = m.querySelector('.sheet');
+  const m = $('#modal'), sh = m.querySelector('.sheet'), scrim = m.querySelector('.scrim');
   if (m.hidden) return;
   if (!sh || matchMedia('(prefers-reduced-motion: reduce)').matches) { finishClose(); return; }
   if (m.classList.contains('closing')) return;
   m.classList.add('closing');
-  sh.classList.remove('dragging'); sh.classList.add('leaving');
-  void sh.offsetHeight;   // 先让当前位置生效，再设终点，过渡才会从当前位置开始
-  sh.style.setProperty('--drag', sh.offsetHeight + 40 + 'px'); m.style.setProperty('--dim', '0');
-  clearTimeout(closeT); closeT = setTimeout(finishClose, 260);
+  const ae = document.activeElement; if (ae && sh.contains(ae)) ae.blur();   // 收起键盘
+  sh.classList.remove('dragging', 'spring'); sh.classList.add('leaving');
+  const cur = new DOMMatrixReadOnly(getComputedStyle(sh).transform).m42 || 0;   // 现在的位置（可能正在弹回、正在跟着键盘动）
+  sh.style.transform = `translateY(${cur + innerHeight - sh.getBoundingClientRect().top + 20}px)`;
+  if (scrim) scrim.style.opacity = '0';
+  clearTimeout(closeT); closeT = setTimeout(finishClose, 280);
 }
 function finishClose() { const m = $('#modal'); clearTimeout(closeT); m.hidden = true; m.innerHTML = ''; m.classList.remove('closing'); }
 /* 内容可以滚动时，上下边缘渐隐（只在那一边还有内容时）；正在输入时不渐隐，免得把输入框盖住 */
 function edgeFade(sh) {
   if (!sh) return;
-  const upd = () => { sh.classList.toggle('fade-t', sh.scrollTop > 2); sh.classList.toggle('fade-b', sh.scrollTop + sh.clientHeight < sh.scrollHeight - 2); };
-  sh.addEventListener('scroll', upd, { passive: true }); upd(); setTimeout(upd, 400);
+  let raf = 0;
+  const upd = () => { raf = 0; sh.classList.toggle('fade-t', sh.scrollTop > 2); sh.classList.toggle('fade-b', sh.scrollTop + sh.clientHeight < sh.scrollHeight - 2); };
+  sh.addEventListener('scroll', () => { if (!raf) raf = requestAnimationFrame(upd); }, { passive: true }); upd(); setTimeout(upd, 400);
 }
-/* 下拉关闭：按住顶部的横条往下拖，或者内容已经在最上面时往下拖。松手时拖过三分之一（或者往下甩得够快）就补完往下滑出的动画，
-   拖得少（可能是误触）就弹回。拖动中只改 transform（不重新排版），每帧最多改一次 */
-function dragToClose(m, sh, sc) {
-  if (!sh) return;
-  sc = sc || sh;   // 滚动的是内层
-  let y0 = 0, x0 = 0, dy = 0, last = [], active = false, decided = false, raf = 0, fromGrab = false;
-  const paint = () => { raf = 0; sh.style.setProperty('--drag', dy + 'px'); m.style.setProperty('--dim', String(Math.max(.15, 1 - dy / (sh.offsetHeight || 1)))); };
-  const start = (y, grab, x) => { y0 = y; x0 = x || 0; dy = 0; last = [[performance.now(), y]]; active = true; decided = grab; fromGrab = grab; if (grab) sh.classList.add('dragging'); };
-  const move = (y, ev, x) => {
+/* 下拉关闭：只有按住顶部的横条才能拖（内容区照常上下滚动）。拖动跟手，每帧最多改一次位移；
+   松手时拖过三分之一（或者往下甩得够快）就补完滑出的动画，拖得少（可能是误触）就弹回 */
+function dragToClose(m, sh) {
+  const grab = sh && sh.querySelector('.grab'); if (!grab) return;
+  const scrim = m.querySelector('.scrim');
+  let y0 = 0, dy = 0, last = [], active = false, raf = 0, h = 1;
+  const paint = () => { raf = 0; place(sh, dy); if (scrim) scrim.style.opacity = String(Math.max(.1, 1 - dy / h)); };
+  grab.addEventListener('pointerdown', e => {
+    try { grab.setPointerCapture(e.pointerId); } catch (_) { /* 合成事件没有真的指针 */ }
+    y0 = e.clientY; dy = 0; last = [[e.timeStamp, e.clientY]]; active = true; h = sh.offsetHeight || 1;
+    sh.classList.remove('spring'); sh.classList.add('dragging'); if (scrim) scrim.classList.add('dragging');
+  });
+  grab.addEventListener('pointermove', e => {
     if (!active) return;
-    const d = y - y0;
-    if (!decided) {
-      if (Math.abs(d) < 6 && Math.abs((x || 0) - x0) < 6) return;
-      // 只有往下拖（不是横着滑）、而且内容已经在最上面时才接管；否则交给面板自己滚动或横滑
-      if (d < 0 || sc.scrollTop > 0 || Math.abs((x || 0) - x0) > Math.abs(d)) { active = false; return; }
-      decided = true; sh.classList.add('dragging'); y0 = y;
-    }
-    if (ev && ev.cancelable) ev.preventDefault();
-    dy = Math.max(0, y - y0);
-    last.push([performance.now(), y]); if (last.length > 5) last.shift();
+    dy = Math.max(0, e.clientY - y0);
+    last.push([e.timeStamp, e.clientY]); if (last.length > 6) last.shift();
     if (!raf) raf = requestAnimationFrame(paint);
-  };
+  });
   const end = () => {
     if (!active) return; active = false;
-    if (!decided) return;
+    if (raf) { cancelAnimationFrame(raf); raf = 0; paint(); }
     // 松手前最后一小段的速度（像素/毫秒）
     const [t1, y1] = last[0], [t2, y2] = last[last.length - 1], v = (y2 - y1) / Math.max(1, t2 - t1);
-    if (raf) { cancelAnimationFrame(raf); raf = 0; paint(); }
-    sh.classList.remove('dragging');
-    const h = sh.offsetHeight || 1;
+    sh.classList.remove('dragging'); if (scrim) scrim.classList.remove('dragging');
     if ((dy > h / 3 && v > -0.2) || (v > .6 && dy > 40)) { Kit.haptic('light'); close(); }
-    else {
-      // 弹回：带一点回弹的过渡
+    else if (dy > 0) {
       sh.classList.add('spring'); void sh.offsetHeight;
-      sh.style.setProperty('--drag', '0px'); m.style.setProperty('--dim', '1');
+      place(sh, 0); if (scrim) scrim.style.opacity = '1';
       setTimeout(() => sh.classList.remove('spring'), 380);
     }
     dy = 0;
   };
-  const grab = sh.querySelector('.grab');
-  // 顶部横条：用 pointer 事件，横条区域 touch-action:none，不会和滚动抢
-  if (grab) {
-    grab.addEventListener('pointerdown', e => { grab.setPointerCapture(e.pointerId); start(e.clientY, true); });
-    grab.addEventListener('pointermove', e => move(e.clientY));
-    grab.addEventListener('pointerup', end); grab.addEventListener('pointercancel', end);
-  }
-  // 面板内容：用 touch 事件，在最上面往下拉时阻止滚动、接管成拖动
-  sh.addEventListener('touchstart', e => { if (fromGrab && active) return; if (e.target.closest('.grab,input[type=range],.fd-list,.fd-sel')) return; start(e.touches[0].clientY, false, e.touches[0].clientX); }, { passive: true });
-  sh.addEventListener('touchmove', e => { if (!fromGrab) move(e.touches[0].clientY, e, e.touches[0].clientX); }, { passive: false });
-  sh.addEventListener('touchend', () => { if (!fromGrab) end(); }); sh.addEventListener('touchcancel', () => { if (!fromGrab) end(); });
+  grab.addEventListener('pointerup', end); grab.addEventListener('pointercancel', end);
 }
 /* 操作表：只改今天 / 以后都这样 */
 function askScope(label, cb) {
@@ -500,7 +521,8 @@ const imgUrl = (ex, f) => `img/ex/${ex.img}/${f || 0}.jpg`;
 function dateLabel(d) { const x = E.pd(d); return `${x.getMonth() + 1}月${x.getDate()}日 星期${DOW[E.dow(d)]}`; }
 /* 大标题 + 日期切换（玻璃胶囊） */
 function head(title, d, trailing) {
-  const ai = `<button class="ai-btn glass" data-ai aria-label="助手">${Kit.I.sparkles}</button>`;
+  const busy = window.Assistant && Assistant.busy();   // 助手正在回答：按钮外面转一圈光
+  const ai = `<button class="ai-btn glass ${busy ? 'busy' : ''}" data-ai aria-label="${busy ? '助手（正在回答）' : '助手'}">${Kit.I.sparkles}</button>`;
   const cap = ai + (d ? `<div class="gcap glass"><button class="gbtn" data-nav="-1" aria-label="前一天" ${d <= S.profile.startDate ? 'disabled' : ''}>${Kit.I.left}</button><button class="gbtn" data-nav="1" aria-label="后一天">${Kit.I.right}</button></div>` : '');
   return Kit.largeTitle(title, d ? dateLabel(d) + (trailing ? ' · ' + trailing : '') : (trailing || ''), `<div class="head-r">${cap}</div>`);
 }

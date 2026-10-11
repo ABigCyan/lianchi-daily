@@ -112,6 +112,21 @@ function draw() {
   requestAnimationFrame(() => { const l = $('#chat-list'); if (l) l.scrollTop = l.scrollHeight; });
 }
 function setDraft(v) { st.draft = v; LS.set('chatDraft', v || null); }
+/* 忙/闲：回答期间开原生前台服务保活（切到别的 App、锁屏也能答完），顶部的助手按钮显示“正在回答”；
+   答完时人不在对话页就提示一下，App 在后台就发通知 */
+let busyP = null;
+const busyPlugin = () => busyP || (busyP = window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform() && (window.capacitorExports ? capacitorExports.registerPlugin('Busy') : Capacitor.registerPlugin('Busy')));
+function setBusy(on, done) {
+  st.busy = on;
+  try { const P = busyPlugin(); if (P) (on ? P.start({ text: '助手正在回答…' }) : P.stop({ done: done || '' })).catch(() => {}); } catch (e) { /* 没有保活也照常回答 */ }
+  $$('[data-ai]').forEach(b => b.classList.toggle('busy', on));
+  if (!on && done && !S.chatOn) toast('助手回答好了，点右上角查看');
+}
+function finish(ctl) {
+  if (st.ctl !== ctl) return;
+  const last = [...st.view].reverse().find(v => v.k === 'bot' || v.k === 'err');
+  st.ctl = null; setBusy(false, ctl.signal.aborted || !last || last.k === 'err' ? '' : last.t.replace(/\s+/g, ' ').slice(0, 80));
+}
 /* 打断：中止正在进行的请求，没点的确认卡当作取消 */
 function stop() {
   if (!st.busy) return;
@@ -128,7 +143,7 @@ async function ask(q) {
   if (!cfg.key || !(cfg.chatModel || cfg.model)) { toast('先在“我的 → 大模型接口”里设置'); return; }
   setDraft(''); st.img = null;
   const ctl = st.ctl = new AbortController();
-  st.busy = true; st.view.push({ k: 'user', t: q, img: img ? img.thumb : null });
+  setBusy(true); st.view.push({ k: 'user', t: q, img: img ? img.thumb : null });
   if (!st.msgs.length || st.msgs[0].role !== 'system') st.msgs.unshift({ role: 'system', content: '' });
   st.msgs[0].content = sysPrompt();
   const mark = st.msgs.length;
@@ -152,12 +167,12 @@ async function ask(q) {
     st.msgs = st.msgs.slice(0, mark);
     st.msgs.push({ role: 'user', content: q }, { role: 'assistant', content: '（这次回答被打断了）' });
   }
-  if (st.ctl === ctl) { st.busy = false; st.ctl = null; }
+  finish(ctl);
   persist(); draw();
 }
 async function askLocal(q, img) {
   const d = today(), ctl = st.ctl = new AbortController();
-  setDraft(''); st.img = null; st.busy = true;
+  setDraft(''); st.img = null; setBusy(true);
   st.view.push({ k: 'user', t: q, img: img ? img.thumb : null }); draw();
   const live = { k: 'bot', t: '', live: true };
   let raw = '', raf = 0;
@@ -260,7 +275,7 @@ async function askLocal(q, img) {
     if (live.live) { st.view = st.view.filter(v => v !== live || v.t); delete live.live; }
     st.view.push({ k: 'err', t: e.stopped || ctl.signal.aborted ? '已停止' : (e.message || String(e)) });
   } finally {
-    if (st.ctl === ctl) { st.busy = false; st.ctl = null; }
+    finish(ctl);
     persist(); draw();
   }
 }
@@ -310,6 +325,6 @@ Kit.onKeyboard((h, dur) => {
   (function follow() { l.scrollTop = l.scrollHeight; if (performance.now() < end) requestAnimationFrame(follow); })();
   setTimeout(() => { l.scrollTop = l.scrollHeight; }, (dur || 120) + 100); // 动画结束再对齐一次（后台时 rAF 不跑）
 });
-return { view, bind, open, ask };
+return { view, bind, open, ask, busy: () => st.busy };
 })();
 

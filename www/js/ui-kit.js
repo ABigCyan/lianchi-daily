@@ -83,8 +83,6 @@ function applyKb(h, dur) {
   const root = document.documentElement.style;
   root.setProperty('--kb-dur', (dur || 200) + 'ms'); root.setProperty('--kb', h + 'px');
   document.documentElement.classList.toggle('kb-open', h > 0);
-  // 动画期间加 kb-anim：CSS 里暂时去掉毛玻璃，减少掉帧
-  if (h !== kbH && dur) { const el = document.documentElement; el.classList.add('kb-anim'); clearTimeout(setKb.t); setKb.t = setTimeout(() => el.classList.remove('kb-anim'), dur + 80); }
   const was = kbH; kbH = h;
   if (was === h) return;
   kbListeners.forEach(fn => { try { fn(h, dur); } catch (e) { /* 忽略 */ } });

@@ -14,7 +14,7 @@ function render() {
   $$('#tabs button').forEach(b => b.setAttribute('aria-current', b.dataset.tab === S.tab ? 'page' : 'false'));
   if (S.tab !== 'train') Train.stop();
   const pg = PAGES[S.tab] || Today;
-  app.innerHTML = pg.view(); pg.bind();
+  app.innerHTML = pg.view(); pg.bind(); C.bindHead();   // 顶部的助手按钮、前后一天：每页都绑
 }
 window.__render = render;
 $$('#tabs button').forEach(b => b.onclick = () => {

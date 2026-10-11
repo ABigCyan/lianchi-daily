@@ -25,6 +25,12 @@
 
         </activity>
 
+        <!-- 助手回答期间保活：切到别的 App 也能在后台答完 -->
+        <service
+            android:name=".BusyService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -43,4 +49,9 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- 触感反馈 -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- 助手在后台回答：前台服务 + 不让 CPU 睡着；回答好了发通知 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

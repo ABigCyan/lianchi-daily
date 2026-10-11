@@ -335,7 +335,7 @@ td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .modal{position:fixed;inset:0;z-index:40;background:rgba(14,16,19,.22);display:grid;align-items:end;justify-items:center;animation:fade .25s}
 .sheet{position:relative;width:calc(100% - 16px);max-width:560px;margin-bottom:calc(var(--sab) + 8px);max-height:88vh;overflow:hidden;border-radius:32px;padding:0;display:flex;flex-direction:column;background:var(--chrome-strong);-webkit-backdrop-filter:blur(var(--blur)) saturate(1.4);backdrop-filter:blur(var(--blur)) saturate(1.4);box-shadow:inset 0 1px 0 var(--rim),0 0 0 .5px var(--hair),0 30px 80px -20px rgba(0,0,0,.35);animation:rise .38s cubic-bezier(.2,.9,.25,1)}
 .sheet > .grab{flex:none;margin:10px auto 0}
-.sheet-in{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:12px 20px 22px;display:grid;gap:16px}
+.sheet-in{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:12px 20px 22px;display:grid;gap:16px;grid-auto-rows:max-content;align-content:start}
 .sheet .grab{width:36px;height:4px;border-radius:2px;background:var(--ink4);justify-self:center}
 .sheet h2{font-size:20px;font-weight:650;letter-spacing:-.015em;text-align:center}
 .sheet .sheet-sub{font-size:13px;color:var(--ink3);text-align:center;margin-top:-10px}
@@ -696,32 +696,33 @@ details.ref p{margin:4px 0}
 /* ---------- 键盘：跟着键盘动画平滑上移（--kb 键盘高度、--kb-dur 动画时长，见 ui-kit.js） ---------- */
 #sab-probe{position:fixed;left:0;bottom:0;width:0;height:var(--sab);pointer-events:none;visibility:hidden}
 .chat{bottom:var(--kb,0px);transition:bottom var(--kb-dur,250ms) cubic-bezier(.2,0,0,1)}
-/* 底部面板用位移（只在合成层动，不重新排版）跟着键盘上移；高度上限直接变，不做动画 */
-.modal .sheet{max-height:calc(88vh - var(--kb,0px));transform:translateY(calc(var(--drag,0px) - var(--kb,0px)));transition:transform var(--kb-dur,250ms) cubic-bezier(.2,0,0,1)}
-/* 下拉关闭：拖动时跟手（不做过渡），松手后弹回或滑出；背景跟着变淡 */
-.modal .sheet.dragging{transition:none;will-change:transform}
-.modal .sheet.leaving{transition:transform .26s cubic-bezier(.32,0,.67,0)}
-.modal .sheet.spring{transition:transform .36s cubic-bezier(.2,1.25,.35,1)}
-/* 背景：变暗 + 虚化。虚化固定不变（每帧改模糊半径很耗性能），拖动时只改这一层的透明度 */
-.modal{background:none}
-.modal::before{content:"";position:absolute;inset:0;background:rgba(14,16,19,.26);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);opacity:var(--dim,1);transition:opacity .26s;pointer-events:none}
-.modal.closing::before{transition:opacity .26s}
-.modal .sheet{position:relative;z-index:1;-webkit-backdrop-filter:none;backdrop-filter:none}
-:root[data-lite] .modal::before{-webkit-backdrop-filter:none;backdrop-filter:none}
+/* 底部面板：位置只用 transform（JS 直接写在面板上：下拉距离 + 给键盘让的距离，见 core.js sheet()），只在合成层动、不重新排版。
+   打开时用独立的 translate 属性从底下滑上来，和 transform 叠加，互不打架 */
+.modal{background:none;animation:none}
+.modal .sheet{position:relative;z-index:1;-webkit-backdrop-filter:none;backdrop-filter:none;will-change:transform;transition:transform 250ms cubic-bezier(.2,0,0,1);animation:sheetIn .42s cubic-bezier(.2,.9,.25,1)}
+@keyframes sheetIn{from{translate:0 calc(100% + 40px)}}
+.modal .sheet.snap,.modal .sheet.dragging{transition:none!important}
+.modal .sheet.leaving{transition:transform .28s cubic-bezier(.32,0,.67,0)!important}
+.modal .sheet.spring{transition:transform .38s cubic-bezier(.2,1.2,.35,1)!important}
+/* 背景：变暗 + 虚化。是一层真的元素（不是伪元素），透明度由 JS 直接改：打开时淡入、拖动时跟着变淡、关闭时淡出，
+   虚化程度跟着透明度一起渐变（不会一下子出现或消失）。注意 .modal 自己不能有透明度动画，否则虚化在动画期间会失效 */
+.modal .scrim{position:absolute;inset:0;background:rgba(14,16,19,.26);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);transition:opacity .28s ease;animation:fade .32s ease}
+.modal .scrim.dragging{transition:none}
+:root[data-lite] .modal .scrim{-webkit-backdrop-filter:none;backdrop-filter:none}
 /* 面板内容滚动时，上下边缘渐隐；正在输入（有输入框获得焦点）时不渐隐 */
 .sheet-in.fade-t{-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 28px);mask-image:linear-gradient(180deg,transparent 0,#000 28px)}
 .sheet-in.fade-b{-webkit-mask-image:linear-gradient(0deg,transparent 0,#000 36px);mask-image:linear-gradient(0deg,transparent 0,#000 36px)}
 .sheet-in.fade-t.fade-b{-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 28px,#000 calc(100% - 36px),transparent 100%);mask-image:linear-gradient(180deg,transparent 0,#000 28px,#000 calc(100% - 36px),transparent 100%)}
 .sheet-in:focus-within{-webkit-mask-image:none!important;mask-image:none!important}
 .sheet .grab{position:relative;touch-action:none;cursor:grab}
-.sheet .grab::after{content:"";position:absolute;left:-60px;right:-60px;top:-14px;bottom:-14px}
-/* 键盘动画进行时：暂时关掉毛玻璃（每帧重画模糊最耗时）；对话页单独成一个布局范围，动画时只重排它自己 */
-.kb-anim .sheet,.kb-anim .composer-in,.kb-anim .tabbar .glass,.kb-anim .modal::before{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:var(--chrome-strong)}
+/* 横条的可拖范围：面板顶上一整条 */
+.sheet .grab::after{content:"";position:absolute;left:-300px;right:-300px;top:-10px;bottom:-14px}
+/* 对话页单独成一个布局范围，键盘动画时只重排它自己 */
 .chat{contain:layout paint}
 body{padding-bottom:var(--kb,0px)}
 .kb-open .tabbar{opacity:0;pointer-events:none;transition:opacity .15s}
 .kb-open .modal .fd-tray,.kb-open .modal .lib-tray{padding-bottom:12px}
-@media (prefers-reduced-motion: reduce){.chat,.modal .sheet{transition:none}}
+@media (prefers-reduced-motion: reduce){.chat,.modal .sheet{transition:none}.modal .sheet,.modal .scrim{animation:none}}
 .hap-try{display:flex;gap:6px;justify-self:end;flex-wrap:wrap;justify-content:flex-end}
 .hap-try .tbtn{height:32px;padding:0 12px;font-size:13px}
 
@@ -817,3 +818,10 @@ pre{overflow-wrap:anywhere;word-break:break-word;white-space:pre-wrap}
 /* 底部固定的“添加”条不能被渐隐盖住：有它的时候只做上边的渐隐 */
 .sheet-in.fade-b:has(> .fd-tray:not([hidden]), > .lib-tray){-webkit-mask-image:none;mask-image:none}
 .sheet-in.fade-t.fade-b:has(> .fd-tray:not([hidden]), > .lib-tray){-webkit-mask-image:linear-gradient(180deg,transparent 0,#000 28px);mask-image:linear-gradient(180deg,transparent 0,#000 28px)}
+.sheet .tbl th{white-space:nowrap}
+.sheet .tbl td:first-child{min-width:4.5em}
+/* 助手在后台回答：按钮外面一圈转动的光 */
+.ai-btn{position:relative}
+.ai-btn.busy::after{content:"";position:absolute;inset:-3px;border-radius:50%;border:2px solid transparent;border-top-color:var(--primary);border-right-color:var(--primary);animation:spin 1s linear infinite;pointer-events:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.ai-btn.busy::after{animation:none;border-color:var(--primary)}}

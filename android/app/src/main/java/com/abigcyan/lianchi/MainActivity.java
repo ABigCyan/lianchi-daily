@@ -13,6 +13,8 @@ public class MainActivity extends BridgeActivity {
         // 清脆可调的触感、键盘弹出时页面跟着平滑上移
         registerPlugin(FeelPlugin.class);
         registerPlugin(ImeAnimPlugin.class);
+        // 助手在后台回答时保活
+        registerPlugin(BusyPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
