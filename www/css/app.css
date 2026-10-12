@@ -698,14 +698,17 @@ details.ref p{margin:4px 0}
 /* 底部面板：位置只用 transform（JS 直接写在面板上：下拉距离 + 给键盘让的距离，见 core.js sheet()），只在合成层动、不重新排版。
    打开时用独立的 translate 属性从底下滑上来，和 transform 叠加，互不打架 */
 .modal{background:none;animation:none}
-.modal .sheet{position:relative;z-index:1;-webkit-backdrop-filter:none;backdrop-filter:none;will-change:transform;transition:transform 250ms cubic-bezier(.2,0,0,1);animation:sheetIn .42s cubic-bezier(.2,.9,.25,1)}
+.modal .sheet{position:relative;z-index:1;-webkit-backdrop-filter:none;backdrop-filter:none;will-change:transform;transition:transform 250ms cubic-bezier(.2,0,0,1),clip-path 250ms cubic-bezier(.2,0,0,1);animation:sheetIn .42s cubic-bezier(.2,.9,.25,1)}
 @keyframes sheetIn{from{translate:0 calc(100% + 40px)}}
 .modal .sheet.snap,.modal .sheet.dragging{transition:none!important}
 .modal .sheet.leaving{transition:transform .28s cubic-bezier(.32,0,.67,0)!important}
 .modal .sheet.spring{transition:transform .38s cubic-bezier(.2,1.2,.35,1)!important}
-/* 背景：变暗 + 虚化。是一层真的元素（不是伪元素），透明度由 JS 直接改：打开时淡入、拖动时跟着变淡、关闭时淡出，
-   虚化程度跟着透明度一起渐变（不会一下子出现或消失）。注意 .modal 自己不能有透明度动画，否则虚化在动画期间会失效 */
-.modal .scrim{position:absolute;inset:0;background:rgba(14,16,19,.26);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);transition:opacity .28s ease;animation:fade .32s ease}
+/* 背景：变暗 + 高斯模糊（和底部胶囊一样的强度）。动画改的是模糊半径本身（0 → 26px）和暗度，不改透明度：
+   改透明度的话，过程中清楚的字和模糊的字会叠在一起，看着字和边缘还是锐利的。
+   打开时从不模糊慢慢变模糊，拖动时跟着手指变清楚，关闭时慢慢变回清楚。注意 .modal 自己不能有透明度动画，否则模糊会失效 */
+.modal .scrim{position:absolute;inset:0;background:rgba(14,16,19,.2);-webkit-backdrop-filter:blur(var(--blur)) saturate(1.4);backdrop-filter:blur(var(--blur)) saturate(1.4);
+  transition:backdrop-filter .3s ease,-webkit-backdrop-filter .3s ease,background-color .3s ease;animation:scrimIn .36s ease}
+@keyframes scrimIn{from{-webkit-backdrop-filter:blur(0) saturate(1);backdrop-filter:blur(0) saturate(1);background-color:rgba(14,16,19,0)}}
 .modal .scrim.dragging{transition:none}
 :root[data-lite] .modal .scrim{-webkit-backdrop-filter:none;backdrop-filter:none}
 /* 面板内容滚动时，上下边缘渐隐；正在输入（有输入框获得焦点）时不渐隐 */

@@ -1,6 +1,6 @@
 /* 核心：存储、每天的卡片、训练、能量计算、奖励（界面文件共用） */
 window.C = (() => {
-const APP_VERSION = '1.10.3';
+const APP_VERSION = '1.10.4';
 const REPO = 'ABigCyan/lianchi-daily';
 const E = window.Engine;
 const $ = s => document.querySelector(s);
@@ -398,7 +398,7 @@ function celebrate(before) { const after = badges().filter(b => b.got); if (afte
 let toastT;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; t.style.animation = 'none'; t.offsetHeight; t.style.animation = ''; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 2200); }
 let closeT = 0;
-/* 底部面板。结构：#modal > .scrim（变暗 + 虚化的背景）+ .sheet（面板：横条、圆角、位移）> .sheet-in（滚动、上下渐隐）。
+/* 底部面板。结构：#modal > .scrim（变暗 + 高斯模糊的背景）+ .sheet（面板：横条、圆角、位移）> .sheet-in（滚动、上下渐隐）。
    面板的位置只用 transform（只在合成层动，不重新排版），由 JS 直接写在面板自己身上：
    位移 = 下拉的距离 + 给键盘让的距离（lift，负数）。不用 CSS 变量，免得每帧整块内容重新算样式 */
 let lift = 0, onClosed = null;
@@ -417,35 +417,52 @@ function sheet(html, onBind, afterClose) {
   dragToClose(m, sh);
   edgeFade(sh.querySelector('.sheet-in'));
 }
-/* 键盘弹出/收起：面板跟着键盘一起平滑上移，全程只动 transform。
+/* 键盘弹出/收起：面板跟着键盘一起平滑上移，只动 transform 和裁切（clip-path），不在动画中途重新排版。
    - 面板放得下：直接整体上移键盘的高度；
-   - 面板太高要变矮（弹出时）：动画中先保持原高度、只上移到顶边该在的位置（底下多出来的一截正好藏在升起的键盘后面），
-     键盘停稳后再把高度上限改小——改的那截在键盘后面，看不出来；
-   - 面板可以变高（收起时）：先改高度上限、用位移把顶边钉在原处（多出来的一截在键盘后面），再动画到终点。
-   这样顶边、底边都不会闪 */
+   - 面板太高要变矮（弹出时）：动画中保持原高度、只上移到顶边该在的位置，同时用带圆角的裁切把底下那截一起往上收，
+     圆角底边全程贴着键盘顶上走；键盘停稳后再真的把高度上限改小、去掉裁切（看起来一模一样）；
+   - 面板可以变高（收起时）：先改高度上限，用位移把顶边钉在原处、用裁切把多出来的一截藏住，再一起动画到终点。
+   键盘开着时一直带着这个裁切（顶上留出阴影的位置），收起后去掉 */
 let kbT = 0;
+const radiusOf = sh => parseFloat(getComputedStyle(sh).borderBottomLeftRadius) || 32;
+const clipAt = (sh, x) => { sh.style.clipPath = `inset(-90px 0 ${Math.max(0, x)}px 0 round ${radiusOf(sh)}px)`; };
 Kit.onKeyboard((h, dur) => {
   const m = $('#modal'), sh = m && !m.hidden && !m.classList.contains('closing') && m.querySelector('.sheet');
   lift = -h; clearTimeout(kbT);
   if (!sh || sh.classList.contains('dragging')) { if (sh) sh.style.maxHeight = sheetMax(h); return; }
   const D = dur || 200, H = sh.offsetHeight, avail = innerHeight * .88 - h;
-  sh.style.transitionDuration = D + 'ms';
+  const done = fn => { kbT = setTimeout(() => { sh.classList.add('snap'); if (fn) fn(); void sh.offsetHeight; sh.classList.remove('snap'); sh.style.transitionDuration = ''; }, D + 20); };
   if (H > avail + 1) {
-    sh.style.transform = `translateY(${-(h - (H - avail))}px)`;
-    kbT = setTimeout(() => { sh.classList.add('snap'); sh.style.maxHeight = sheetMax(h); place(sh, 0); void sh.offsetHeight; sh.classList.remove('snap'); sh.style.transitionDuration = ''; }, D + 20);
+    const d = H - avail;
+    if (!sh.style.clipPath) { sh.classList.add('snap'); clipAt(sh, 0); void sh.offsetHeight; sh.classList.remove('snap'); }
+    sh.style.transitionDuration = D + 'ms';
+    sh.style.transform = `translateY(${-(h - d)}px)`; clipAt(sh, d);
+    done(() => { sh.style.maxHeight = sheetMax(h); place(sh, 0); clipAt(sh, 0); });
     return;
   }
   const top0 = sh.getBoundingClientRect().top;
   sh.classList.add('snap');
   sh.style.maxHeight = sheetMax(h);
   sh.style.transform = 'none';
+  const H1 = sh.offsetHeight;
   sh.style.transform = `translateY(${top0 - sh.getBoundingClientRect().top}px)`;   // 新高度下顶边留在原处
+  clipAt(sh, H1 - H);                                                            // 变高多出来的一截先藏住
   void sh.offsetHeight;
   sh.classList.remove('snap');
-  place(sh, 0);
-  kbT = setTimeout(() => { sh.style.transitionDuration = ''; }, D + 20);
+  sh.style.transitionDuration = D + 'ms';
+  place(sh, 0); clipAt(sh, 0);
+  done(() => { if (!h) sh.style.clipPath = ''; });
 });
-/* 关闭：面板往下滑出、背景同时淡出（虚化跟着一起慢慢消失），动画完再真正关掉（点空白处、下拉、返回键都走这里）。
+/* 背景的模糊程度：k = 1 全模糊（和底部胶囊一样），0 完全清楚。改的是模糊半径和暗度，不是透明度 */
+function scrimAt(scrim, k) {
+  if (!scrim) return;
+  k = Math.max(0, Math.min(1, k));
+  scrim.style.backgroundColor = `rgba(14,16,19,${(.2 * k).toFixed(3)})`;
+  if (document.documentElement.hasAttribute('data-lite')) return;   // 省电模式不模糊
+  const r = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--blur')) || 26;
+  scrim.style.webkitBackdropFilter = scrim.style.backdropFilter = `blur(${(r * k).toFixed(1)}px) saturate(${(1 + .4 * k).toFixed(2)})`;
+}
+/* 关闭：面板往下滑出、背景的模糊同时慢慢退掉，动画完再真正关掉（点空白处、下拉、返回键都走这里）。
    动画期间又打开了别的面板，就不关了 */
 function close() {
   const m = $('#modal'), sh = m.querySelector('.sheet'), scrim = m.querySelector('.scrim');
@@ -457,8 +474,8 @@ function close() {
   sh.classList.remove('dragging', 'spring'); sh.classList.add('leaving');
   const cur = new DOMMatrixReadOnly(getComputedStyle(sh).transform).m42 || 0;   // 现在的位置（可能正在弹回、正在跟着键盘动）
   sh.style.transform = `translateY(${cur + innerHeight - sh.getBoundingClientRect().top + 20}px)`;
-  if (scrim) scrim.style.opacity = '0';
-  clearTimeout(closeT); closeT = setTimeout(finishClose, 280);
+  if (scrim) { scrim.classList.remove('dragging'); scrimAt(scrim, 0); }   // 模糊慢慢退掉
+  clearTimeout(closeT); closeT = setTimeout(finishClose, 300);
 }
 function finishClose() { const m = $('#modal'); clearTimeout(closeT); m.hidden = true; m.innerHTML = ''; m.classList.remove('closing'); const f = onClosed; onClosed = null; if (f) f(); }
 /* 内容可以滚动时，上下边缘渐隐（只在那一边还有内容时）；正在输入时不渐隐，免得把输入框盖住 */
@@ -474,7 +491,7 @@ function dragToClose(m, sh) {
   const grab = sh && sh.querySelector('.grab'); if (!grab) return;
   const scrim = m.querySelector('.scrim');
   let y0 = 0, dy = 0, last = [], active = false, raf = 0, h = 1;
-  const paint = () => { raf = 0; place(sh, dy); if (scrim) scrim.style.opacity = String(Math.max(.1, 1 - dy / h)); };
+  const paint = () => { raf = 0; place(sh, dy); scrimAt(scrim, 1 - dy / h); };   // 背景跟着手指慢慢变清楚
   grab.addEventListener('pointerdown', e => {
     try { grab.setPointerCapture(e.pointerId); } catch (_) { /* 合成事件没有真的指针 */ }
     y0 = e.clientY; dy = 0; last = [[e.timeStamp, e.clientY]]; active = true; h = sh.offsetHeight || 1;
@@ -495,7 +512,7 @@ function dragToClose(m, sh) {
     if ((dy > h / 3 && v > -0.2) || (v > .6 && dy > 40)) { Kit.haptic('light'); close(); }
     else if (dy > 0) {
       sh.classList.add('spring'); void sh.offsetHeight;
-      place(sh, 0); if (scrim) scrim.style.opacity = '1';
+      place(sh, 0); scrimAt(scrim, 1);
       setTimeout(() => sh.classList.remove('spring'), 380);
     }
     dy = 0;
