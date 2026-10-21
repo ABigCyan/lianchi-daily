@@ -154,7 +154,7 @@ window.AI = (() => {
       ctx.goal ? `我现在是${ctx.goal === 'cut' ? '减脂' : '增肌'}期。` : '',
       ctx.target ? `这一餐的目标：碳水约 ${ctx.target.c}g，蛋白质约 ${ctx.target.p}g。` : '',
       ctx.eaten ? `今天之前已记录：碳水 ${ctx.eaten.c}g，蛋白质 ${ctx.eaten.p}g；全天目标碳水 ${ctx.day.c}g、蛋白质 ${ctx.day.p}g。` : '',
-      ctx.note ? `补充说明：${ctx.note}` : '',
+      ctx.note ? `用户的补充说明（以它为准：说了是什么就按什么算，说没吃完、只吃一半、某样没吃就按实际吃进去的量算）：${ctx.note}` : '',
       '请按要求输出 JSON。',
     ].filter(Boolean).join('\n');
   }

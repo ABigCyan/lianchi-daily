@@ -149,26 +149,40 @@ async function pickImage(mealKey, camera) {
   const d = S.day, m = mealOf(d, mealKey || nearestMeal(d).key), inp = $('#photoInput');
   if (camera) inp.setAttribute('capture', 'environment'); else inp.removeAttribute('capture');
   inp.value = '';
-  inp.onchange = async () => { const f = inp.files && inp.files[0]; if (!f) return; try { const data = await AI.compress(f); if (local) runLocal(d, m, data); else runAI(d, m, data); } catch (e) { toast(e.message); } };
+  inp.onchange = async () => { const f = inp.files && inp.files[0]; if (!f) return; try { const data = await AI.compress(f); confirmPhoto(d, m, data, local, mealKey, camera); } catch (e) { toast(e.message); } };
   inp.click();
 }
+/* 拍完先确认：可以补一句说明（是什么、吃了多少、哪些没吃），识别时一起交给模型 */
+const NOTE_CHIPS = ['只吃了一半', '米饭没吃完', '油比较多', '酱汁没吃', '肉是去皮的', '这是两人份'];
+function confirmPhoto(d, m, data, local, mealKey, camera) {
+  sheet(`<h2>${esc(m.name)}</h2><div class="sheet-sub">补充说明能让估算更准（可不填）</div>
+    <img class="bigimg" src="${data}" alt="餐食照片">
+    <textarea class="field-in" id="ph-note" rows="2" maxlength="120" placeholder="比如：鸡胸肉沙拉，酱汁另放没吃；米饭大概吃了一半" style="height:auto;padding:12px;line-height:1.5;resize:none"></textarea>
+    <div class="chips" id="ph-chips">${NOTE_CHIPS.map(t => `<button data-t="${esc(t)}">${esc(t)}</button>`).join('')}</div>
+    <button class="pill ink wide" id="ph-go">开始识别</button><button class="pill glass wide" id="ph-re">${camera ? '重拍' : '换一张'}</button>`, mm => {
+    const ta = mm.querySelector('#ph-note');
+    mm.querySelectorAll('#ph-chips button').forEach(b => b.onclick = () => { const t = b.dataset.t; if (!ta.value.includes(t)) ta.value = (ta.value.trim() ? ta.value.trim().replace(/[，,；;。]$/, '') + '，' : '') + t; b.setAttribute('aria-pressed', 'true'); Kit.haptic('light'); });
+    mm.querySelector('#ph-go').onclick = () => { const note = ta.value.trim(); if (local) runLocal(d, m, data, note); else runAI(d, m, data, null, note); };
+    mm.querySelector('#ph-re').onclick = () => { close(); pickImage(mealKey, camera); };
+  });
+}
 /* 离线拍照：内置图文模型列出“食物 克数”，按表19 算，打开“选食物”让你核对分量再添加 */
-async function runLocal(d, meal, dataUrl) {
+async function runLocal(d, meal, dataUrl, note) {
   sheet(`<h2>正在识别</h2><div class="sheet-sub">内置模型在手机上看照片，一般 10-60 秒</div><img class="bigimg" src="${dataUrl}" alt="餐食照片"><div class="progress"><i style="width:60%;animation:fade 1s infinite alternate"></i></div>`);
   try {
-    const r = await LocalBrain.foodsFromPhoto(dataUrl);
+    const r = await LocalBrain.foodsFromPhoto(dataUrl, null, note);
     if (!r.items.length) { sheet(`<h2>没认出表19 里的食物</h2><p class="t-sub l2" style="text-align:center">${esc(r.raw || '照片看不清')}</p><button class="pill glass wide" id="x">用“选食物”自己选</button>`, mm => mm.querySelector('#x').onclick = () => addSheet(meal.key, 'manual')); return; }
     Kit.haptic('success');
     addSheet(meal.key, 'manual', r.items.map(x => ({ f: x.f, amt: x.amt || FoodDB.defAmt(x.f), ask: '照片估的分量，核对一下' })));
     if (r.unknown.length) toast(`表19 里没有：${r.unknown.join('、')}，可以用“自己填”补上`);
   } catch (err) { sheet(`<h2>识别失败</h2><p class="t-sub l2" style="text-align:center">${esc(err.message || err)}</p><button class="pill glass wide" id="x">好</button>`, mm => mm.querySelector('#x').onclick = close); }
 }
-async function runAI(d, meal, dataUrl, text) {
+async function runAI(d, meal, dataUrl, text, note) {
   if (!S.ai.key || !S.ai.model) { close(); toast('先到“我的 → 大模型接口”设置'); return; }
   sheet(`<h2>正在估算</h2><div class="sheet-sub">大模型${dataUrl ? '正在看照片' : '正在按描述'}估算分量，一般 5-30 秒</div><div class="progress"><i style="width:60%;animation:fade 1s infinite alternate"></i></div>`);
   try {
-    const r = await AI.analyze(S.ai, dataUrl, { meal: meal.name, goal: S.plan.goal, target: { c: meal.c, p: meal.p }, eaten: intakeOf(d), day: targetOf(d), text });
-    r.source = 'ai'; r.model = S.ai.model; Kit.haptic('success');
+    const r = await AI.analyze(S.ai, dataUrl, { meal: meal.name, goal: S.plan.goal, target: { c: meal.c, p: meal.p }, eaten: intakeOf(d), day: targetOf(d), text, note });
+    r.source = 'ai'; r.model = S.ai.model; if (note) r.note = note; Kit.haptic('success');
     showEntry({ ...r, meal: meal.key, mealName: meal.name }, -1, dataUrl);
   } catch (err) { sheet(`<h2>估算失败</h2><p class="t-sub l2" style="text-align:center">${esc(err.message || err)}</p><button class="pill glass wide" id="x">好</button>`, m => m.querySelector('#x').onclick = close); }
 }
@@ -187,7 +201,7 @@ function showEntry(f, idx, dataUrl) {
     const rows = f.items.map((it, i) => `<tr><td>${esc(it.name)}${it.category && it.category !== '其他' ? `<br><span class="t-cap l2">${esc(it.category)}</span>` : ''}</td><td class="n">${it.grams ? `<input class="field-in" style="width:58px;height:34px;text-align:right;padding:0 8px" data-g="${i}" value="${it.grams}" inputmode="decimal">` : '—'}</td><td class="n" data-c="${i}">${it.carbs_g}</td><td class="n" data-p="${i}">${it.protein_g}</td><td class="n" data-k="${i}">${it.kcal}</td></tr>`).join('');
     const tot = () => `<b class="num">${f.total.kcal} kcal</b> <span class="l2">· 碳水 ${f.total.carbs_g}g · 蛋白质 ${f.total.protein_g}g · 脂肪 ${f.total.fat_g}g</span>`;
     sheet(`<h2>${esc(f.mealName || '')}</h2>${f.source === 'ai' ? `<div class="sheet-sub">AI 估算 · 把握度 ${Math.round((f.confidence || 0) * 100)}%</div>` : ''}
-      ${dataUrl ? `<img class="bigimg" src="${dataUrl}" alt="餐食照片">` : ''}
+      ${dataUrl ? `<img class="bigimg" src="${dataUrl}" alt="餐食照片">` : ''}${f.note ? `<div class="t-foot l2" style="text-align:center">你的说明：${esc(f.note)}</div>` : ''}
       <div class="tbl"><table><thead><tr><th>食物</th><th class="n">克</th><th class="n">碳水</th><th class="n">蛋白</th><th class="n">kcal</th></tr></thead><tbody>${rows || '<tr><td colspan="5" class="l2">没有识别到食物</td></tr>'}</tbody></table></div>
       <div class="t-sub" style="text-align:center" id="fs-tot">${tot()}</div>
       ${(f.flags || []).map(x => `<div class="note warn" style="background:var(--fill3)">${esc(x)}</div>`).join('')}${f.advice ? `<div class="note" style="background:var(--fill3)">${esc(f.advice)}</div>` : ''}

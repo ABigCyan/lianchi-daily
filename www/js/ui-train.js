@@ -52,7 +52,7 @@ function exBody(it, idx, n, r, d, future) {
     ${ex.ext ? `<div class="t-foot l2">${src('补充 · ' + ex.kindName, 1)} ${esc(ex.basis)}</div>` : ''}${it.note ? `<div class="t-foot l2">${esc(it.note)}</div>` : ''}${rmLine(it, r, d)}
     ${setsHtml(it, sets, sg, lo, future)}
     ${sg ? '<div class="t-foot l3">灰色数字是按上次算的建议，直接打勾就按建议记下</div>' : ''}
-    <div class="ghost-row">${nAlts(it) ? `<button class="tbtn" data-swap="${it.v}">换动作（${nAlts(it)}）</button>` : ''}<button class="tbtn" data-cfg="${it.v}">调整</button><button class="tbtn" data-big="${it.v}">动作图</button></div>
+    <div class="ghost-row">${nAlts(it) ? `<button class="tbtn" data-swap="${it.v}">换动作（${nAlts(it)}）</button>` : ''}<button class="tbtn" data-cfg="${it.v}">调整</button><button class="tbtn" data-big="${it.v}">动作图</button>${window.TIPS && TIPS[it.v] ? `<button class="tbtn" data-tips="${it.v}">要点</button>` : ''}</div>
     <details class="ex-why"><summary>为什么是这些数</summary><p>${esc(why)}</p></details>`;
 }
 /* 每组的输入：按“重量怎么记”分——杠铃类填每边的片（杆重另算，旁边显示总重）、单只、配重、自重只填次数 */
@@ -212,6 +212,7 @@ function bindSetInputs(root, d, items) {
   });
   root.querySelectorAll('[data-swap]').forEach(b => b.onclick = () => swap(items, items.findIndex(x => x.v === b.dataset.swap)));
   root.querySelectorAll('[data-big]').forEach(b => b.onclick = () => bigImage(items.find(x => x.v === b.dataset.big).ex));
+  root.querySelectorAll('[data-tips]').forEach(b => b.onclick = () => tipsSheet(b.dataset.tips));
   root.querySelectorAll('[data-cfg]').forEach(b => b.onclick = () => cfgSheet(items.find(x => x.v === b.dataset.cfg)));
   root.querySelectorAll('[data-bars]').forEach(b => b.onclick = () => barSheet());
 }
@@ -350,6 +351,23 @@ function library(onPick, have) {
     bindTray();
   });
   draw();
+}
+/* 动作要点：套表原文（关节活动 → 练到的肌肉）、做法和常见错误（应用补充）、B站 UP 主干货（注明出处） */
+function tipsSheet(v) {
+  const t = (window.TIPS || {})[v], ex = window.EX[v]; if (!t || !ex) return;
+  const sec = (title, body, foot) => `<section class="fsec"><h3>${title}</h3><div class="list" style="background:var(--fill3)">${body}</div>${foot ? `<div class="list-footer">${foot}</div>` : ''}</section>`;
+  const line = (a, b) => `<div class="row" style="grid-template-columns:1fr"><span class="row-main"><span class="row-title" style="white-space:normal">${a}</span>${b ? `<span class="row-sub" style="white-space:normal">${b}</span>` : ''}</span></div>`;
+  let h = `<h2>${esc(ex.n)}</h2><div class="sheet-sub">${esc(ex.eq)}${ex.multi ? ' · 多关节' : ' · 单关节'}</div>`;
+  const x = t.excel;
+  if (x && x.joints) h += sec('套表：练到哪里', line(`${x.grip ? `[${esc(x.grip)}] ` : ''}${esc(x.acts.join('、'))}`, x.plain.map(esc).join('；')) + (x.muscles.length ? line('参与的肌肉', esc(x.muscles.join('、'))) : ''), `关节活动见 ${esc(x.src)}（${esc(x.name)}），参与肌肉见表28 A表`);
+  else if (x && x.note) h += sec(x.kind === 'excel28' ? '套表：练到哪里' : '依据', line(esc(x.note)), x.kind === 'excel28' ? '' : `${esc(x.kindName || '应用补充')}，不是套表训练计划里的动作`);
+  if (t.cues) h += sec('怎么做', ['准备', '动作', '注意'].map((k, i) => t.cues[i] ? line(k, esc(t.cues[i])) : '').join(''), '应用补充：参考 free-exercise-db（公有领域）动作说明和 NSCA 动作手册整理');
+  if (t.up && t.up.length) {
+    const ups = [...new Set(t.up.map(u => u.up))];
+    h += sec('UP 主干货', t.up.slice(0, 12).map(u => line(`<span class="tag-exp" style="margin:0 6px 0 0">${esc(u.type)}</span>${esc(u.text)}`, `${esc(u.up)} ·《${esc(u.title)}》 <a href="https://www.bilibili.com/video/${esc(u.bv)}" target="_blank" rel="noopener">看视频</a>`)).join(''),
+      `由 App 从 ${ups.map(esc).join('、')} 的公开视频里整理转述，不是原话；和套表不同时以套表为准。`);
+  }
+  sheet(h);
 }
 function bigImage(ex) {
   sheet(`<h2>${esc(ex.n)}</h2><img class="bigimg" src="${imgUrl(ex, 0)}" alt="起始动作"><img class="bigimg" src="${imgUrl(ex, 1)}" alt="结束动作"><p class="t-foot l2">器械：${esc(ex.eq)}。${ex.ext ? `补充动作（${esc(ex.kindName)}）：${esc(ex.basis)}。` : ''}图片来自 free-exercise-db（公有领域）${ex.approx ? '，这是相近动作的示意' : ''}。</p>`);

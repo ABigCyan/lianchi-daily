@@ -54,6 +54,7 @@ window.__goBack = goBack;
   if (p) { S.profile = Object.assign({}, Me.DEF, p, { parts: Object.assign({}, Me.DEF.parts, p.parts || {}) }); S.plan = E.build(S.profile); }
   if (!p || LS.get('guideNext')) Guide.start();
   render();
+  if (S.profile && !S.guideOn) setTimeout(() => Guide.whatsNew(), 600); // 更新后第一次打开：这一版新功能
   if (S.profile) Updater.autoCheck();
   // 回到 App：过了 4 点换了一天，停在“今天”的页面跟着换到新的一天（哪个页都一样）；在对话页、正在输入时不重画
   let seenDay = today();

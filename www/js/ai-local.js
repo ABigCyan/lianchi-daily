@@ -206,8 +206,8 @@ async function describePhoto(q, image, signal) {
   const r = await LocalAI.chat([{ role: 'system', content: VISION_SYS }, { role: 'user', content: q || '这是什么？' }], { image, signal, maxTokens: 200, temperature: 0.2 });
   return { text: LocalAI.clean(r.text).trim(), stats: r.stats };
 }
-async function foodsFromPhoto(image, signal) {
-  const r = await LocalAI.chat([{ role: 'system', content: FOOD_SYS }, { role: 'user', content: '照片里有哪些食物，各多少克？' }], { image, signal, maxTokens: 140, temperature: 0.1 });
+async function foodsFromPhoto(image, signal, note) {
+  const r = await LocalAI.chat([{ role: 'system', content: FOOD_SYS }, { role: 'user', content: '照片里有哪些食物，各多少克？' + (note ? `\n用户补充说明：${String(note).slice(0, 80)}（按说明调整，比如只吃了一半就减半）` : '') }], { image, signal, maxTokens: 140, temperature: 0.1 });
   const raw = LocalAI.clean(r.text).trim(), items = [], unknown = [];
   if (/没有食物/.test(raw)) return { items, unknown, raw: '照片里没看到食物', stats: r.stats };
   const seen = new Set();

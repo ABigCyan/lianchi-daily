@@ -494,6 +494,7 @@ function viewSettings(kind) {
     <button class="row" id="st-check" style="grid-template-columns:1fr auto"><span class="row-main"><span class="row-title">现在检查更新</span></span><span class="row-val chev">${APP_VERSION}</span></button></div>
     <div class="list-footer">应用内更新会从 GitHub 下载安装包，下载完成后打开系统安装界面，数据保留。</div></section>
     <section class="fsec"><h3>新手引导</h3><div class="list mat"><div class="frow"><label for="st-guide">下次打开时显示新手引导</label><input type="checkbox" class="switch" id="st-guide" ${LS.get('guideNext') ? 'checked' : ''}></div>
+    <button class="row" id="st-whatsnew" style="grid-template-columns:1fr auto"><span class="row-main"><span class="row-title">这一版的新功能</span></span><span class="row-val chev"><span class="rv">${esc(APP_VERSION)}</span></span></button>
     <button class="row" id="st-guide-now" style="grid-template-columns:1fr auto"><span class="row-main"><span class="row-title">现在打开新手引导</span></span><span class="row-val chev"></span></button></div></section>`;
   return h;
 }
@@ -530,6 +531,7 @@ function bindSettings() {
   on('#st-check', 'onclick', () => Updater.check(false));
   on('#st-guide', 'onchange', e => { LS.set('guideNext', e.target.checked); toast(e.target.checked ? '下次打开 App 时会显示引导' : '已关闭'); });
   on('#st-guide-now', 'onclick', () => { S.sub = null; Guide.start(); render(); scrollTo(0, 0); });
+  on('#st-whatsnew', 'onclick', () => { if (!Guide.whatsNew(true)) toast('这一版没有单独的新功能说明'); });
 }
 
 /* ---------- AI 记忆：助手记住的事（可删、可自己加）+ 训练记录（从每天的记录里算，不另存） ---------- */
@@ -537,16 +539,29 @@ function viewMemory() {
   const items = Memory.list().slice().reverse(), log = AITools.trainingLog({ days: 365 }).exercises || [];
   let h = back() + Kit.largeTitle('AI 记忆', '助手回答前会先看这些');
   h += `<section class="list mat"><div class="frow stack"><div class="mem-add"><input class="field-in" id="mem-in" placeholder="例如：左膝受过伤，不做深蹲" enterkeyhint="done"><button class="tbtn" id="mem-ok">记住</button></div></div></section>`;
-  h += `<section class="section"><div class="section-h"><h2>记住的事</h2>${items.length ? '<button class="link red" id="mem-clear">全部清空</button>' : ''}</div><div class="list mat">${items.length ? items.map(x => `<div class="row" style="grid-template-columns:1fr auto"><span class="row-main"><span class="row-title" style="white-space:normal">${esc(x.text)}</span><span class="row-sub">${esc(Memory.TAGS[x.tag] || '其他')} · ${new Date(x.ts).toLocaleDateString('zh-CN')} · ${x.src === 'ai' ? '助手记的' : x.src === 'auto' ? '聊天时自动记的' : '你加的'}</span></span><button class="link red" data-mdel="${x.id}">删除</button></div>`).join('') : '<div class="row" style="grid-template-columns:1fr"><span class="row-sub">还没有。可以在上面写，或者跟助手说“记住……”。</span></div>'}</div>
+  h += `<section class="section"><div class="section-h"><h2>记住的事</h2>${items.length ? '<button class="link red" id="mem-clear">全部清空</button>' : ''}</div><div class="list mat">${items.length ? items.map(x => `<div class="row" style="grid-template-columns:1fr auto"><span class="row-main"><span class="row-title" style="white-space:normal">${esc(x.text)}</span><span class="row-sub">${esc(Memory.TAGS[x.tag] || '其他')} · ${new Date(x.ts).toLocaleDateString('zh-CN')} · ${x.edited ? '你改过' : x.src === 'ai' ? '助手记的' : x.src === 'auto' ? '聊天时自动记的' : '你加的'}</span></span><button class="tbtn" data-medit="${x.id}">编辑</button></div>`).join('') : '<div class="row" style="grid-template-columns:1fr"><span class="row-sub">还没有。可以在上面写，或者跟助手说“记住……”。</span></div>'}</div>
     <div class="list-footer">伤病、器械、作息、饮食习惯这类长期有效的事放在这里；体重、腰围这些每天的数记在“今天”的称重卡片里。</div></section>`;
   h += `<section class="section"><div class="section-h"><h2>训练记录</h2><span class="t-foot l2">${log.length} 个动作</span></div><div class="list mat">${log.length ? log.sort((a, b) => b.last.date.localeCompare(a.last.date)).map(x => `<div class="row" style="grid-template-columns:1fr auto"><span class="row-main"><span class="row-title">${esc(x.name)}</span><span class="row-sub">上次 ${esc(x.last.date.slice(5).replace('-', '/'))}：${esc(x.last.sets)}</span></span><span class="row-val num">最重 ${x.best_kg}kg<br><span class="l3">${x.times} 次</span></span></div>`).join('') : '<div class="row" style="grid-template-columns:1fr"><span class="row-sub">训练时填了重量和次数，这里就会有记录；下次练同一个动作会按上次的数给出建议。</span></div>'}</div></section>`;
   return h;
+}
+/* 编辑一条记忆：改文字、换分类、删除 */
+function memoryEditor(id) {
+  const it = Memory.list().find(x => x.id === id); if (!it) return;
+  let tag = it.tag;
+  sheet(`<h2>编辑记忆</h2><div class="sheet-sub">助手回答前会看到这句话</div>
+    <textarea class="field-in" id="me-t" rows="3" maxlength="120" style="height:auto;padding:12px;line-height:1.5;resize:none">${esc(it.text)}</textarea>
+    <div class="chips" id="me-tag">${Object.entries(Memory.TAGS).map(([k, n]) => `<button data-k="${k}" aria-pressed="${k === tag}">${esc(n)}</button>`).join('')}</div>
+    <button class="pill ink wide" id="me-ok">保存</button><button class="pill glass wide" id="me-del" style="color:var(--warn)">删除这条</button>`, m => {
+    m.querySelectorAll('#me-tag button').forEach(b => b.onclick = () => { tag = b.dataset.k; m.querySelectorAll('#me-tag button').forEach(x => x.setAttribute('aria-pressed', x === b)); Kit.haptic('light'); });
+    m.querySelector('#me-ok').onclick = () => { if (!Memory.update(id, m.querySelector('#me-t').value, tag)) { toast('写一句要记住的事'); return; } close(); Kit.haptic('success'); render(); toast('已保存'); };
+    m.querySelector('#me-del').onclick = () => { Memory.remove(id); close(); Kit.haptic('light'); render(); toast('已删除'); };
+  });
 }
 function bindMemory() {
   $$('[data-back]').forEach(b => b.onclick = () => { S.sub = null; S.subBack = null; render(); scrollTo(0, 0); });
   const add = () => { const v = $('#mem-in').value.trim(); if (v.length < 2) { toast('写一句要记住的事'); return; } Memory.add(v, null, 'user'); Kit.haptic('success'); render(); };
   $('#mem-ok').onclick = add; $('#mem-in').onkeydown = e => { if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); add(); } };
-  $$('[data-mdel]').forEach(b => b.onclick = () => { Memory.remove(b.dataset.mdel); Kit.haptic('light'); render(); });
+  $$('[data-medit]').forEach(b => b.onclick = () => memoryEditor(b.dataset.medit));
   const cl = $('#mem-clear'); if (cl) cl.onclick = () => sheet(`<h2>清空 AI 记忆？</h2><p class="t-sub l2" style="text-align:center">训练记录不受影响。</p><button class="pill wide" style="background:var(--warn);color:#fff" id="mc-ok">清空</button><button class="pill glass wide" id="mc-x">取消</button>`, m => { m.querySelector('#mc-ok').onclick = () => { Memory.clear(); close(); render(); toast('已清空'); }; m.querySelector('#mc-x').onclick = close; });
 }
 const SUB = {

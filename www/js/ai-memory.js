@@ -27,6 +27,15 @@ function guessTag(t) {
   if (/目标|想要|减到|增到|腹肌|马甲线|比赛/.test(t)) return 'goal';
   return 'other';
 }
+// 改一条（用户在“AI 记忆”里编辑）：文字、分类都可以改，改过的算“你改的”
+function update(id, text, tag) {
+  const items = load(), it = items.find(x => x.id === id);
+  if (!it) return null;
+  text = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  if (text.length < 2) return null;
+  it.text = text; if (TAGS[tag]) it.tag = tag; it.ts = Date.now(); it.edited = true;
+  store(items); return it;
+}
 function remove(id) { const items = load(), n = items.length, out = items.filter(x => x.id !== id); store(out); return out.length < n; }
 // 按文字找着删（“忘掉膝盖的事”）
 function forget(text) {
@@ -59,5 +68,5 @@ function auto(text) {
 }
 // 给提示词用：最近的若干条
 function brief(n) { return load().slice(-(n || 12)).map(x => `- [${TAGS[x.tag] || '其他'}] ${x.text}（id ${x.id}）`).join('\n'); }
-return { TAGS, list, add, remove, forget, clear, brief, guessTag, auto };
+return { TAGS, list, add, update, remove, forget, clear, brief, guessTag, auto };
 })();
