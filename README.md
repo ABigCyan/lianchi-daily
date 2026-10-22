@@ -31,7 +31,7 @@
 
 到 [Releases](https://github.com/ABigCyan/lianchi-daily/releases) 下载：
 
-- **安卓**：`lianchi-daily-x.y.z.apk`，在手机上打开安装（需要允许“安装未知来源应用”）。以后的新版本可以直接覆盖安装。
+- **安卓**：`lianchi-daily-<版本号>.apk`，在手机上打开安装（需要允许“安装未知来源应用”）。以后的新版本可以直接覆盖安装。
 
 ## 开发
 
@@ -45,10 +45,12 @@ python3 -m http.server 8766 --directory www   # 浏览器里预览
 npx cap sync android               # 把 www 同步到安卓工程
 ```
 
-发布新版本：改好代码并更新 `package.json` 的 `version` 和 `CHANGELOG.md`，然后
+发布新版本。版本号规则是“年.月.第几版”（两位年份），例如 26.10.1 是 2026 年 10 月的第 1 个版本；每次发布只加最后一位，换月份从 1 重新数，不用 -ai、-plus 这类后缀。
 
 ```bash
-git tag v1.0.1 && git push origin v1.0.1
+bash scripts/bump-version.sh      # 算出下一个版本号，写进 package.json 和 www/js/core.js
+# 在 CHANGELOG.md 和 www/js/ui-guide.js 的 WHATS_NEW 里写这一版的说明，提交后：
+git tag v26.10.1 && git push origin main v26.10.1
 ```
 
 GitHub Actions 会自动编译签名的 APK 并发布到 Releases。签名密钥保存在仓库的 Secrets 里（`ANDROID_KEYSTORE_B64`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`），每次都用同一把密钥签名，所以可以覆盖安装。

@@ -60,15 +60,15 @@ function searchUp({ query, exercise_id }) {
   const T = window.TIPS || {}, M = window.TIPS_UP || {}, ts = terms(query || '');
   const link = x => `https://www.bilibili.com/video/${x.bv}${x.t != null ? '?t=' + x.t : ''}`;
   const pool = [];
-  Object.entries(T).forEach(([id, t]) => (t.up || []).forEach(x => pool.push({ ...x, exercise_id: id })));
+  Object.entries(T).forEach(([id, t]) => t.up && [...t.up.top, ...t.up.more].forEach(x => pool.push({ ...x, type: x.type || '要点', exercise_id: id })));
   (M.general || []).forEach(x => pool.push(x));
   if (!ts.length && !exercise_id) return { error: '请给关键词或 exercise_id' };
   const seen = new Set(), scored = pool.filter(x => !exercise_id || x.exercise_id === exercise_id).map(x => {
-    const t = (x.topic + ' ' + x.text + ' ' + (x.exercise_id && window.EX[x.exercise_id] ? window.EX[x.exercise_id].n : '')).toLowerCase(); let sc = exercise_id ? 1 : 0;
+    const t = ((x.topic || '') + ' ' + x.text + ' ' + (x.exercise_id && window.EX[x.exercise_id] ? window.EX[x.exercise_id].n : '')).toLowerCase(); let sc = exercise_id ? 1 : 0;
     ts.forEach(w => { if (t.includes(w)) sc += w.length; });
     return { x, sc };
   }).filter(o => o.sc > 0 && !seen.has(o.x.text) && seen.add(o.x.text)).sort((a, b) => b.sc - a.sc).slice(0, 8);
-  const demos = exercise_id && T[exercise_id] && T[exercise_id].demos ? T[exercise_id].demos.slice(0, 4).map(d => ({ what: d.what, kind: d.kind, up: d.up, url: `https://www.bilibili.com/video/${d.bv}?t=${d.start}` })) : [];
+  const demos = exercise_id && T[exercise_id] && T[exercise_id].demos ? T[exercise_id].demos.slice(0, 3).map(d => ({ up: d.up, views: d.views.map(w => w.v).join('、'), seconds: d.end - d.start, url: `https://www.bilibili.com/video/${d.bv}?t=${d.start}` })) : [];
   if (!scored.length && !demos.length) return { results: [], note: 'UP 主干货里没有' };
   return { results: scored.map(({ x }) => ({ text: x.text, type: x.type, exercise: x.exercise_id ? window.EX[x.exercise_id].n : undefined, up: x.up, video: x.title, url: link(x) })), demos,
     note: '这是 B站 UP 主视频里整理转述的经验，不是套表原文。引用时写成（UP 主：名字），附视频链接；和套表不同时先说套表、默认按套表。' };
@@ -398,7 +398,7 @@ const RUN = {
       rest_rule: ex.multi ? '多关节动作组间休息 2-3 分钟（表21 C11）' : '单关节动作组间休息 1-1.5 分钟（表21 C11）',
       failure_rule: ex.noFail ? '自由卧推/深蹲/推举这类可能砸伤的动作不追求完全力竭，提前一两个停（表21 C13）' : '无危险动作可以做到力竭（表21 C13）',
       how_to: (window.TIPS && window.TIPS[v] && window.TIPS[v].cues) ? { note: '应用补充（非套表）', setup: window.TIPS[v].cues[0], move: window.TIPS[v].cues[1], caution: window.TIPS[v].cues[2] } : undefined,
-      up_demos: ((window.TIPS && window.TIPS[v] && window.TIPS[v].demos) || []).slice(0, 3).map(d => ({ what: d.what, kind: d.kind, up: d.up, url: `https://www.bilibili.com/video/${d.bv}?t=${d.start}` })),
+      up_demos: ((window.TIPS && window.TIPS[v] && window.TIPS[v].demos) || []).slice(0, 3).map(d => ({ up: d.up, views: d.views.map(w => w.v).join('、'), seconds: d.end - d.start, url: `https://www.bilibili.com/video/${d.bv}?t=${d.start}` })),
       bilibili_search: 'https://search.bilibili.com/all?keyword=' + encodeURIComponent(ex.n + ' 教程') };
   },
   async video_links(a, ctx) {

@@ -46,7 +46,9 @@ async function check(silent) {
 function autoCheck() { const p = prefs(); if (p.auto && Date.now() - p.last > 12 * 3600e3) setTimeout(() => check(true), 2500); }
 function notesHtml(md) {
   const lines = String(md).split('\n').filter(l => l.trim() && !l.startsWith('## ') && !/^第一个版本/.test(l)).slice(0, 8);
-  return lines.map(l => `<div class="t-foot l2" style="padding-left:14px;position:relative">${l.startsWith('- ') ? '<span style="position:absolute;left:0">·</span>' : ''}${esc(l.replace(/^- /, ''))}</div>`).join('');
+  // 去掉 Markdown 的粗体记号；缩进的子条目多缩一级
+  return lines.map(l => { const sub = /^\s+- /.test(l), item = /^\s*- /.test(l), t = l.replace(/^\s*- /, '').replace(/\*\*/g, '');
+    return `<div class="t-foot l2" style="padding-left:${sub ? 28 : 14}px;position:relative">${item ? `<span style="position:absolute;left:${sub ? 14 : 0}px">·</span>` : ''}${esc(t)}</div>`; }).join('');
 }
 function offer(r) {
   const mb = r.apk.size ? (r.apk.size / 1048576).toFixed(1) + ' MB' : '';

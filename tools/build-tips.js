@@ -29,20 +29,25 @@ for (let r = 17; r <= 28; r++) {
 // 训练表里的写法和表28 的名字对齐
 const ALIAS = { 踝跖屈: '踝跖屈', 足跖屈: '踝跖屈' };
 const musclesOf = acts => [...new Set(acts.flatMap(a => MUSCLE[ALIAS[a] || a] || []))];
+// “主要练”：第一个关节活动的肌肉，去掉不属于这个部位的（表28 里肩内收、肩伸也有胸大肌参与，练背时不算主要练到；反过来也一样）
+const mainOf = (acts, group) => musclesOf(acts.slice(0, 1)).filter(m => !(/^背/.test(group) && /胸/.test(m)) && !(/^胸/.test(group) && /背阔|大圆|菱形|斜方/.test(m)));
 
 /* 表21-24：每个肌群从哪一行开始，第 i 个条目就是第 start+i 行 */
 const out = {};
 const take = (sheet, r, ids, groupName) => {
+  if (!['21', '22', '23', '24'].includes(sheet)) return;  // 只认训练计划表；补充分化的行号不是这几张表的
   const c = cells((row(sheet, r) || {}).t);
   const txt = [c.E, c.F].filter(Boolean);
   if (!txt.length) return;
+  // E/F 列必须是关节活动（肩、肘、膝、髋、躯干……），表头或别的内容不算
+  if (!txt.every(t => /^(\[.+?\])?\s*(肩|肘|膝|髋|躯干|骨盆|踝|足)/.test(t.trim()))) return;
   const grip = (txt.join(' ').match(/\[(.+?)\]/) || [])[1] || '';
   const acts = txt.join('mix').replace(/\[.+?\]/g, '').split(/mix|、/).map(s => s.trim()).filter(Boolean)
     .filter(a => !/借用/.test(a) || true).map(a => a.replace(/（借用.*?）/, ''));
   ids.forEach(id => {
-    if (out[id]) return;  // 同一个动作在几张表里都有时，用第一次出现的（表21 优先）
+    if (out[id] || (EX[id] && EX[id].ext)) return;  // 补充动作不在训练计划表里，用它自己写的依据  // 同一个动作在几张表里都有时，用第一次出现的（表21 优先）
     out[id] = { name: c.D || '', grip, joints: txt.map(t => t.replace(/（借用.*?）/, '')).join(' · '), acts,
-      muscles: musclesOf(acts), plain: acts.map(a => PLAIN[a] ? `${a}：${PLAIN[a]}` : '').filter(Boolean), src: `表${sheet} 第${r}行`, group: groupName };
+      muscles: musclesOf(acts), main: mainOf(acts, groupName), plain: acts.map(a => PLAIN[a] ? `${a}：${PLAIN[a]}` : '').filter(Boolean), src: `表${sheet} 第${r}行`, group: groupName };
   });
 };
 for (const sp of Object.values(SPLITS)) {
@@ -67,15 +72,15 @@ for (const id of Object.keys(EX)) {
   const t = {};
   if (out[id]) t.excel = out[id];
   if (cues[id]) t.cues = cues[id];
-  if (up[id] && up[id].up && up[id].up.length) t.up = up[id].up;
+  if (up[id] && up[id].up && (up[id].up.top.length || up[id].up.more.length)) t.up = up[id].up;
   if (up[id] && up[id].demos && up[id].demos.length) t.demos = up[id].demos;
   if (Object.keys(t).length) tips[id] = t;
 }
 const js = `/* 自动生成：node tools/build-tips.js —— 每个动作的要点。
  * excel：套表原文（表21-24 关节活动 → 表28 参与肌肉），带行号；
  * cues：动作做法和常见错误（应用补充，参考 free-exercise-db 公有领域说明和 NSCA 动作手册整理）；
- * up：B站 UP 主视频里的干货（自己的话转述，注明 UP 主、视频和时间点）；
- * demos：UP 主实际演示这个动作的片段（视频号和起止秒数，App 里用 B站 官方外链播放器从那一秒开始放，不转存视频）。 */
+ * up：B站 UP 主视频里的干货，按动作精选（top 最该记住的 ≤3 条、more 补充 ≤5 条；自己的话转述，注明 UP 主、视频和时间点）；
+ * demos：审计过的 UP 主演示片段（视频号、起止秒数、每一小段的机位；App 里用 B站 官方外链播放器从那一秒开始放，不转存视频）。 */
 window.TIPS = ${JSON.stringify(tips)};
 window.TIPS_UP = ${JSON.stringify(read('tips-up-meta.json'))};
 `;
