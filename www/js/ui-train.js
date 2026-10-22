@@ -362,12 +362,34 @@ function tipsSheet(v) {
   if (x && x.joints) h += sec('套表：练到哪里', line(`${x.grip ? `[${esc(x.grip)}] ` : ''}${esc(x.acts.join('、'))}`, x.plain.map(esc).join('；')) + (x.muscles.length ? line('参与的肌肉', esc(x.muscles.join('、'))) : ''), `关节活动见 ${esc(x.src)}（${esc(x.name)}），参与肌肉见表28 A表`);
   else if (x && x.note) h += sec(x.kind === 'excel28' ? '套表：练到哪里' : '依据', line(esc(x.note)), x.kind === 'excel28' ? '' : `${esc(x.kindName || '应用补充')}，不是套表训练计划里的动作`);
   if (t.cues) h += sec('怎么做', ['准备', '动作', '注意'].map((k, i) => t.cues[i] ? line(k, esc(t.cues[i])) : '').join(''), '应用补充：参考 free-exercise-db（公有领域）动作说明和 NSCA 动作手册整理');
+  if (t.demos && t.demos.length) {
+    h += sec('看 UP 主演示', t.demos.map((d, i) => `<button class="row" data-demo="${i}" style="grid-template-columns:auto 1fr auto;width:100%;text-align:left"><span class="tag-exp" style="margin:0">${esc(d.kind)}</span><span class="row-main"><span class="row-title" style="white-space:normal">${esc(d.what)}</span><span class="row-sub">${esc(d.up)} · ${mmss(d.start)} · ${d.end - d.start} 秒${d.view ? ' · ' + esc(d.view) : ''}</span></span><span class="row-val chev"></span></button>`).join(''),
+      '点开用 B站 官方播放器从这一秒开始放（要联网，静音自动播放）。片段由 App 看视频标出，视频本身没有转存。');
+  }
   if (t.up && t.up.length) {
     const ups = [...new Set(t.up.map(u => u.up))];
-    h += sec('UP 主干货', t.up.slice(0, 12).map(u => line(`<span class="tag-exp" style="margin:0 6px 0 0">${esc(u.type)}</span>${esc(u.text)}`, `${esc(u.up)} ·《${esc(u.title)}》 <a href="https://www.bilibili.com/video/${esc(u.bv)}" target="_blank" rel="noopener">看视频</a>`)).join(''),
+    h += sec('UP 主干货', t.up.slice(0, 12).map(u => line(`<span class="tag-exp" style="margin:0 6px 0 0">${esc(u.type)}</span>${esc(u.text)}`, `${esc(u.up)} ·《${esc(u.title)}》 <a href="${biliUrl(u.bv, u.t)}" target="_blank" rel="noopener">看视频${u.t != null ? ' ' + mmss(u.t) : ''}</a>`)).join(''),
       `由 App 从 ${ups.map(esc).join('、')} 的公开视频里整理转述，不是原话；和套表不同时以套表为准。`);
   }
-  sheet(h);
+  sheet(h, m => m.querySelectorAll('[data-demo]').forEach(b => b.onclick = () => demoSheet(ex, t.demos, +b.dataset.demo)));
+}
+const mmss = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+const biliUrl = (bv, t) => `https://www.bilibili.com/video/${encodeURIComponent(bv)}${t != null ? `?t=${t}` : ''}`;
+/* UP 主演示：B站 官方外链播放器，从片段开始的那一秒静音自动播放；下面可以换别的片段 */
+function demoSheet(ex, demos, i) {
+  const src = d => `https://player.bilibili.com/player.html?bvid=${encodeURIComponent(d.bv)}&t=${d.start}&autoplay=1&muted=1&danmaku=0&high_quality=1`;
+  const info = d => `<b>${esc(d.what)}</b><span class="row-sub">${esc(d.up)} ·《${esc(d.title)}》· 看 ${mmss(d.start)}–${mmss(d.end)} 这 ${d.end - d.start} 秒</span>`;
+  sheet(`<h2>${esc(ex.n)}</h2><div class="sheet-sub">UP 主演示 · ${demos.length} 段</div>
+    <div class="demo-frame"><iframe id="dm-f" src="${src(demos[i])}" allow="autoplay; fullscreen; encrypted-media" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>
+    <div id="dm-i" class="demo-info">${info(demos[i])}</div>
+    <div class="demo-btns"><button class="tbtn" id="dm-re">从这段开头再看</button><a class="tbtn" id="dm-open" href="${biliUrl(demos[i].bv, demos[i].start)}" target="_blank" rel="noopener">在 B站 打开</a></div>
+    <div class="list" style="background:var(--fill3);margin-top:8px">${demos.map((d, k) => `<button class="row${k === i ? ' on' : ''}" data-dk="${k}" style="grid-template-columns:auto 1fr;width:100%;text-align:left"><span class="tag-exp" style="margin:0">${esc(d.kind)}</span><span class="row-main"><span class="row-title" style="white-space:normal">${esc(d.what)}</span><span class="row-sub">${esc(d.up)} · ${mmss(d.start)}${d.view ? ' · ' + esc(d.view) : ''}</span></span></button>`).join('')}</div>
+    <p class="t-foot l2">视频来自 ${[...new Set(demos.map(d => d.up))].map(esc).join('、')} 在 B站 的公开投稿，用 B站 官方播放器播放，版权归 UP 主。打不开时检查网络，或点“在 B站 打开”。</p>`, m => {
+    const go = k => { i = k; const d = demos[k]; m.querySelector('#dm-f').src = src(d); m.querySelector('#dm-i').innerHTML = info(d); m.querySelector('#dm-open').href = biliUrl(d.bv, d.start);
+      m.querySelectorAll('[data-dk]').forEach(b => b.classList.toggle('on', +b.dataset.dk === k)); Kit.haptic('light'); };
+    m.querySelectorAll('[data-dk]').forEach(b => b.onclick = () => go(+b.dataset.dk));
+    m.querySelector('#dm-re').onclick = () => go(i);
+  });
 }
 function bigImage(ex) {
   sheet(`<h2>${esc(ex.n)}</h2><img class="bigimg" src="${imgUrl(ex, 0)}" alt="起始动作"><img class="bigimg" src="${imgUrl(ex, 1)}" alt="结束动作"><p class="t-foot l2">器械：${esc(ex.eq)}。${ex.ext ? `补充动作（${esc(ex.kindName)}）：${esc(ex.basis)}。` : ''}图片来自 free-exercise-db（公有领域）${ex.approx ? '，这是相近动作的示意' : ''}。</p>`);

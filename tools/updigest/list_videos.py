@@ -4,7 +4,7 @@
 输出 videos.json（每条：bv、UP 主、标题、时长、播放量）。
 用法：python3 list_videos.py <输出目录>
 """
-import hashlib, http.cookiejar, json, os, re, sys, time, urllib.parse, urllib.request
+import hashlib, html, http.cookiejar, json, os, re, sys, time, urllib.parse, urllib.request
 from functools import reduce
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
@@ -16,7 +16,7 @@ UPS = {  # UP 主 → B站 账号（mid）
 }
 # 讲解、知识类标题里常见的词；以及要排除的生活类内容
 KEEP = re.compile(r'教学|讲解|干货|动作|正确|错误|做错|保姆级|解析|知识|怎么|为什么|如何|技巧|细节|呼吸|发力|要点|新手|小白|入门|原理|科普|答疑|误区|计划|练胸|练背|练肩|练腿|练臀|手臂|腹肌|卧推|深蹲|硬拉|划船|下拉|引体|推举|平举|弯举|臂屈伸|飞鸟|夹胸|卷腹|举腿|臀冲|臀桥|减脂|增肌|饮食|热量|蛋白|私教')
-DROP = re.compile(r'vlog|日常|放纵|吃播|开箱|挑战|比赛|备赛|第[一二三四五六七八九十\d]+天|训练记录|记录一下|旅行|搞笑|整活|直播|抽奖|带货|好物|测评|探店|辣评|健身房打几分', re.I)
+DROP = re.compile(r'vlog|日常|放纵|吃播|开箱|挑战|比赛|备赛|第[一二三四五六七八九十\d]+天|训练记录|记录一下|旅行|搞笑|整活|直播|抽奖|带货|好物|测评|探店|辣评|健身房打几分|沉浸式|合集|约练|轰炸', re.I)
 
 UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36'
 cj = http.cookiejar.CookieJar()
@@ -25,7 +25,11 @@ op.addheaders = [('User-Agent', UA), ('Referer', 'https://www.bilibili.com/')]
 op.open('https://www.bilibili.com/', timeout=20).read()
 
 def get(url):
-    return json.loads(op.open(url, timeout=20).read().decode('utf8', 'ignore'), strict=False)
+    for k in range(4):  # 偶尔超时或被限流，等一会儿再试
+        try: return json.loads(op.open(url, timeout=20).read().decode('utf8', 'ignore'), strict=False)
+        except Exception as e:
+            if k == 3: raise
+            time.sleep(5 * (k + 1))
 
 # WBI 签名（B站 公开网页用的参数签名算法）
 TAB = [46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49, 33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40,
@@ -59,7 +63,7 @@ def by_search(up, mid):
         for v in (d.get('data') or {}).get('result', []) or []:
             if v.get('mid') != mid or v['bvid'] in out: continue
             mm, ss = (v.get('duration') or '0:0').split(':')[-2:]
-            out[v['bvid']] = {'bv': v['bvid'], 'title': re.sub('<.*?>', '', v['title']), 'sec': int(mm) * 60 + int(ss), 'play': v.get('play') or 0}
+            out[v['bvid']] = {'bv': v['bvid'], 'title': html.unescape(re.sub('<.*?>', '', v['title'])), 'sec': int(mm) * 60 + int(ss), 'play': v.get('play') or 0}
         time.sleep(0.8)
     return list(out.values())
 

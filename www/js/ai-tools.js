@@ -55,6 +55,24 @@ function searchRefs({ query }) {
   return { results: scored.map(({ r }) => ({ id: r.id, relation_to_excel: r.rel, excel: r.excel, text: r.t,
     sources: r.refs.map(k => `${K.sources[k].short}：${K.sources[k].cite}`) })), note: '引用时写成（补充：来源简称），和套表有差异时两边都说，默认按套表' };
 }
+/* UP 主干货（B站 好人松松、Gandy、东哥、谭成义 视频里整理转述的，不是套表原文） */
+function searchUp({ query, exercise_id }) {
+  const T = window.TIPS || {}, M = window.TIPS_UP || {}, ts = terms(query || '');
+  const link = x => `https://www.bilibili.com/video/${x.bv}${x.t != null ? '?t=' + x.t : ''}`;
+  const pool = [];
+  Object.entries(T).forEach(([id, t]) => (t.up || []).forEach(x => pool.push({ ...x, exercise_id: id })));
+  (M.general || []).forEach(x => pool.push(x));
+  if (!ts.length && !exercise_id) return { error: '请给关键词或 exercise_id' };
+  const seen = new Set(), scored = pool.filter(x => !exercise_id || x.exercise_id === exercise_id).map(x => {
+    const t = (x.topic + ' ' + x.text + ' ' + (x.exercise_id && window.EX[x.exercise_id] ? window.EX[x.exercise_id].n : '')).toLowerCase(); let sc = exercise_id ? 1 : 0;
+    ts.forEach(w => { if (t.includes(w)) sc += w.length; });
+    return { x, sc };
+  }).filter(o => o.sc > 0 && !seen.has(o.x.text) && seen.add(o.x.text)).sort((a, b) => b.sc - a.sc).slice(0, 8);
+  const demos = exercise_id && T[exercise_id] && T[exercise_id].demos ? T[exercise_id].demos.slice(0, 4).map(d => ({ what: d.what, kind: d.kind, up: d.up, url: `https://www.bilibili.com/video/${d.bv}?t=${d.start}` })) : [];
+  if (!scored.length && !demos.length) return { results: [], note: 'UP 主干货里没有' };
+  return { results: scored.map(({ x }) => ({ text: x.text, type: x.type, exercise: x.exercise_id ? window.EX[x.exercise_id].n : undefined, up: x.up, video: x.title, url: link(x) })), demos,
+    note: '这是 B站 UP 主视频里整理转述的经验，不是套表原文。引用时写成（UP 主：名字），附视频链接；和套表不同时先说套表、默认按套表。' };
+}
 function readRows({ sheet, from_row, to_row }) {
   const s = String(sheet).replace(/[^\d]/g, ''), a = +from_row || 1, b = Math.min(+to_row || a + 10, a + 40);
   const rows = window.KB.rows.filter(r => (r.s === s || (r.o || '').split(',').includes(s)) && r.r >= a && r.r <= b);
@@ -235,6 +253,7 @@ const TOOLS = [
   { name: 'search_excel', description: '在《健身Excel超级套表》原文里搜索（饮食表、减脂/增肌问答、有氧消耗、食物营养率、训练计划、解剖总结）。回答任何方法、原则问题前都要先搜。返回原文和出处。', parameters: { type: 'object', properties: { query: { type: 'string', description: '关键词，空格分开，例如“体重不掉 调整”“蛋白质 鸡蛋”' }, sheet: { type: 'string', description: '可选，只搜某张表，填表号，例如 "17"' } }, required: ['query'] } },
   { name: 'read_excel_rows', description: '读套表某张表的连续几行原文（最多 40 行），用来看问答的完整回答或上下文。', parameters: { type: 'object', properties: { sheet: { type: 'string', description: '表号，例如 "17"' }, from_row: { type: 'integer' }, to_row: { type: 'integer' } }, required: ['sheet', 'from_row', 'to_row'] } },
   { name: 'search_refs', description: '在补充资料（非套表）里搜索：WHO/ACSM/中国指南、立场声明、Meta 分析、NSCA 教材的共识，例如热身、动作速度、老年人、睡眠、每周组数、频率、蛋白质 g/kg。只有套表没写、用户要求对照、或要定制计划时才用；每条结果带和套表的关系（一致/补充/有差异）。', parameters: { type: 'object', properties: { query: { type: 'string', description: '关键词，空格分开' } }, required: ['query'] } },
+  { name: 'search_up_tips', description: '在 B站 UP 主（好人松松、Gandy、东哥、谭成义）的教学视频干货里搜：动作细节、常见错误、发力感、呼吸、饮食和训练经验。每条带 UP 主和视频链接（含时间点）；给 exercise_id 时还返回 UP 主演示这个动作的片段链接。用户问动作怎么做、为什么没感觉、常见错误时可以在套表之后用；不是套表原文。', parameters: { type: 'object', properties: { query: { type: 'string', description: '关键词，空格分开，例如“卧推 肩胛”“下拉 手臂酸”' }, exercise_id: { type: 'string', description: '可选，只看这个动作' } } } },
   { name: 'get_my_plan', description: '读取用户资料和 App 按套表算出的计划：减脂/增肌及理由、热量、碳水蛋白质脂肪、饮食表、每餐分量、训练分化和每天练的肌群（含 group_id、day_index）、警告。', parameters: { type: 'object', properties: {} } },
   { name: 'get_today', description: '读取某一天（默认今天）的安排：是否力训日、时间线、训练动作（含 exercise_id）和训练进度（每个动作做完几组、还剩几组、每组的重量次数）、已吃的碳水蛋白质热量、目标、消耗。', parameters: { type: 'object', properties: { date: { type: 'string', description: 'YYYY-MM-DD，可选' } } } },
   { name: 'get_history', description: '读取最近几天的体重、摄入、消耗、是否力训。', parameters: { type: 'object', properties: { days: { type: 'integer', description: '天数，默认 14，最多 60' } } } },
@@ -276,7 +295,7 @@ const TOOLS = [
   { name: 'set_today_training', description: '换今天练哪一天（day_index 来自 get_my_plan），或者用 group_ids 自选几个肌群。会先让用户确认。', parameters: { type: 'object', properties: { day_index: { type: 'integer' }, group_ids: { type: 'array', items: { type: 'string' } }, reason: { type: 'string' } } } },
 ];
 const WRITE = new Set(['log_food', 'reorder_training', 'set_exercise_params', 'swap_exercise', 'log_body', 'remember', 'forget', 'update_profile', 'edit_training', 'set_today_training', 'edit_timeline', 'set_meal_amounts', 'set_day_training', 'create_custom_split']);
-const STEP_TEXT = { search_foods: a => `查表19：${a.query || ''}`, log_food: () => '准备记饮食', search_refs: a => `查补充资料：${a.query || ''}`, list_groups: () => '查肌群模板', create_custom_split: a => `准备定制分化：${a.name || ''}`, search_excel: a => `查套表：${a.query || ''}${a.sheet ? '（表' + a.sheet + '）' : ''}`, read_excel_rows: a => `读原文：表${a.sheet} 第${a.from_row}-${a.to_row}行`, get_my_plan: () => '看你的计划', get_today: a => `看${a.date || '今天'}的安排`, get_history: a => `看最近 ${a.days || 14} 天记录`, list_exercises: a => `查动作库${a.part ? '：' + a.part : ''}`, update_profile: () => '准备修改计划', edit_training: () => '准备修改训练动作', set_today_training: () => '准备换今天的训练', edit_timeline: a => `准备修改${a.date || '今天'}的安排`, set_meal_amounts: a => `准备调整${a.date || '今天'}各餐分量`, set_day_training: a => `准备设置 ${a.date} 练不练`, exercise_info: a => `查动作：${a.name || a.exercise_id || ''}`, video_links: a => `找视频：${a.topic || ''}`, describe_image: () => '看图片' };
+const STEP_TEXT = { search_foods: a => `查表19：${a.query || ''}`, log_food: () => '准备记饮食', search_refs: a => `查补充资料：${a.query || ''}`, search_up_tips: a => `查 UP 主干货：${a.query || (a.exercise_id && window.EX[a.exercise_id] ? window.EX[a.exercise_id].n : '')}`, list_groups: () => '查肌群模板', create_custom_split: a => `准备定制分化：${a.name || ''}`, search_excel: a => `查套表：${a.query || ''}${a.sheet ? '（表' + a.sheet + '）' : ''}`, read_excel_rows: a => `读原文：表${a.sheet} 第${a.from_row}-${a.to_row}行`, get_my_plan: () => '看你的计划', get_today: a => `看${a.date || '今天'}的安排`, get_history: a => `看最近 ${a.days || 14} 天记录`, list_exercises: a => `查动作库${a.part ? '：' + a.part : ''}`, update_profile: () => '准备修改计划', edit_training: () => '准备修改训练动作', set_today_training: () => '准备换今天的训练', edit_timeline: a => `准备修改${a.date || '今天'}的安排`, set_meal_amounts: a => `准备调整${a.date || '今天'}各餐分量`, set_day_training: a => `准备设置 ${a.date} 练不练`, exercise_info: a => `查动作：${a.name || a.exercise_id || ''}`, video_links: a => `找视频：${a.topic || ''}`, describe_image: () => '看图片' };
 const RUN = {
   async search_excel(a, ctx) { return searchExcel(a); },
   async read_excel_rows(a, ctx) { return readRows(a); },
@@ -285,6 +304,7 @@ const RUN = {
   async get_history(a, ctx) { return history(a); },
   async list_exercises(a, ctx) { return listExercises(a); },
   async search_refs(a, ctx) { return searchRefs(a); },
+  async search_up_tips(a, ctx) { return searchUp(a); },
   async list_groups(a, ctx) { return listGroups(a); },
   async search_foods(a, ctx) {
     const hits = FoodDB.search(a.query || '').slice(0, 8);
@@ -377,6 +397,8 @@ const RUN = {
       alternatives_same_entry: alts.filter(x => x !== v).map(x => window.EX[x] ? window.EX[x].n : x),
       rest_rule: ex.multi ? '多关节动作组间休息 2-3 分钟（表21 C11）' : '单关节动作组间休息 1-1.5 分钟（表21 C11）',
       failure_rule: ex.noFail ? '自由卧推/深蹲/推举这类可能砸伤的动作不追求完全力竭，提前一两个停（表21 C13）' : '无危险动作可以做到力竭（表21 C13）',
+      how_to: (window.TIPS && window.TIPS[v] && window.TIPS[v].cues) ? { note: '应用补充（非套表）', setup: window.TIPS[v].cues[0], move: window.TIPS[v].cues[1], caution: window.TIPS[v].cues[2] } : undefined,
+      up_demos: ((window.TIPS && window.TIPS[v] && window.TIPS[v].demos) || []).slice(0, 3).map(d => ({ what: d.what, kind: d.kind, up: d.up, url: `https://www.bilibili.com/video/${d.bv}?t=${d.start}` })),
       bilibili_search: 'https://search.bilibili.com/all?keyword=' + encodeURIComponent(ex.n + ' 教程') };
   },
   async video_links(a, ctx) {

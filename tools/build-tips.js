@@ -67,16 +67,18 @@ for (const id of Object.keys(EX)) {
   const t = {};
   if (out[id]) t.excel = out[id];
   if (cues[id]) t.cues = cues[id];
-  if (up[id]) t.up = up[id];
+  if (up[id] && up[id].up && up[id].up.length) t.up = up[id].up;
+  if (up[id] && up[id].demos && up[id].demos.length) t.demos = up[id].demos;
   if (Object.keys(t).length) tips[id] = t;
 }
 const js = `/* 自动生成：node tools/build-tips.js —— 每个动作的要点。
  * excel：套表原文（表21-24 关节活动 → 表28 参与肌肉），带行号；
  * cues：动作做法和常见错误（应用补充，参考 free-exercise-db 公有领域说明和 NSCA 动作手册整理）；
- * up：B站 UP 主视频里的干货（自己的话转述，注明 UP 主、视频和时间点）。 */
+ * up：B站 UP 主视频里的干货（自己的话转述，注明 UP 主、视频和时间点）；
+ * demos：UP 主实际演示这个动作的片段（视频号和起止秒数，App 里用 B站 官方外链播放器从那一秒开始放，不转存视频）。 */
 window.TIPS = ${JSON.stringify(tips)};
 window.TIPS_UP = ${JSON.stringify(read('tips-up-meta.json'))};
 `;
 fs.writeFileSync(path.join(JS, 'data-tips.js'), js);
 const n = k => Object.values(tips).filter(t => t[k]).length;
-console.log(`动作 ${Object.keys(EX).length} 个：套表关节活动 ${n('excel')}，动作要点 ${n('cues')}，UP 主干货 ${n('up')}`);
+console.log(`动作 ${Object.keys(EX).length} 个：套表关节活动 ${n('excel')}，动作要点 ${n('cues')}，UP 主干货 ${n('up')}，UP 主演示 ${n('demos')}`);
