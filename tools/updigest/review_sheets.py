@@ -1,24 +1,27 @@
 """
-第 4.5 步（人工复核）：把合并后每个动作的演示片段各截 4 帧，拼成带编号的总览图，人眼看一遍是不是标的那个动作。
-看完把结果记进 tools/demo-review.json：不对的放进 "bad"，看过的都放进 "seen"（例如 "ohp_m|BV1EbtreVE3B|371"）。
-merge.py 只留 seen 里、又不在 bad 里的片段。
+第 4.5 步（人工复核）：把审计通过、还没人工看过的演示片段各截 4 帧，拼成带编号的总览图，人眼看一遍是不是标的那个动作。
+看完用 mark_review.py 记进 tools/demo-review.json（不对的进 bad，这批其余的进 seen）；merge.py 只放 seen 里、又不在 bad 里的片段。
 输出 <目录>/review/sheet_XX.jpg 和 <目录>/review/index.json（编号 → 动作|视频|开始秒）。
-用法：python3 review_sheets.py <目录> <yt-dlp 路径>   （需要 Pillow）
+用法：python3 review_sheets.py <目录> <yt-dlp 路径> [--all]   （默认只出没看过的；--all 全部重出；需要 Pillow）
 """
-import json, os, subprocess, sys
+import json, os, shutil, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 from PIL import Image, ImageDraw, ImageFont
 D, YTDLP = sys.argv[1], sys.argv[2]
 R = os.path.join(D, 'review'); os.makedirs(os.path.join(R, 'frames'), exist_ok=True)
 TOOLS = os.path.join(os.path.dirname(__file__), '..')
-up = json.load(open(os.path.join(TOOLS, 'tips-up.json')))
+sys.path.insert(0, os.path.dirname(__file__))
+from merge import merged_demos, review
 names = json.loads(subprocess.run(['node', '-e', """
 const w={};w.window=w;const fs=require('fs'),vm=require('vm');const c=vm.createContext(w);
 for (const f of ['data-training.js','data-training-ext.js']) vm.runInContext(fs.readFileSync('www/js/'+f,'utf8'),c);
 console.log(JSON.stringify(Object.fromEntries(Object.values(w.EX).map(e=>[e.id,e.n+'（'+e.eq+'）']))));
 """], cwd=os.path.join(TOOLS, '..'), capture_output=True, text=True, check=True).stdout)
-rows = [(ex, d) for ex, v in sorted(up.items()) for d in v.get('demos') or []]
-
+BAD, SEEN = review()
+rows = [(d['ex'], d) for d in sorted(merged_demos(D), key=lambda d: (d['ex'], -d['q'])) if d['key'] not in BAD and ('--all' in sys.argv or d['key'] not in SEEN)]
+if not rows: sys.exit('没有要复核的新片段')
+for f in os.listdir(R):
+    if f.startswith('sheet_'): os.remove(os.path.join(R, f))
 def frames(ex, d):
     key = f"{ex}|{d['bv']}|{d['start']}"; base = os.path.join(R, 'frames', key.replace('|', '_'))
     outs = [f'{base}_{k}.jpg' for k in range(4)]
@@ -44,7 +47,8 @@ for s in range(0, len(res), PER):
     for i, (key, outs) in enumerate(chunk):
         n = s + i + 1; index[n] = key; ex_id, bv, st = key.split('|')
         y = i * 174 + 4
-        dr.text((6, y), f"#{n}  {names.get(ex_id, ex_id)}  · {next(d['up'] for e, d in rows if e == ex_id and d['bv'] == bv and str(d['start']) == st)}", fill='black', font=font)
+        d = next(d for e, d in rows if d['key'] == key)
+        dr.text((6, y), f"#{n}  {names.get(ex_id, ex_id)}  · {d['up']} · {d['start']}-{d['end']}秒 · {'/'.join(v['v'] for v in d['views'])}", fill='black', font=font)
         for k, o in enumerate(outs):
             if os.path.exists(o): img.paste(Image.open(o), (4 + k * 260, y + 26))
     img.save(os.path.join(R, f'sheet_{s // PER + 1:02d}.jpg'), quality=80)

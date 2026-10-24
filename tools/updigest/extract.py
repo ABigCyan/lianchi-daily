@@ -3,7 +3,7 @@
 - 它能看画面但听不到声音，所以每次都给“带时间的文字稿 + 无声视频”；
 - 视频先用 Files API 上传（mm_file://，保存 7 天，file_id 记在 extract/<bv>.fid，重跑不重复上传）；
 - 超过 20 分钟的长课切成 20 分钟一段，每段单独提炼，时间再加回去；
-- 讲动作的视频每秒看 0.5 帧，好人松松的课主要是幻灯片，每 5 秒看 1 帧，省额度；
+- 讲动作的视频每秒看 0.5 帧；ups.json 里标了 slides 的（主要是幻灯片讲课）每 5 秒看 1 帧，省额度；
 - 提示词前半部分（规则 + App 的全部动作目录）每次都一样，放在最前面，命中 MiniMax 的自动缓存；
 - 订阅额度用完（2056 / 2067 / 1008 / 2053）就保存进度退出，下次接着做；被限速（1002、2062、2064、2066、429）就等一会儿再试；
 - 同时跑 5 个视频；提炼完的视频文件就删掉。
@@ -31,6 +31,7 @@ console.log(JSON.stringify(Object.values(w.EX).map(e=>[e.id,e.n,g[e.id]||(e.grou
 """], cwd=ROOT, capture_output=True, text=True, check=True).stdout)
 CATALOG = '\n'.join(f'{i} | {n} | {g} | {eq}' for i, n, g, eq in cat)
 IDS = {c[0] for c in cat}
+UPS = {u['name']: u for u in json.load(open(os.path.join(os.path.dirname(__file__), 'ups.json')))['ups']}
 
 SYSTEM = f"""你是健身内容编辑，替“练好吃对”App 整理 B站 健身 UP 主的教学视频。
 每次给你一段视频的画面（无声）和同一段的文字稿。文字稿是语音识别出来的，每行开头是这句话开始的时间（分:秒，从这一段开头算），可能有错字、口语、重复，按意思理解。
@@ -107,7 +108,7 @@ def one(v):
     bv = v['bv']; full = os.path.join(V, bv + '.mp4')
     lines = [(sec(m.group(1)), m.group(2)) for m in (re.match(r'\[(\d+:\d\d)\] (.*)', l) for l in open(os.path.join(T, bv + '.txt'))) if m]
     dur = float(subprocess.run(['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', full], capture_output=True, text=True).stdout or v['sec'])
-    fps = 0.2 if v['up'] == '好人松松' else 0.5
+    fps = 0.2 if UPS.get(v['up'], {}).get('slides') else 0.5  # 幻灯片讲课每 5 秒看 1 帧，省额度
     items, demos = [], []
     starts = list(range(0, int(dur), PART)) or [0]
     if len(starts) > 1 and dur - starts[-1] < 120: starts.pop()  # 最后不到两分钟的并进前一段

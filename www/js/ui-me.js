@@ -228,7 +228,7 @@ function viewAI() {
     <div class="frow"><label for="ai-key">API Key</label><input id="ai-key" type="password" value="${esc(ai.key)}" autocomplete="off"></div></section>
   <button class="pill glass wide" id="ai-scan">扫描可用模型</button><p class="t-foot l2" id="ai-msg" style="text-align:center"></p>
   <section class="list mat"><div class="frow"><label for="ai-model">模型</label><select id="ai-model">${(ai.models || []).map(m => `<option value="${esc(m.id)}" ${ai.model === m.id ? 'selected' : ''}>${esc(m.id)}${m.vision ? '（图）' : ''}</option>`).join('')}${ai.model && !(ai.models || []).some(m => m.id === ai.model) ? `<option selected>${esc(ai.model)}</option>` : ''}</select></div>
-    <div class="frow"><label for="ai-chat">助手模型</label><select id="ai-chat"><option value="">和上面一样</option>${(ai.models || []).filter(m => !m.vision).map(m => `<option value="${esc(m.id)}" ${ai.chatModel === m.id ? 'selected' : ''}>${esc(m.id)}</option>`).join('')}${ai.chatModel && !(ai.models || []).some(m => m.id === ai.chatModel) ? `<option selected>${esc(ai.chatModel)}</option>` : ''}</select></div>
+    <div class="frow"><label for="ai-chat">助手模型</label><select id="ai-chat"><option value="">和上面一样</option>${(ai.models || []).map(m => `<option value="${esc(m.id)}" ${ai.chatModel === m.id ? 'selected' : ''}>${esc(m.id)}</option>`).join('')}${ai.chatModel && !(ai.models || []).some(m => m.id === ai.chatModel) ? `<option selected>${esc(ai.chatModel)}</option>` : ''}</select></div>
     <div class="frow"><label for="ai-manual">手动模型 ID</label><input id="ai-manual" placeholder="可选" inputmode="text"></div></section>
   <div class="list-footer">带“（图）”的模型能看照片；助手要用支持工具调用的文字模型，扫描时会自动选一个（如 qwen3-max）</div>
   <button class="pill ink wide" id="ai-save">保存</button>

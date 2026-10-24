@@ -1,0 +1,10 @@
+{
+  "_说明": "要整理干货的 B站 UP 主。加新 UP：照着 _模板 复制一条到 ups 里填好，再按 .claude/skills/up-digest/SKILL.md 跑一轮。字段：name 显示名（App 里出处用）；mid B站 账号数字 ID（空间网址 space.bilibili.com/后面那串）；keep_all true=他的投稿都是讲解课，不按标题筛；slides true=主要是幻灯片/白板讲课（看画面时帧率放低省额度，演示片段通常不收）；keywords 额外搜索关键词（空间接口被风控时按“名字 + 关键词”搜）；drop 这位 UP 要额外排除的标题关键词（正则）；note 备注（风格、注意事项）；added 加入日期。",
+  "_模板": { "name": "新UP主名字", "mid": 0, "keep_all": false, "slides": false, "keywords": [], "drop": "", "note": "", "added": "YYYY-MM-DD" },
+  "ups": [
+    { "name": "好人松松", "mid": 2078781964, "keep_all": true, "slides": true, "keywords": [], "drop": "", "note": "《健身Excel超级套表》作者；课以幻灯片讲解为主，夹着别人的素材（外国博主、女生示范、摔杠合集），演示片段要特别仔细看是不是他本人", "added": "2026-10-21" },
+    { "name": "Gandy", "mid": 378067652, "keep_all": false, "slides": false, "keywords": [], "drop": "", "note": "动作教学为主，机位清楚，常有错误示范（要标出来或去掉）", "added": "2026-10-21" },
+    { "name": "东哥", "mid": 1024129080, "keep_all": false, "slides": false, "keywords": [], "drop": "", "note": "账号名“烧毁一切就是美”；有训练记录类视频，画面常有训练单字幕，演示时要看清动作本身", "added": "2026-10-21" },
+    { "name": "谭成义", "mid": 521903482, "keep_all": false, "slides": false, "keywords": ["私教", "跟练"], "drop": "", "note": "私教视角，常是指导学员做，竖屏；学员规范地做也算演示", "added": "2026-10-21" }
+  ]
+}

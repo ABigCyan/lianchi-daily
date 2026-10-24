@@ -3,6 +3,10 @@ import json, os, re, subprocess, sys, threading, time, urllib.request, urllib.er
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 
+def ups():
+    """要整理的 UP 主（tools/updigest/ups.json），按名字索引"""
+    return {u['name']: u for u in json.load(open(os.path.join(os.path.dirname(__file__), 'ups.json')))['ups']}
+
 def load_env(path):
     env = dict(re.findall(r'^\s*([A-Z_]+)\s*=\s*(.*?)\s*$', open(path).read(), re.M))
     if not env.get('MINIMAX_API_KEY'): sys.exit('minimax.env 里还没填 MINIMAX_API_KEY')

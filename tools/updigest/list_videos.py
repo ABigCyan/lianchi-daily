@@ -1,19 +1,19 @@
 """
-第 1 步：列出 UP 主的全部投稿，只留讲动作、讲知识的视频（去掉 vlog、吃播、训练记录、放纵这类）。
-不需要登录。用 B站 空间投稿接口（WBI 签名），失败时退回到“UP 主名 + 关键词”搜索。
-输出 videos.json（每条：bv、UP 主、标题、时长、播放量）。
-用法：python3 list_videos.py <输出目录>
+第 1 步：列出 UP 主的投稿，只留讲动作、讲知识的视频（去掉 vlog、吃播、训练记录、放纵这类）。
+UP 主名单在 ups.json。不需要登录。用 B站 空间投稿接口（WBI 签名），失败时退回到“UP 主名 + 关键词”搜索。
+增量：已有的 videos.json 保留，只把新发现的视频加进去（新视频排在后面），再跑后面几步就只处理新的。
+输出 videos.json（每条：bv、UP 主、标题、时长、播放量、发现日期）。
+用法：python3 list_videos.py <输出目录> [UP 主名字 ...]   （不写名字就刷新全部）
 """
-import hashlib, html, http.cookiejar, json, os, re, sys, time, urllib.parse, urllib.request
+import datetime, hashlib, html, http.cookiejar, json, os, re, sys, time, urllib.parse, urllib.request
 from functools import reduce
 
 OUT = sys.argv[1] if len(sys.argv) > 1 else '.'
-UPS = {  # UP 主 → B站 账号（mid）
-    '好人松松': 2078781964,
-    'Gandy': 378067652,
-    '东哥': 1024129080,
-    '谭成义': 521903482,
-}
+ALL = {u['name']: u for u in json.load(open(os.path.join(os.path.dirname(__file__), 'ups.json')))['ups']}
+ONLY = sys.argv[2:]
+for n in ONLY:
+    if n not in ALL: sys.exit(f'ups.json 里没有“{n}”，先在 ups.json 里加上')
+UPS = {n: u for n, u in ALL.items() if not ONLY or n in ONLY}
 # 讲解、知识类标题里常见的词；以及要排除的生活类内容
 KEEP = re.compile(r'教学|讲解|干货|动作|正确|错误|做错|保姆级|解析|知识|怎么|为什么|如何|技巧|细节|呼吸|发力|要点|新手|小白|入门|原理|科普|答疑|误区|计划|练胸|练背|练肩|练腿|练臀|手臂|腹肌|卧推|深蹲|硬拉|划船|下拉|引体|推举|平举|弯举|臂屈伸|飞鸟|夹胸|卷腹|举腿|臀冲|臀桥|减脂|增肌|饮食|热量|蛋白|私教')
 DROP = re.compile(r'vlog|日常|放纵|吃播|开箱|挑战|比赛|备赛|第[一二三四五六七八九十\d]+天|训练记录|记录一下|旅行|搞笑|整活|直播|抽奖|带货|好物|测评|探店|辣评|健身房打几分|沉浸式|合集|约练|轰炸', re.I)
@@ -56,9 +56,9 @@ def by_space(mid, key):
         if len(vl) < 40 or pn >= 20: return out
         pn += 1; time.sleep(1.2)
 
-def by_search(up, mid):
+def by_search(up, mid, extra=()):
     out = {}
-    for kw in ['', '教学', '讲解', '干货', '动作', '新手', '饮食', '训练', '胸', '背', '肩', '腿', '手臂', '腹', '卧推', '推胸', '夹胸', '飞鸟', '下拉', '引体', '划船', '推举', '侧平举', '弯举', '臂屈伸', '下压', '深蹲', '硬拉', '臀', '卷腹', '举腿', '平板支撑', '减脂', '增肌']:
+    for kw in list(extra) + ['', '教学', '讲解', '干货', '动作', '新手', '饮食', '训练', '胸', '背', '肩', '腿', '手臂', '腹', '卧推', '推胸', '夹胸', '飞鸟', '下拉', '引体', '划船', '推举', '侧平举', '弯举', '臂屈伸', '下压', '深蹲', '硬拉', '臀', '卷腹', '举腿', '平板支撑', '减脂', '增肌']:
         d = get('https://api.bilibili.com/x/web-interface/search/type?search_type=video&keyword=' + urllib.parse.quote(f'{up} {kw}'.strip()))
         for v in (d.get('data') or {}).get('result', []) or []:
             if v.get('mid') != mid or v['bvid'] in out: continue
@@ -67,17 +67,24 @@ def by_search(up, mid):
         time.sleep(0.8)
     return list(out.values())
 
+old = json.load(open(os.path.join(OUT, 'videos.json'))) if os.path.exists(os.path.join(OUT, 'videos.json')) else []
+have = {v['bv'] for v in old}
+today = datetime.date.today().isoformat()
 allv = []
 try: key = mixin_key()
 except Exception as e: key = None; print('拿不到 WBI 密钥，改用搜索：', e)
-for up, mid in UPS.items():
-    try: vids = by_space(mid, key) if key else by_search(up, mid)
+for up, u in UPS.items():
+    mid = u['mid']
+    try: vids = by_space(mid, key) if key else by_search(up, mid, u.get('keywords') or [])
     except Exception as e:
-        print(up, '空间接口失败，改用搜索：', e); vids = by_search(up, mid)
-    keep = [dict(v, up=up, mid=mid) for v in vids if (up == '好人松松' or KEEP.search(v['title'])) and not DROP.search(v['title']) and v['sec'] >= 40]
-    print(f'{up}: 投稿 {len(vids)} 个，留下讲解/知识类 {len(keep)} 个，共 {sum(v["sec"] for v in keep) // 60} 分钟')
-    allv += sorted(keep, key=lambda v: -v['play'])
+        print(up, '空间接口失败，改用搜索：', e); vids = by_search(up, mid, u.get('keywords') or [])
+    drop = re.compile(u['drop']) if u.get('drop') else None
+    keep = [dict(v, up=up, mid=mid, found=today) for v in vids if (u.get('keep_all') or KEEP.search(v['title'])) and not DROP.search(v['title'])
+            and not (drop and drop.search(v['title'])) and v['sec'] >= 40]
+    new = [v for v in keep if v['bv'] not in have]
+    print(f'{up}: 投稿 {len(vids)} 个，讲解/知识类 {len(keep)} 个，其中新的 {len(new)} 个（{sum(v["sec"] for v in new) // 60} 分钟）')
+    allv += sorted(new, key=lambda v: -v['play']); have |= {v['bv'] for v in new}
     time.sleep(1.5)
 os.makedirs(OUT, exist_ok=True)
-json.dump(allv, open(os.path.join(OUT, 'videos.json'), 'w'), ensure_ascii=False, indent=1)
-print('写入', os.path.join(OUT, 'videos.json'), len(allv), '个')
+json.dump(old + allv, open(os.path.join(OUT, 'videos.json'), 'w'), ensure_ascii=False, indent=1)
+print('写入', os.path.join(OUT, 'videos.json'), f'共 {len(old) + len(allv)} 个，这次新加 {len(allv)} 个')

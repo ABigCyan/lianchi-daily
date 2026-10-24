@@ -23,10 +23,14 @@ function srcOf(row) {
   const s = all.includes(mine) ? mine : row.s;
   return `表${s} 第${row.r}行` + (all.length > 1 ? `（表${all.join('、')} 同一内容）` : '');
 }
+const SYN = { 练后: ['力训后', '训练后'], 练前: ['力训前', '训练前'], 训练后: ['力训后'], 训练前: ['力训前'], 撸铁: ['力训'], 力量: ['力训'],
+  休息: ['组间休息'], 热身: ['激活'], 每天: ['天天', '每周'], 掉秤: ['体重'], 平台期: ['体重不掉'], 腹肌: ['腹'] };
 function terms(q) {
   const words = String(q || '').toLowerCase().split(/[\s,，。、？?！!；;：:（）()“”"'/]+/).filter(Boolean);
   const out = new Set(words.filter(w => w.length >= 1));
   words.forEach(w => { if (/[一-鿿]/.test(w) && w.length > 2) for (let i = 0; i < w.length - 1; i++) out.add(w.slice(i, i + 2)); });
+  // 常见说法和套表写法对不上的，补上同义词（套表多写“力训”，用户多说“练”“训练”）
+  [...out].forEach(w => (SYN[w] || []).forEach(x => out.add(x)));
   return [...out];
 }
 function searchExcel({ query, sheet }) {
@@ -72,6 +76,28 @@ function searchUp({ query, exercise_id }) {
   if (!scored.length && !demos.length) return { results: [], note: 'UP 主干货里没有' };
   return { results: scored.map(({ x }) => ({ text: x.text, type: x.type, exercise: x.exercise_id ? window.EX[x.exercise_id].n : undefined, up: x.up, video: x.title, url: link(x) })), demos,
     note: '这是 B站 UP 主视频里整理转述的经验，不是套表原文。引用时写成（UP 主：名字），附视频链接；和套表不同时先说套表、默认按套表。' };
+}
+/* 一次搜遍所有资料：套表、补充资料、UP 主干货、动作库、表19 食物。每类只给最相关的几条，按来源分开，方便判断该引用哪一类 */
+function searchAll({ query }) {
+  const ts = terms(query);
+  if (!ts.length) return { error: '请给关键词' };
+  const score = t => { t = String(t || '').toLowerCase(); let sc = 0; ts.forEach(w => { if (t.includes(w)) sc += w.length >= 3 ? w.length * 2 : w.length; }); return sc; };
+  const top = (arr, n) => arr.filter(x => x.sc > 0).sort((a, b) => b.sc - a.sc).slice(0, n);
+  const excel = searchExcel({ query });
+  const refs = window.KB_EXT ? searchRefs({ query }) : { results: [] };
+  const up = searchUp({ query });
+  const ex = top(Object.values(window.EX).map(e => { const t = (window.TIPS || {})[e.id] || {}, x = t.excel || {};
+    return { e, t, sc: score(`${e.n} ${e.eq} ${e.basis || ''} ${(x.acts || []).join(' ')} ${(x.muscles || []).join(' ')} ${(t.cues || []).join(' ')}`) }; }), 5)
+    .map(({ e, t }) => ({ exercise_id: e.id, name: e.n, equipment: e.eq, source: e.ext ? `补充动作（${e.kindName}）` : '套表', trains: t.excel && t.excel.muscles ? t.excel.muscles.join('、') : (t.excel && t.excel.note) || '',
+      how_to: t.cues, demos: (t.demos || []).length }));
+  const foods = (window.FoodDB ? FoodDB.search(query) : []).slice(0, 3).map(f => ({ name: f.n, src: f.src }));
+  return {
+    excel: (excel.results || []).slice(0, 4).map(r => ({ src: r.src, text: r.text.slice(0, 300) })),
+    refs: (refs.results || []).slice(0, 3).map(r => ({ id: r.id, relation_to_excel: r.relation_to_excel, text: r.text.slice(0, 300), sources: r.sources })),
+    up_tips: (up.results || []).slice(0, 5),
+    exercises: ex, foods,
+    note: '按来源分开：excel 是套表原文（最优先，标表号）；refs 是补充资料（套表没写时用，标“补充：来源”）；up_tips 是 UP 主视频里的经验（标“UP 主：名字”并附链接）；exercises 是动作库（看动作细节用 exercise_info）；foods 是表19（算营养用 search_foods）。需要全文就用对应的专门工具再查。',
+  };
 }
 function readRows({ sheet, from_row, to_row }) {
   const s = String(sheet).replace(/[^\d]/g, ''), a = +from_row || 1, b = Math.min(+to_row || a + 10, a + 40);
@@ -253,6 +279,7 @@ const TOOLS = [
   { name: 'search_excel', description: '在《健身Excel超级套表》原文里搜索（饮食表、减脂/增肌问答、有氧消耗、食物营养率、训练计划、解剖总结）。回答任何方法、原则问题前都要先搜。返回原文和出处。', parameters: { type: 'object', properties: { query: { type: 'string', description: '关键词，空格分开，例如“体重不掉 调整”“蛋白质 鸡蛋”' }, sheet: { type: 'string', description: '可选，只搜某张表，填表号，例如 "17"' } }, required: ['query'] } },
   { name: 'read_excel_rows', description: '读套表某张表的连续几行原文（最多 40 行），用来看问答的完整回答或上下文。', parameters: { type: 'object', properties: { sheet: { type: 'string', description: '表号，例如 "17"' }, from_row: { type: 'integer' }, to_row: { type: 'integer' } }, required: ['sheet', 'from_row', 'to_row'] } },
   { name: 'search_refs', description: '在补充资料（非套表）里搜索：WHO/ACSM/中国指南、立场声明、Meta 分析、NSCA 教材的共识，例如热身、动作速度、老年人、睡眠、每周组数、频率、蛋白质 g/kg。只有套表没写、用户要求对照、或要定制计划时才用；每条结果带和套表的关系（一致/补充/有差异）。', parameters: { type: 'object', properties: { query: { type: 'string', description: '关键词，空格分开' } }, required: ['query'] } },
+  { name: 'search_all', description: '一次搜遍 App 里所有资料：套表原文、补充资料（国际指南、共识）、B站 UP 主经验、动作库（含练什么、怎么做、有没有演示）、表19 食物。不知道答案在哪类资料、或者想快速看全貌时先用它；结果按来源分开，需要全文再用 search_excel / search_refs / search_up_tips / exercise_info / search_foods。', parameters: { type: 'object', properties: { query: { type: 'string', description: '关键词，空格分开，例如“热身”“练后 有氧 多久”“腹肌 每天”' } }, required: ['query'] } },
   { name: 'search_up_tips', description: '在 B站 UP 主（好人松松、Gandy、东哥、谭成义）的教学视频干货里搜：动作细节、常见错误、发力感、呼吸、饮食和训练经验。每条带 UP 主和视频链接（含时间点）；给 exercise_id 时还返回 UP 主演示这个动作的片段链接。用户问动作怎么做、为什么没感觉、常见错误时可以在套表之后用；不是套表原文。', parameters: { type: 'object', properties: { query: { type: 'string', description: '关键词，空格分开，例如“卧推 肩胛”“下拉 手臂酸”' }, exercise_id: { type: 'string', description: '可选，只看这个动作' } } } },
   { name: 'get_my_plan', description: '读取用户资料和 App 按套表算出的计划：减脂/增肌及理由、热量、碳水蛋白质脂肪、饮食表、每餐分量、训练分化和每天练的肌群（含 group_id、day_index）、警告。', parameters: { type: 'object', properties: {} } },
   { name: 'get_today', description: '读取某一天（默认今天）的安排：是否力训日、时间线、训练动作（含 exercise_id）和训练进度（每个动作做完几组、还剩几组、每组的重量次数）、已吃的碳水蛋白质热量、目标、消耗。', parameters: { type: 'object', properties: { date: { type: 'string', description: 'YYYY-MM-DD，可选' } } } },
@@ -295,7 +322,7 @@ const TOOLS = [
   { name: 'set_today_training', description: '换今天练哪一天（day_index 来自 get_my_plan），或者用 group_ids 自选几个肌群。会先让用户确认。', parameters: { type: 'object', properties: { day_index: { type: 'integer' }, group_ids: { type: 'array', items: { type: 'string' } }, reason: { type: 'string' } } } },
 ];
 const WRITE = new Set(['log_food', 'reorder_training', 'set_exercise_params', 'swap_exercise', 'log_body', 'remember', 'forget', 'update_profile', 'edit_training', 'set_today_training', 'edit_timeline', 'set_meal_amounts', 'set_day_training', 'create_custom_split']);
-const STEP_TEXT = { search_foods: a => `查表19：${a.query || ''}`, log_food: () => '准备记饮食', search_refs: a => `查补充资料：${a.query || ''}`, search_up_tips: a => `查 UP 主干货：${a.query || (a.exercise_id && window.EX[a.exercise_id] ? window.EX[a.exercise_id].n : '')}`, list_groups: () => '查肌群模板', create_custom_split: a => `准备定制分化：${a.name || ''}`, search_excel: a => `查套表：${a.query || ''}${a.sheet ? '（表' + a.sheet + '）' : ''}`, read_excel_rows: a => `读原文：表${a.sheet} 第${a.from_row}-${a.to_row}行`, get_my_plan: () => '看你的计划', get_today: a => `看${a.date || '今天'}的安排`, get_history: a => `看最近 ${a.days || 14} 天记录`, list_exercises: a => `查动作库${a.part ? '：' + a.part : ''}`, update_profile: () => '准备修改计划', edit_training: () => '准备修改训练动作', set_today_training: () => '准备换今天的训练', edit_timeline: a => `准备修改${a.date || '今天'}的安排`, set_meal_amounts: a => `准备调整${a.date || '今天'}各餐分量`, set_day_training: a => `准备设置 ${a.date} 练不练`, exercise_info: a => `查动作：${a.name || a.exercise_id || ''}`, video_links: a => `找视频：${a.topic || ''}`, describe_image: () => '看图片' };
+const STEP_TEXT = { search_foods: a => `查表19：${a.query || ''}`, log_food: () => '准备记饮食', search_refs: a => `查补充资料：${a.query || ''}`, search_all: a => `查全部资料：${a.query || ''}`, search_up_tips: a => `查 UP 主干货：${a.query || (a.exercise_id && window.EX[a.exercise_id] ? window.EX[a.exercise_id].n : '')}`, list_groups: () => '查肌群模板', create_custom_split: a => `准备定制分化：${a.name || ''}`, search_excel: a => `查套表：${a.query || ''}${a.sheet ? '（表' + a.sheet + '）' : ''}`, read_excel_rows: a => `读原文：表${a.sheet} 第${a.from_row}-${a.to_row}行`, get_my_plan: () => '看你的计划', get_today: a => `看${a.date || '今天'}的安排`, get_history: a => `看最近 ${a.days || 14} 天记录`, list_exercises: a => `查动作库${a.part ? '：' + a.part : ''}`, update_profile: () => '准备修改计划', edit_training: () => '准备修改训练动作', set_today_training: () => '准备换今天的训练', edit_timeline: a => `准备修改${a.date || '今天'}的安排`, set_meal_amounts: a => `准备调整${a.date || '今天'}各餐分量`, set_day_training: a => `准备设置 ${a.date} 练不练`, exercise_info: a => `查动作：${a.name || a.exercise_id || ''}`, video_links: a => `找视频：${a.topic || ''}`, describe_image: () => '看图片' };
 const RUN = {
   async search_excel(a, ctx) { return searchExcel(a); },
   async read_excel_rows(a, ctx) { return readRows(a); },
@@ -305,6 +332,7 @@ const RUN = {
   async list_exercises(a, ctx) { return listExercises(a); },
   async search_refs(a, ctx) { return searchRefs(a); },
   async search_up_tips(a, ctx) { return searchUp(a); },
+  async search_all(a, ctx) { return searchAll(a); },
   async list_groups(a, ctx) { return listGroups(a); },
   async search_foods(a, ctx) {
     const hits = FoodDB.search(a.query || '').slice(0, 8);

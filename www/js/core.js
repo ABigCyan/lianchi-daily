@@ -167,7 +167,7 @@ function nextDayIdx(d) {
   return 0;
 }
 function roundsBefore(d, pred) { let n = 0; allDays(E.addDays(d, -1)).forEach(x => { const r = peek(x); if (r && r.done && r.done.lift && r.session && pred(r.session)) n++; }); return n; }
-function weekOf(d) { return Math.floor((E.pd(d) - E.pd(S.profile.startDate)) / 864e5 / 7) + 1; }
+function weekOf(d) { return Math.floor((E.pd(d) - E.pd(S.profile.startDate || d)) / 864e5 / 7) + 1; }  // 老备份里可能没有开始日期，当作这周开始
 /* 动作库：套表分化里出现过的动作 → 所属肌群与部位（原表出处）；再加上补充动作（标明依据） */
 const LIB = (() => {
   const partOf = {}; window.PARTS.forEach(pt => pt.groups.forEach(g => partOf[g] = pt));

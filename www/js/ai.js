@@ -9,16 +9,27 @@ window.AI = (() => {
     { id: 'zhipu', name: '智谱 GLM', type: 'openai', base: 'https://open.bigmodel.cn/api/paas/v4' },
     { id: 'doubao', name: '火山方舟（豆包）', type: 'openai', base: 'https://ark.cn-beijing.volces.com/api/v3' },
     { id: 'moonshot', name: '月之暗面 Kimi', type: 'openai', base: 'https://api.moonshot.cn/v1' },
+    // MiniMax：MiniMax-M3.1-Flash 能看图看视频，思考关不掉，用 reasoning_effort=low 提速（H3 是视频生成模型，不是对话模型）
+    { id: 'minimax', name: 'MiniMax', type: 'openai', base: 'https://api.minimax.cn/v1', models: ['MiniMax-M3.1-Flash', 'MiniMax-M3'] },
+    // DeepSeek：deepseek-flash 现在就是 DeepSeek-V4.1-Flash，能看图；默认开着思考，这里关掉（带工具时开着思考要把思考内容回传，否则报 400）
+    { id: 'deepseek', name: 'DeepSeek 深度求索', type: 'openai', base: 'https://api.deepseek.com', models: ['deepseek-flash', 'deepseek-v4-pro'] },
     { id: 'openai', name: 'OpenAI', type: 'openai', base: 'https://api.openai.com/v1' },
     { id: 'anthropic', name: 'Anthropic Claude', type: 'anthropic', base: 'https://api.anthropic.com' },
     { id: 'custom', name: '其他（OpenAI 兼容接口）', type: 'openai', base: '' },
   ];
-  const VISION = /(-vl|vl-|vision|4v|omni|gpt-4o|gpt-4\.1|gpt-5|claude|gemini|glm-4\.?\dv|qvq|doubao-seed|pixtral|llava|internvl)/i;
+  const VISION = /(-vl|vl-|vision|4v|omni|gpt-4o|gpt-4\.1|gpt-5|claude|gemini|glm-4\.?\dv|qvq|doubao-seed|pixtral|llava|internvl|minimax-m3|^deepseek-flash$)/i;
   // 不适合拍照识别的：OCR 专用、实时语音、代码、纯推理
   const NOT_FOR_FOOD = /(ocr|realtime|audio|tts|asr|embedding|code|coder|image-gen|wanx)/i;
   // 自动选择时的优先顺序：靠前的先选
-  const PREFER = [/^qwen3-vl-plus$/i, /^qwen-vl-max(-latest)?$/i, /^qwen3-vl-plus/i, /^qwen-vl-max/i, /^qwen3-vl-flash$/i, /^qwen-vl-plus/i, /^glm-4\.?\dv/i, /^doubao-seed/i, /^gpt-4o$/i, /^gpt-5/i, /-vl-/i, /vl/i, /vision/i];
+  const PREFER = [/^MiniMax-M3\.1-Flash$/i, /^deepseek-flash$/i, /^qwen3-vl-plus$/i, /^qwen-vl-max(-latest)?$/i, /^qwen3-vl-plus/i, /^qwen-vl-max/i, /^qwen3-vl-flash$/i, /^qwen-vl-plus/i, /^glm-4\.?\dv/i, /^doubao-seed/i, /^gpt-4o$/i, /^gpt-5/i, /-vl-/i, /vl/i, /vision/i];
   const trimBase = b => String(b || '').trim().replace(/\/+$/, '');
+  /* 个别服务商要多带的参数（按接口地址认） */
+  function extra(cfg) {
+    const b = String(cfg.base || '');
+    if (/minimax/i.test(b)) return { reasoning_effort: 'low', reasoning_split: true };  // 思考关不掉，压到最低；思考内容单独返回，不混进回答
+    if (/deepseek\.com/i.test(b)) return { thinking: { type: 'disabled' } };
+    return {};
+  }
 
   function anthropicHeaders(key) {
     return {
@@ -68,8 +79,13 @@ window.AI = (() => {
         after = d.last_id;
       }
     } else {
-      const d = await httpJson(`${base}/models`, { headers: { Authorization: 'Bearer ' + cfg.key } });
-      (d.data || d.models || []).forEach(m => ids.push({ id: m.id || m.name, name: m.id || m.name }));
+      // 列不出模型的服务商，用预设里写好的模型
+      const preset = PRESETS.find(p => p.base && trimBase(p.base) === base);
+      try {
+        const d = await httpJson(`${base}/models`, { headers: { Authorization: 'Bearer ' + cfg.key } });
+        (d.data || d.models || []).forEach(m => ids.push({ id: m.id || m.name, name: m.id || m.name }));
+      } catch (e) { if (!(preset && preset.models)) throw e; }
+      if (!ids.length && preset && preset.models) preset.models.forEach(id => ids.push({ id, name: id }));
     }
     ids = ids.filter(m => m.id).map(m => ({ ...m, vision: (cfg.type === 'anthropic' || VISION.test(m.id)) && !NOT_FOR_FOOD.test(m.id) }));
     ids.sort((a, b) => (b.vision - a.vision) || a.id.localeCompare(b.id));
@@ -219,6 +235,7 @@ window.AI = (() => {
         { role: 'user', content: dataUrl ? [{ type: 'image_url', image_url: { url: dataUrl } }, { type: 'text', text }] : text },
       ],
       response_format: { type: 'json_object' },
+      ...extra(cfg),
     };
     const headers = { Authorization: 'Bearer ' + cfg.key, 'content-type': 'application/json' };
     let d;
@@ -262,7 +279,7 @@ window.AI = (() => {
       const d = await httpJson(`${base}/v1/messages`, { method: 'POST', headers: anthropicHeaders(cfg.key), body: JSON.stringify({ model: cfg.model, max_tokens: 2000, system: sys, messages: [{ role: 'user', content: user }] }) });
       return (d.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
     }
-    const d = await httpJson(`${base}/chat/completions`, { method: 'POST', headers: { Authorization: 'Bearer ' + cfg.key, 'content-type': 'application/json' }, body: JSON.stringify({ model: cfg.model, messages: [{ role: 'system', content: sys }, { role: 'user', content: user }] }) });
+    const d = await httpJson(`${base}/chat/completions`, { method: 'POST', headers: { Authorization: 'Bearer ' + cfg.key, 'content-type': 'application/json' }, body: JSON.stringify({ model: cfg.model, ...extra(cfg), messages: [{ role: 'system', content: sys }, { role: 'user', content: user }] }) });
     const m = d.choices && d.choices[0] && d.choices[0].message;
     return String(m && (typeof m.content === 'string' ? m.content : (m.content || []).map(x => x.text || '').join('')) || '').trim();
   }
@@ -270,7 +287,7 @@ window.AI = (() => {
 
   /* ---------- 助手：多轮对话 + 工具调用 ---------- */
   // 助手用文字模型：优先选工具调用稳定的大模型；没有就用拍照识别的那个
-  const CHAT_PREFER = [/^qwen3-max$/i, /^qwen-plus-latest$/i, /^qwen-plus$/i, /^qwen3-max/i, /^qwen-max$/i, /^deepseek-v3\.2$/i, /^deepseek-v3/i, /^glm-5/i, /^glm-4\.[5-9]/i,
+  const CHAT_PREFER = [/^deepseek-flash$/i, /^MiniMax-M3\.1-Flash$/i, /^qwen3-max$/i, /^qwen-plus-latest$/i, /^qwen-plus$/i, /^qwen3-max/i, /^qwen-max$/i, /^deepseek-v3\.2$/i, /^deepseek-v3/i, /^glm-5/i, /^glm-4\.[5-9]/i,
     /^kimi-k2\.\d$/i, /^gpt-5/i, /^gpt-4\.1/i, /^gpt-4o$/i, /^claude-(opus|sonnet)/i, /^doubao-seed/i, /^moonshot-v1/i];
   function defaultChatModel(cfg, models) {
     const ok = (models || []).filter(m => !/(thinking|-r1|ocr|realtime|audio|tts|asr|embedding|coder|code|image|wanx|vl|vision|distill|preview)/i.test(m.id));
@@ -318,7 +335,7 @@ window.AI = (() => {
         tool_calls: blocks.filter(b => b.type === 'tool_use').map(b => ({ id: b.id, type: 'function', function: { name: b.name, arguments: JSON.stringify(b.input || {}) } })),
       };
     }
-    const body = { model, temperature: 0.2, messages: messages.map(m => { const x = { role: m.role, content: m.content == null ? '' : m.content }; if (m.tool_calls && m.tool_calls.length) x.tool_calls = m.tool_calls; if (m.tool_call_id) x.tool_call_id = m.tool_call_id; return x; }) };
+    const body = { model, temperature: 0.2, ...extra(cfg), messages: messages.map(m => { const x = { role: m.role, content: m.content == null ? '' : m.content }; if (m.tool_calls && m.tool_calls.length) x.tool_calls = m.tool_calls; if (m.tool_call_id) x.tool_call_id = m.tool_call_id; return x; }) };
     if (tools && tools.length) body.tools = tools.map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }));
     const post = () => httpJson(`${base}/chat/completions`, { method: 'POST', headers: { Authorization: 'Bearer ' + cfg.key, 'content-type': 'application/json' }, body: JSON.stringify(body), signal }, 120000);
     const d = await post().catch(e => { if (e.status !== 400) throw e; delete body.temperature; return post(); });
@@ -359,7 +376,7 @@ window.AI = (() => {
       return (d.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
     }
     const d = await httpJson(`${base}/chat/completions`, { method: 'POST', headers: { Authorization: 'Bearer ' + cfg.key, 'content-type': 'application/json' }, signal,
-      body: JSON.stringify({ model: cfg.model, messages: [{ role: 'system', content: sys }, { role: 'user', content: [{ type: 'image_url', image_url: { url: dataUrl } }, { type: 'text', text }] }] }) });
+      body: JSON.stringify({ model: cfg.model, ...extra(cfg), messages: [{ role: 'system', content: sys }, { role: 'user', content: [{ type: 'image_url', image_url: { url: dataUrl } }, { type: 'text', text }] }] }) });
     const m = (d.choices && d.choices[0] && d.choices[0].message) || {};
     return String(typeof m.content === 'string' ? m.content : (m.content || []).map(x => x.text || '').join('')).replace(/<think>[\s\S]*?<\/think>/g, '').trim();
   }

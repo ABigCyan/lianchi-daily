@@ -1,10 +1,10 @@
 """
 第 3.6 步：干货精选。提炼时一条干货常常挂了好几个动作（讲“推胸”的挂到所有推胸动作上），一个动作下面能堆一百多条，又乱又不准。
 这里每个动作让 MiniMax 从候选里挑：只留真正讲这个动作、这种器械的；最多 3 条“最该记住的”+ 5 条补充；意思不变地压短到 28 字以内。
-结果存 curate/<动作id>.json，可以接着跑；额度用完自动停。
+结果存 curate/<动作id>.json（记着候选的 hash），可以接着跑；新一轮加了新视频、某个动作的候选变了才重做这个动作；额度用完自动停。
 用法：python3 curate.py <目录（extract/）> <minimax.env>
 """
-import json, os, re, subprocess, sys
+import hashlib, json, os, re, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 sys.path.insert(0, os.path.dirname(__file__))
 from common import Client, Stop, catalog, ROOT
@@ -41,10 +41,14 @@ def items_by_ex():
 
 def one(ex_id, cands):
     out = os.path.join(C, ex_id + '.json')
-    if os.path.exists(out) or cli.stop.is_set(): return
-    e, a = EX[ex_id], acts.get(ex_id, {})
+    if cli.stop.is_set(): return
     # 专门讲这个动作的排前面，最多给 80 条
-    cands = sorted(cands, key=lambda x: x['n'])[:80]
+    cands = sorted(cands, key=lambda x: (x['n'], x['bv'], x['t'] or 0))[:80]
+    h = hashlib.md5('\n'.join(x['bv'] + x['text'] for x in cands).encode()).hexdigest()[:12]
+    if os.path.exists(out):
+        old = json.load(open(out))
+        if old.get('hash', h) == h: return  # 候选没变（新一轮没加进新内容）就不重做；旧结果没记 hash 的当作没变
+    e, a = EX[ex_id], acts.get(ex_id, {})
     lines = '\n'.join(f"{k}. [{x['up']}·{x['type']}] {x['text']}" for k, x in enumerate(cands))
     user = f"动作：{e[1]}（器械：{e[3]}）。套表关节活动：{'、'.join(a.get('acts') or []) or '（套表没写）'}；练到：{'、'.join(a.get('muscles') or [])[:60]}\n候选：\n{lines}"
     try:
@@ -53,7 +57,7 @@ def one(ex_id, cands):
     if not isinstance(r, dict): print(ex_id, '返回的不是合法 JSON', flush=True); return
     pick = lambda arr: [dict(cands[p['i']], text=str(p.get('text') or cands[p['i']]['text'])[:40]) for p in (arr or [])
                         if isinstance(p, dict) and isinstance(p.get('i'), int) and 0 <= p['i'] < len(cands)]
-    res = {'top': pick(r.get('top'))[:3], 'more': pick(r.get('more'))[:5]}
+    res = {'top': pick(r.get('top'))[:3], 'more': pick(r.get('more'))[:5], 'hash': h}
     for lst in res.values():
         for x in lst: x.pop('n', None)
     json.dump(res, open(out, 'w'), ensure_ascii=False, indent=1)

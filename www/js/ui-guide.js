@@ -50,9 +50,10 @@ function view() {
       <section class="list mat"><div class="frow"><label for="g-preset">服务商</label><select id="g-preset">${AI.PRESETS.map(x => `<option value="${x.id}" ${ai.preset === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div>
       <div class="frow"><label for="g-base">接口地址</label><input id="g-base" value="${esc(ai.base)}" inputmode="url" placeholder="https://…/v1"></div>
       <div class="frow"><label for="g-key">API Key</label><input id="g-key" type="password" value="${esc(ai.key)}" autocomplete="off"></div>
-      ${(ai.models || []).length ? `<div class="frow"><label for="g-chat">助手模型</label><select id="g-chat">${ai.models.filter(m => !m.vision).map(m => `<option value="${esc(m.id)}" ${ai.chatModel === m.id ? 'selected' : ''}>${esc(m.id)}</option>`).join('') || '<option value="">和看图模型一样</option>'}</select></div>` : ''}
-      <div class="frow"><label for="g-model">看图模型</label><select id="g-model">${(ai.models || []).map(m => `<option value="${esc(m.id)}" ${ai.model === m.id ? 'selected' : ''}>${esc(m.id)}${m.vision ? '（图）' : ''}</option>`).join('') || '<option value="">先扫描</option>'}</select></div></section>
-      <p class="list-footer" id="g-msg">Key 只保存在这台手机上</p>
+      ${(ai.models || []).length ? `<div class="frow"><label for="g-chat">助手模型</label><select id="g-chat">${ai.models.map(m => `<option value="${esc(m.id)}" ${ai.chatModel === m.id ? 'selected' : ''}>${esc(m.id)}</option>`).join('')}</select></div>` : ''}
+      <div class="frow"><label for="g-model">看图模型</label><select id="g-model">${(ai.models || []).map(m => `<option value="${esc(m.id)}" ${ai.model === m.id ? 'selected' : ''}>${esc(m.id)}${m.vision ? '（图）' : ''}</option>`).join('') || '<option value="">先扫描</option>'}</select></div>
+      <div class="frow"><label for="g-aiplan">让 AI 按我的情况调整计划</label><input type="checkbox" class="switch" id="g-aiplan" ${draft._aiPlan !== false ? 'checked' : ''}></div></section>
+      <p class="list-footer" id="g-msg">Key 只保存在这台手机上。打开上面的开关，设置完后助手会看你的资料和“说说你的情况”，按套表规则检查这套计划，需要改的地方给你确认后再改。</p>
       <div class="guide-actions"><button class="pill glass wide" id="g-scan">扫描可用模型</button><button class="pill ink wide" data-gnext>下一步</button></div>`;
   } else if (step === 5) {
     const l = Look.get();
@@ -95,6 +96,7 @@ function collect() {
     draft.parts = {}; $$('[data-gparts] button').forEach(b => draft.parts[b.dataset.p] = b.getAttribute('aria-pressed') === 'true');
     draft.budget = $('#g-budget').checked; draft.schedMode = 'weekly';
   }
+  if (step === 4 && $('#g-aiplan')) draft._aiPlan = $('#g-aiplan').checked;
   if (step === 4) { const pr = AI.PRESETS.find(x => x.id === v('preset')); ai = { ...ai, preset: pr.id, type: pr.type, base: (v('base') || '').trim(), key: (v('key') || '').trim(), model: v('model') || ai.model, chatModel: v('chat') != null ? v('chat') : ai.chatModel }; }
 }
 function validate() {
@@ -112,9 +114,13 @@ function finish() {
   if (ai.key || ai.model) { S.ai = ai; LS.set('ai', ai); }
   (draft._mem || []).forEach(t => Memory.add(t, null, 'user'));
   LS.set('seenVersion', C.APP_VERSION); // 新装的不用再看“这一版新功能”
+  const aiPlan = draft._aiPlan !== false && !!(ai.key && (ai.chatModel || ai.model));
   LS.set('guideNext', false); S.guideOn = false; draft = null; S.tab = 'today';
   Kit.haptic('success'); render(); scrollTo(0, 0); toast('计划已生成'); Me.scheduleNotifs();
+  // 填了大模型并打开了开关：让助手按用户的情况把计划检查一遍，要改的会弹确认卡
+  if (aiPlan) setTimeout(() => { Assistant.open(); Assistant.ask(AI_PLAN_ASK); }, 700);
 }
+const AI_PLAN_ASK = '我刚设置完。请先看我的资料、计划和你记住的情况（伤病、器械、作息、目标），按套表规则检查这套计划适不适合我：训练日和部位、分化、每次时长、能用的器械、要避开的动作、饮食表和吃饭时间。需要调整的直接调用工具改（会先给我确认），不需要改就告诉我为什么这样安排。最后用三五句话说一下我每天该怎么执行。';
 function skipAll() { LS.set('guideNext', false); S.guideOn = false; draft = null; render(); scrollTo(0, 0); }
 function bind() {
   $$('[data-seg] button').forEach(b => b.onclick = () => { b.parentNode.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); Kit.haptic('light'); });
