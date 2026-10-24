@@ -36,6 +36,9 @@
     bb_ohp: ['站姿杠铃推举', 'Standing_Military_Press', '杠铃', 1, 1, 'variant', '表28 第17行：推举类（肩屈）', ['front']],
     c_fr: ['龙门架前平举', 'Front_Cable_Raise', '龙门架', 0, 0, 'variant', '表28 第17、45行：前平举（肩屈）', ['front']],
     seat_lat: ['坐姿哑铃侧平举', 'Seated_Side_Lateral_Raise', '哑铃 + 平凳', 0, 0, 'variant', '表28 第19、47行：侧平举（肩外展）', ['side']],
+    ext_rot_c: ['龙门架肩外旋', 'External_Rotation_with_Cable', '龙门架', 0, 0, 'other', '肩外旋（冈下肌、小圆肌），套表未涉及；常用作热身和肩部保养，重量要轻', ['cuff']],
+    ext_rot_b: ['弹力带肩外旋', 'External_Rotation_with_Band', '弹力带', 0, 0, 'other', '肩外旋（冈下肌、小圆肌），套表未涉及；常用作热身和肩部保养', ['cuff']],
+    int_rot_c: ['龙门架肩内旋', 'Cable_Internal_Rotation', '龙门架', 0, 0, 'other', '肩内旋（肩胛下肌），套表未涉及；重量要轻', ['cuff']],
     // 胸
     db_fly: ['平板哑铃飞鸟', 'Dumbbell_Flyes', '哑铃 + 平凳', 0, 0, 'variant', '表28 第22、50行：夹胸类（水平内收）', ['mid_chest']],
     inc_fly: ['上斜哑铃飞鸟', 'Incline_Dumbbell_Flyes', '哑铃 + 上斜凳', 0, 0, 'variant', '表28 第17、22行：上胸（肩屈 + 水平内收）', ['up_chest']],
@@ -51,6 +54,7 @@
     c_hammer: ['龙门架绳索锤式弯举', 'Cable_Hammer_Curls_-_Rope_Attachment', '龙门架 + 绳索', 0, 0, 'variant', '表28 第66行：锤式弯举', ['bi', 'forearm']],
     wrist_up: ['坐姿哑铃腕弯举（掌心向上）', 'Seated_Dumbbell_Palms-Up_Wrist_Curl', '哑铃 + 平凳', 0, 0, 'other', '前臂屈肌（腕屈），套表未涉及', ['forearm']],
     wrist_down: ['坐姿哑铃腕弯举（掌心向下）', 'Seated_Dumbbell_Palms-Down_Wrist_Curl', '哑铃 + 平凳', 0, 0, 'other', '前臂伸肌（腕伸），套表未涉及', ['forearm']],
+    wrist_roll: ['千斤卷（卷腕器）', 'Wrist_Roller', '卷腕器', 0, 0, 'other', '前臂屈伸和握力，套表未涉及', ['forearm'], []],
     // 肱三头
     c_ohe: ['龙门架绳索过顶臂屈伸', 'Cable_Rope_Overhead_Triceps_Extension', '龙门架 + 绳索', 0, 0, 'excel28', '表28 第24、67行：各种臂屈伸（肘伸）', ['tri']],
     kickback: ['哑铃俯身臂屈伸', 'Tricep_Dumbbell_Kickback', '哑铃', 0, 0, 'excel28', '表28 第67行：各种臂屈伸', ['tri']],
@@ -58,18 +62,22 @@
     m_tri: ['器械臂屈伸', 'Machine_Triceps_Extension', '臂屈伸器械', 0, 0, 'excel28', '表28 第67行：各种臂屈伸', ['tri']],
     bench_dip: ['凳上反屈伸', 'Bench_Dips', '平凳或椅子', 1, 0, 'excel28', '表28 第67行：各种臂屈伸', ['tri']],
     rg_pd: ['龙门架反握下压', 'Reverse_Grip_Triceps_Pushdown', '龙门架 + 直杆', 0, 0, 'excel28', '表28 第67行：各种臂屈伸', ['tri']],
+    c_tri1: ['龙门架单臂下压', 'Cable_One_Arm_Tricep_Extension', '龙门架', 0, 0, 'excel28', '表28 第67行：各种臂屈伸（肘伸）', ['tri']],
     // 股四头 / 兼练
+    sissy: ['西斯深蹲', 'Weighted_Sissy_Squat', '徒手或负重', 1, 0, 'variant', '表28 第27行：膝伸（股四头肌）；身体后仰、膝盖前移，没有腿屈伸器械时可以替代', ['quad'], []],
     front_squat: ['杠铃前蹲', 'Front_Barbell_Squat', '杠铃 + 深蹲架', 1, 1, 'nsca', 'NSCA 手册：Front Squat', ['quad', 'comp']],
     split_squat: ['哑铃保加利亚分腿蹲', 'Split_Squat_with_Dumbbells', '哑铃 + 平凳', 1, 0, 'nsca', 'NSCA 手册：Bulgarian Squat', ['comp', 'quad']],
     step_up: ['哑铃登阶', 'Dumbbell_Step_Ups', '哑铃 + 跳箱/台阶', 1, 0, 'nsca', 'NSCA 手册：Step-Up', ['comp', 'quad'], ['db']],
     bw_squat: ['徒手深蹲', 'Bodyweight_Squat', '徒手', 1, 0, 'variant', '表28 第27、75行：蹲类（膝伸：股四头肌）', ['quad']],
     // 腘绳
+    sldl: ['直腿硬拉', 'Stiff-Legged_Barbell_Deadlift', '杠铃', 1, 0, 'variant', '表28 第25行：髋伸（臀大肌、腘绳肌）；和表21 D73 罗马尼亚硬拉同类，膝盖几乎伸直，更偏大腿后侧', ['ham']],
     seat_curl: ['坐姿腿弯举', 'Seated_Leg_Curl', '腿弯举器械', 0, 0, 'variant', '表28 第26、74行：腿弯举（膝屈：腘绳肌）', ['ham']],
     stand_curl: ['站姿单腿弯举', 'Standing_Leg_Curl', '腿弯举器械', 0, 0, 'variant', '表28 第26、74行：腿弯举（膝屈）', ['ham']],
     ghr: ['臀腿抬升（GHR）', 'Glute_Ham_Raise', 'GHR 架', 1, 0, 'nsca', 'NSCA 手册：Glute Ham Raise', ['ham'], ['machine']],
     sl_rdl: ['单腿罗马尼亚硬拉', 'Kettlebell_One-Legged_Deadlift', '壶铃或哑铃', 1, 0, 'nsca', 'NSCA 手册：Single-Leg Kettlebell Romanian Deadlift', ['ham'], ['kb|db']],
     ball_curl: ['瑜伽球臀桥腿弯举', 'Ball_Leg_Curl', '瑜伽球', 1, 0, 'nsca', 'NSCA 手册：Stability Ball Bridge to Curl', ['ham'], ['ball']],
     // 臀
+    add_m: ['器械髋内收', 'Thigh_Adductor', '髋内收器械', 0, 0, 'variant', '和器械髋外展相对：髋内收（大腿内侧内收肌群），套表未单列', ['adduct'], ['machine']],
     c_kick: ['龙门架绳索后踢', 'One-Legged_Cable_Kickback', '龙门架', 0, 0, 'excel28', '表28 第25行：龙门架绳索后踢（髋伸：臀大肌、腘绳肌）', ['glute']],
     bb_bridge: ['杠铃臀桥', 'Barbell_Glute_Bridge', '杠铃', 0, 0, 'variant', '表28 第73行：臀冲类（髋伸）', ['glute']],
     sl_bridge: ['单腿臀桥', 'Single_Leg_Glute_Bridge', '徒手', 0, 0, 'variant', '表28 第73行：臀冲类（髋伸）', ['glute']],
@@ -123,8 +131,8 @@
     shoulder: ['dip', 'dip_tri', 'bench_dip', 'upr_bb', 'db_upr', 'band_upr', 'ohp_m', 'ohp_db', 'ohp_sm', 'band_ohp', 'bb_ohp', 'arnold', 'pullover', 'decl_bb', 'decl_sm', 'bench_bb'],
     elbow: ['bb_skull', 'db_lye', 'dip_tri', 'bench_dip', 'cg_bb', 'cg_sm', 'db_ohe', 'band_ohe', 'c_ohe'],
     wrist: ['pushup', 'pushup_hand', 'pushup_feet', 'cg_pushup', 'pushup_w', 'bb_curl', 'rev_curl', 'front_squat', 'wrist_up', 'wrist_down', 'ab_roller'],
-    lowback: ['squat', 'front_squat', 'dl', 'rdl', 'bb_row', 'tbar_row', 'db_dl', 'band_dl', 'back_ext', 'bb_ohp', 'sl_rdl', 'kb_swing', 'ab_roller', 'hang_raise'],
-    knee: ['squat', 'front_squat', 'sm_squat', 'hack', 'lunge', 'db_lunge', 'split_squat', 'step_up', 'leg_ext', 'goblet', 'bw_squat', 'ghr'],
+    lowback: ['squat', 'front_squat', 'dl', 'rdl', 'sldl', 'bb_row', 'tbar_row', 'db_dl', 'band_dl', 'back_ext', 'bb_ohp', 'sl_rdl', 'kb_swing', 'ab_roller', 'hang_raise'],
+    knee: ['squat', 'front_squat', 'sm_squat', 'hack', 'sissy', 'lunge', 'db_lunge', 'split_squat', 'step_up', 'leg_ext', 'goblet', 'bw_squat', 'ghr'],
   };
 
   const EX = window.EX;
@@ -132,7 +140,7 @@
   Object.values(EX).forEach(ex => { ex.need = needOf(ex.eq); ex.kind = 'excel'; });
   const extIds = [];
   for (const [k, [n, img, eq, multi, noFail, kind, basis, groups, need, timed]] of Object.entries(raw)) {
-    EX[k] = { id: k, n, img, eq, multi: !!multi, noFail: !!noFail, approx: k === 'kb_swing', ext: true, kind, kindName: KIND[kind], basis, groups,
+    EX[k] = { id: k, n, img, eq, multi: !!multi, noFail: !!noFail, approx: ['kb_swing', 'c_tri1'].includes(k), ext: true, kind, kindName: KIND[kind], basis, groups,
       need: need || needOf(eq), timed: !!timed };
     window.ENTRY[k] = [k];
     extIds.push(k);
@@ -144,7 +152,7 @@
   extIds.forEach(k => EX[k].groups.forEach(g => (EXT_ALTS[g] = EXT_ALTS[g] || []).push(k)));
 
   /* 套表没有单列的部位：放进对应的大部位，便于“想练的部位”筛选 */
-  const NEW_GROUPS = { trap: ['back', '斜方肌'], lowback: ['back', '下背'], forearm: ['arm', '前臂'], calf: ['legs', '小腿'], core: ['abs', '核心稳定'] };
+  const NEW_GROUPS = { trap: ['back', '斜方肌'], lowback: ['back', '下背'], cuff: ['shoulder', '肩袖'], forearm: ['arm', '前臂'], adduct: ['legs', '内收肌'], calf: ['legs', '小腿'], core: ['abs', '核心稳定'] };
   Object.entries(NEW_GROUPS).forEach(([gid, [part]]) => { const pt = window.PARTS.find(p => p.id === part); if (pt && !pt.groups.includes(gid)) pt.groups.push(gid); });
 
   /* 能不能做：器械齐不齐、有没有要避开的关节 */

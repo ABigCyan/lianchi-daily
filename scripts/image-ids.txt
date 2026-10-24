@@ -139,3 +139,11 @@ Standing_Leg_Curl
 Standing_Military_Press
 Straight-Arm_Dumbbell_Pullover
 Tricep_Dumbbell_Kickback
+Cable_Internal_Rotation
+Cable_One_Arm_Tricep_Extension
+External_Rotation_with_Band
+External_Rotation_with_Cable
+Stiff-Legged_Barbell_Deadlift
+Thigh_Adductor
+Weighted_Sissy_Squat
+Wrist_Roller
