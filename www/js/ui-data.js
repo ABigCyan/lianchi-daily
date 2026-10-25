@@ -230,7 +230,8 @@ function bindData() {
     ab.disabled = true; ab.innerHTML = `${I.sparkles}分析中…`;
     try {
       aiText = await AI.analyzeWeek(S.ai, { 目标: S.plan.goal === 'cut' ? '减脂' : '增肌', 天数: an.L.length, ...an.sum, 最近体重: weights().slice(-14).map(x => ({ 日期: x.d, 体重kg: x.w })), 每日: rows.filter(r => r.logged).map(r => ({ 日期: r.d, 摄入: r.in, 消耗: r.out, 碳水: r.c, 蛋白质: r.p })) });
-      Kit.haptic('success'); render();
+      Kit.haptic('success');
+      if (S.tab === 'data' && !S.chatOn && !S.guideOn && !S.sub) render();   // 等结果期间去了别的页（比如在和助手打字）就不重画，回到数据页时再显示
     } catch (e) { toast(e.message); ab.disabled = false; ab.innerHTML = `${I.sparkles}AI 分析`; }
   };
 }

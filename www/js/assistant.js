@@ -95,26 +95,44 @@ const SUGGEST = ['我今天该吃多少碳水和蛋白质？出处在哪？', '�
 function view() {
   const cfg = S.ai, loc = LocalBrain.useLocal(), model = loc ? `内置 ${LocalAI.current().name}（离线）` : (cfg.chatModel || cfg.model);
   let h = `<div class="chat-top"><button class="back" data-cback>${I.left}返回</button><div class="chat-title"><b>助手</b><span>${model ? esc(model) : '未设置模型'}</span></div><button class="gbtn" data-cclear aria-label="清空对话">${I.trash || '清空'}</button></div>`;
-  h += '<div class="chat-list" id="chat-list">';
-  if (!st.view.length) h += `<div class="chat-empty"><div class="guide-mark" style="width:52px;height:52px;border-radius:16px">${I.sparkles}</div><p class="t-sub l2">以《健身Excel超级套表》为准回答，每条都标出处；套表没写的再查补充资料（国际指南和研究共识），会标明“补充”。也可以让我按你的情况改计划、定制分化，改之前会先问你。</p><div class="chips">${SUGGEST.map(q => `<button class="sugg" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div></div>`;
-  h += st.view.map(itemHtml).join('');
-  if (st.busy) h += '<div class="typing"><i></i><i></i><i></i></div>';
-  h += '</div>';
-  h += `<div class="composer">${st.img ? `<div class="attach"><img src="${st.img.thumb}" alt="待发送的图片"><button class="attach-x" data-unimg aria-label="去掉图片">×</button></div>` : ''}<div class="composer-in glass">
+  h += `<div class="chat-list" id="chat-list">${listHtml()}</div>`;
+  h += `<div class="composer">${attachHtml()}<div class="composer-in glass">
     <button class="cbtn" id="chat-img" aria-label="发图片" ${!model ? 'disabled' : ''}>${I.camera}</button><input type="file" id="chat-file" accept="image/*" hidden>
     <textarea id="chat-in" rows="1" placeholder="${model ? (st.busy ? '可以直接发新问题打断' : '问问套表，或让我改计划') : '先在“我的 → 大模型接口”里设置'}" ${!model ? 'disabled' : ''}>${esc(st.draft)}</textarea>
     <button class="send ${st.busy ? 'stop' : ''}" id="chat-send" aria-label="${st.busy ? '停止' : '发送'}" ${!model ? 'disabled' : ''}>${st.busy ? '<i class="sq"></i>' : I.up}</button></div></div>`;
   return `<div class="chat">${h}</div>`;
 }
+function listHtml() {
+  let h = '';
+  if (!st.view.length) h += `<div class="chat-empty"><div class="guide-mark" style="width:52px;height:52px;border-radius:16px">${I.sparkles}</div><p class="t-sub l2">以《健身Excel超级套表》为准回答，每条都标出处；套表没写的再查补充资料（国际指南和研究共识），会标明“补充”。也可以让我按你的情况改计划、定制分化，改之前会先问你。</p><div class="chips">${SUGGEST.map(q => `<button class="sugg" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div></div>`;
+  h += st.view.map(itemHtml).join('');
+  if (st.busy) h += '<div class="typing"><i></i><i></i><i></i></div>';
+  return h;
+}
+const attachHtml = () => st.img ? `<div class="attach"><img src="${st.img.thumb}" alt="待发送的图片"><button class="attach-x" data-unimg aria-label="去掉图片">×</button></div>` : '';
+/* 回答过程中每一步都会重画：只换消息列表、图片和发送按钮，输入框不动。
+   整页重画会把正在输入的框删掉再建一个，安卓上键盘会收起又弹出（页面抽一下），正在拼的中文也会被打断 */
 function draw() {
   const list = $('#chat-list');
   if (!list) return;
-  const had = document.activeElement && document.activeElement.id === 'chat-in';
-  const app = $('#app'); app.innerHTML = view(); bind();
-  if (had && $('#chat-in')) $('#chat-in').focus();
+  list.innerHTML = listHtml();
+  const comp = $('.composer'), old = comp.querySelector('.attach');
+  if (old) old.remove();
+  if (st.img) comp.insertAdjacentHTML('afterbegin', attachHtml());
+  syncSend();
+  const inp = $('#chat-in');
+  if (inp && !inp.disabled) inp.placeholder = st.busy ? '可以直接发新问题打断' : '问问套表，或让我改计划';
+  bindList();
   requestAnimationFrame(() => { const l = $('#chat-list'); if (l) l.scrollTop = l.scrollHeight; });
 }
+// 发送按钮：忙的时候输入框空着就是“停止”，有字就是“发送并打断”
+function syncSend() {
+  const send = $('#chat-send'), inp = $('#chat-in'); if (!send) return;
+  const idle = !st.busy || (inp && inp.value.trim()) || st.img;
+  send.classList.toggle('stop', !idle); send.innerHTML = idle ? I.up : '<i class="sq"></i>'; send.setAttribute('aria-label', idle ? '发送' : '停止');
+}
 function setDraft(v) { st.draft = v; LS.set('chatDraft', v || null); }
+function clearInput() { setDraft(''); const i = $('#chat-in'); if (i) { i.value = ''; i.style.height = 'auto'; } }
 /* 忙/闲：回答期间开原生前台服务保活（切到别的 App、锁屏也能答完），顶部的助手按钮显示“正在回答”；
    答完时人不在对话页就提示一下，App 在后台就发通知 */
 let busyP = null;
@@ -144,7 +162,7 @@ async function ask(q) {
   if (st.busy) { stop(); await new Promise(r => setTimeout(r, 60)); }
   if (LocalBrain.useLocal()) return askLocal(q, img);
   if (!cfg.key || !(cfg.chatModel || cfg.model)) { toast('先在“我的 → 大模型接口”里设置'); return; }
-  setDraft(''); st.img = null;
+  clearInput(); st.img = null;
   const ctl = st.ctl = new AbortController();
   setBusy(true); st.view.push({ k: 'user', t: q, img: img ? img.thumb : null }); persist();   // 先存下问题：万一 App 被系统关掉，回来还能看到问过什么
   if (!st.msgs.length || st.msgs[0].role !== 'system') st.msgs.unshift({ role: 'system', content: '' });
@@ -175,7 +193,7 @@ async function ask(q) {
 }
 async function askLocal(q, img) {
   const d = today(), ctl = st.ctl = new AbortController();
-  setDraft(''); st.img = null; setBusy(true);
+  clearInput(); st.img = null; setBusy(true);
   st.view.push({ k: 'user', t: q, img: img ? img.thumb : null }); persist(); draw();
   const live = { k: 'bot', t: '', live: true };
   let raw = '', raf = 0;
@@ -294,12 +312,7 @@ async function pickImage(file) {
     st.img = { data, thumb }; draw();
   } catch (e) { toast(e.message || '图片读不出来'); }
 }
-function bind() {
-  $('[data-cback]').onclick = () => { S.chatOn = false; render(); scrollTo(0, 0); };
-  $('[data-cclear]').onclick = () => { stop(); st.view = []; st.msgs = []; persist(); draw(); };
-  const ib = $('#chat-img'), fi = $('#chat-file');
-  if (ib) ib.onclick = () => fi.click();
-  if (fi) fi.onchange = () => { const f = fi.files[0]; if (f) pickImage(f); };
+function bindList() {
   const ux = $('[data-unimg]'); if (ux) ux.onclick = () => { st.img = null; draw(); };
   $$('[data-q]').forEach(b => b.onclick = () => ask(b.dataset.q));
   $$('[data-cf]').forEach(b => b.onclick = () => {
@@ -308,15 +321,23 @@ function bind() {
     v.state = ok === '1' ? 'ok' : 'no'; Kit.haptic(ok === '1' ? 'success' : 'light');
     const res = st.pending[id]; delete st.pending[id]; if (res) res(ok === '1'); draw();
   });
+}
+function bind() {
+  $('[data-cback]').onclick = () => { S.chatOn = false; render(); scrollTo(0, 0); };
+  $('[data-cclear]').onclick = () => { stop(); st.view = []; st.msgs = []; persist(); draw(); };
+  const ib = $('#chat-img'), fi = $('#chat-file');
+  if (ib) ib.onclick = () => fi.click();
+  if (fi) fi.onchange = () => { const f = fi.files[0]; fi.value = ''; if (f) pickImage(f); };   // 选框不再随重画重建：清空，下次选同一张图也能触发
+  bindList();
   const inp = $('#chat-in'), send = $('#chat-send');
   if (inp) {
     const fit = () => { inp.style.height = 'auto'; inp.style.height = Math.min(inp.scrollHeight, 140) + 'px'; };
-    inp.oninput = () => { fit(); setDraft(inp.value); if (send) { const idle = !st.busy || inp.value.trim(); send.classList.toggle('stop', !idle); send.innerHTML = idle ? I.up : '<i class="sq"></i>'; } };
+    inp.oninput = () => { fit(); setDraft(inp.value); syncSend(); };
     fit();
     inp.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); ask(inp.value); } };
   }
-  // 忙的时候：输入框空着就是“停止”，有字就是“发送并打断”
   if (send) send.onclick = () => { if (st.busy && !inp.value.trim() && !st.img) { stop(); return; } ask(inp.value); };
+  syncSend();
   requestAnimationFrame(() => { const l = $('#chat-list'); if (l) l.scrollTop = l.scrollHeight; });
 }
 function open() { S.chatOn = true; render(); AITools.loadKB().catch(() => {}); }

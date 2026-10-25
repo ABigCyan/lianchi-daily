@@ -338,7 +338,7 @@ function bindAI() {
   const collect = () => { const pr = AI.PRESETS.find(x => x.id === $('#ai-preset').value); return { ...S.ai, preset: pr.id, type: pr.type, base: $('#ai-base').value.trim(), key: $('#ai-key').value.trim() }; };
   $('#ai-scan').onclick = async () => {
     const cfg = collect(); $('#ai-msg').textContent = '扫描中…';
-    try { const models = await AI.listModels(cfg); S.ai = { ...cfg, models, model: S.ai.model && models.some(m => m.id === S.ai.model) ? S.ai.model : AI.defaultModel(cfg, models), chatModel: S.ai.chatModel && models.some(m => m.id === S.ai.chatModel) ? S.ai.chatModel : AI.defaultChatModel(cfg, models) }; LS.set('ai', S.ai); Kit.haptic('success'); render(); toast(`找到 ${models.length} 个模型，已选 ${S.ai.model}`); }
+    try { const models = await AI.listModels(cfg); S.ai = { ...cfg, models, model: S.ai.model && models.some(m => m.id === S.ai.model) ? S.ai.model : AI.defaultModel(cfg, models), chatModel: S.ai.chatModel && models.some(m => m.id === S.ai.chatModel) ? S.ai.chatModel : AI.defaultChatModel(cfg, models) }; LS.set('ai', S.ai); Kit.haptic('success'); if (S.sub === 'ai' && !S.chatOn) { const man = $('#ai-manual').value; render(); if ($('#ai-manual')) $('#ai-manual').value = man; } toast(`找到 ${models.length} 个模型，已选 ${S.ai.model}`); }
     catch (e) { $('#ai-msg').textContent = e.message; }
   };
   $('#ai-save').onclick = () => { const cfg = collect(); const man = $('#ai-manual').value.trim(); S.ai = { ...cfg, model: man || ($('#ai-model') || {}).value || S.ai.model, chatModel: ($('#ai-chat') || {}).value || '' }; LS.set('ai', S.ai); Kit.haptic('success'); toast('已保存'); S.sub = null; render(); };
