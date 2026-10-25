@@ -24,7 +24,7 @@ function srcOf(row) {
   return `表${s} 第${row.r}行` + (all.length > 1 ? `（表${all.join('、')} 同一内容）` : '');
 }
 const SYN = { 练后: ['力训后', '训练后'], 练前: ['力训前', '训练前'], 训练后: ['力训后'], 训练前: ['力训前'], 撸铁: ['力训'], 力量: ['力训'],
-  休息: ['组间休息'], 热身: ['激活'], 每天: ['天天', '每周'], 掉秤: ['体重'], 平台期: ['体重不掉'], 腹肌: ['腹'] };
+  休息: ['组间休息'], 每天: ['天天'], 掉秤: ['体重'], 平台期: ['体重不掉'], 腹肌: ['腹部', '卷腹'] };
 function terms(q) {
   const words = String(q || '').toLowerCase().split(/[\s,，。、？?！!；;：:（）()“”"'/]+/).filter(Boolean);
   const out = new Set(words.filter(w => w.length >= 1));
@@ -87,7 +87,7 @@ function searchAll({ query }) {
   const refs = window.KB_EXT ? searchRefs({ query }) : { results: [] };
   const up = searchUp({ query });
   const ex = top(Object.values(window.EX).map(e => { const t = (window.TIPS || {})[e.id] || {}, x = t.excel || {};
-    return { e, t, sc: score(`${e.n} ${e.eq} ${e.basis || ''} ${(x.acts || []).join(' ')} ${(x.muscles || []).join(' ')} ${(t.cues || []).join(' ')}`) }; }), 5)
+    return { e, t, sc: score(`${e.n} ${e.eq} ${(LIB[e.id] || {}).group || ''} ${e.basis || ''} ${(x.acts || []).join(' ')} ${(x.muscles || []).join(' ')} ${(t.cues || []).join(' ')}`) }; }), 5)
     .map(({ e, t }) => ({ exercise_id: e.id, name: e.n, equipment: e.eq, source: e.ext ? `补充动作（${e.kindName}）` : '套表', trains: t.excel && t.excel.muscles ? t.excel.muscles.join('、') : (t.excel && t.excel.note) || '',
       how_to: t.cues, demos: (t.demos || []).length }));
   const foods = (window.FoodDB ? FoodDB.search(query) : []).slice(0, 3).map(f => ({ name: f.n, src: f.src }));

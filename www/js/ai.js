@@ -10,7 +10,7 @@ window.AI = (() => {
     { id: 'doubao', name: '火山方舟（豆包）', type: 'openai', base: 'https://ark.cn-beijing.volces.com/api/v3' },
     { id: 'moonshot', name: '月之暗面 Kimi', type: 'openai', base: 'https://api.moonshot.cn/v1' },
     // MiniMax：MiniMax-M3.1-Flash 能看图看视频，思考关不掉，用 reasoning_effort=low 提速（H3 是视频生成模型，不是对话模型）
-    { id: 'minimax', name: 'MiniMax', type: 'openai', base: 'https://api.minimax.cn/v1', models: ['MiniMax-M3.1-Flash', 'MiniMax-M3'] },
+    { id: 'minimax', name: 'MiniMax', type: 'openai', base: 'https://api.minimax.cn/v1', models: ['MiniMax-M3.1-Flash', 'MiniMax-M3'] },  // M3、M3.1-Flash 都是原生多模态
     // DeepSeek：deepseek-flash 现在就是 DeepSeek-V4.1-Flash，能看图；默认开着思考，这里关掉（带工具时开着思考要把思考内容回传，否则报 400）
     { id: 'deepseek', name: 'DeepSeek 深度求索', type: 'openai', base: 'https://api.deepseek.com', models: ['deepseek-flash', 'deepseek-v4-pro'] },
     { id: 'openai', name: 'OpenAI', type: 'openai', base: 'https://api.openai.com/v1' },
@@ -84,7 +84,7 @@ window.AI = (() => {
       try {
         const d = await httpJson(`${base}/models`, { headers: { Authorization: 'Bearer ' + cfg.key } });
         (d.data || d.models || []).forEach(m => ids.push({ id: m.id || m.name, name: m.id || m.name }));
-      } catch (e) { if (!(preset && preset.models)) throw e; }
+      } catch (e) { if (e.status === 401 || e.status === 403 || !(preset && preset.models)) throw e; }  // Key 错了照样报错，只有列不出模型时才用预设
       if (!ids.length && preset && preset.models) preset.models.forEach(id => ids.push({ id, name: id }));
     }
     ids = ids.filter(m => m.id).map(m => ({ ...m, vision: (cfg.type === 'anthropic' || VISION.test(m.id)) && !NOT_FOR_FOOD.test(m.id) }));
@@ -242,7 +242,7 @@ window.AI = (() => {
     try { d = await httpJson(`${base}/chat/completions`, { method: 'POST', headers, body: JSON.stringify(body) }); }
     catch (e) {
       if (e.status !== 400) throw e;
-      delete body.response_format;
+      delete body.response_format; Object.keys(extra(cfg)).forEach(k => delete body[k]);
       d = await httpJson(`${base}/chat/completions`, { method: 'POST', headers, body: JSON.stringify(body) });
     }
     const msg = d.choices && d.choices[0] && d.choices[0].message;
@@ -338,7 +338,7 @@ window.AI = (() => {
     const body = { model, temperature: 0.2, ...extra(cfg), messages: messages.map(m => { const x = { role: m.role, content: m.content == null ? '' : m.content }; if (m.tool_calls && m.tool_calls.length) x.tool_calls = m.tool_calls; if (m.tool_call_id) x.tool_call_id = m.tool_call_id; return x; }) };
     if (tools && tools.length) body.tools = tools.map(t => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } }));
     const post = () => httpJson(`${base}/chat/completions`, { method: 'POST', headers: { Authorization: 'Bearer ' + cfg.key, 'content-type': 'application/json' }, body: JSON.stringify(body), signal }, 120000);
-    const d = await post().catch(e => { if (e.status !== 400) throw e; delete body.temperature; return post(); });
+    const d = await post().catch(e => { if (e.status !== 400) throw e; delete body.temperature; Object.keys(extra(cfg)).forEach(k => delete body[k]); return post(); });
     const m = (d.choices && d.choices[0] && d.choices[0].message) || {};
     const content = typeof m.content === 'string' ? m.content : (m.content || []).map(x => x.text || '').join('');
     const calls = (m.tool_calls || []).map((tc, i) => ({ id: tc.id || 'call_' + Date.now() + '_' + i, type: 'function', function: { name: tc.function.name, arguments: typeof tc.function.arguments === 'string' ? tc.function.arguments : JSON.stringify(tc.function.arguments || {}) } }));

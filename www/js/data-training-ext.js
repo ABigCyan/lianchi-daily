@@ -54,7 +54,7 @@
     c_hammer: ['龙门架绳索锤式弯举', 'Cable_Hammer_Curls_-_Rope_Attachment', '龙门架 + 绳索', 0, 0, 'variant', '表28 第66行：锤式弯举', ['bi', 'forearm']],
     wrist_up: ['坐姿哑铃腕弯举（掌心向上）', 'Seated_Dumbbell_Palms-Up_Wrist_Curl', '哑铃 + 平凳', 0, 0, 'other', '前臂屈肌（腕屈），套表未涉及', ['forearm']],
     wrist_down: ['坐姿哑铃腕弯举（掌心向下）', 'Seated_Dumbbell_Palms-Down_Wrist_Curl', '哑铃 + 平凳', 0, 0, 'other', '前臂伸肌（腕伸），套表未涉及', ['forearm']],
-    wrist_roll: ['千斤卷（卷腕器）', 'Wrist_Roller', '卷腕器', 0, 0, 'other', '前臂屈伸和握力，套表未涉及', ['forearm'], []],
+    wrist_roll: ['千斤卷（卷腕器）', 'Wrist_Roller', '卷腕器', 0, 0, 'other', '前臂屈伸和握力，套表未涉及', ['forearm'], ['machine']],
     // 肱三头
     c_ohe: ['龙门架绳索过顶臂屈伸', 'Cable_Rope_Overhead_Triceps_Extension', '龙门架 + 绳索', 0, 0, 'excel28', '表28 第24、67行：各种臂屈伸（肘伸）', ['tri']],
     kickback: ['哑铃俯身臂屈伸', 'Tricep_Dumbbell_Kickback', '哑铃', 0, 0, 'excel28', '表28 第67行：各种臂屈伸', ['tri']],

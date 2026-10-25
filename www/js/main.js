@@ -51,7 +51,12 @@ if (AppPlugin && window.Capacitor && Capacitor.isNativePlatform && Capacitor.isN
 window.__goBack = goBack;
 (function boot() {
   const p = LS.get('profile');
-  if (p) { S.profile = Object.assign({}, Me.DEF, p, { parts: Object.assign({}, Me.DEF.parts, p.parts || {}) }); S.plan = E.build(S.profile); }
+  if (p) {
+    S.profile = Object.assign({}, Me.DEF, p, { parts: Object.assign({}, Me.DEF.parts, p.parts || {}) });
+    // 很老的备份里没有开始日期：补成今天，训练轮换、数据页都要用
+    if (!S.profile.startDate) { S.profile.startDate = today(); LS.set('profile', S.profile); }
+    S.plan = E.build(S.profile);
+  }
   if (!p || LS.get('guideNext')) Guide.start();
   render();
   if (S.profile && !S.guideOn) setTimeout(() => Guide.whatsNew(), 600); // 更新后第一次打开：这一版新功能

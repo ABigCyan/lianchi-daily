@@ -50,7 +50,7 @@ function view() {
       <section class="list mat"><div class="frow"><label for="g-preset">服务商</label><select id="g-preset">${AI.PRESETS.map(x => `<option value="${x.id}" ${ai.preset === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div>
       <div class="frow"><label for="g-base">接口地址</label><input id="g-base" value="${esc(ai.base)}" inputmode="url" placeholder="https://…/v1"></div>
       <div class="frow"><label for="g-key">API Key</label><input id="g-key" type="password" value="${esc(ai.key)}" autocomplete="off"></div>
-      ${(ai.models || []).length ? `<div class="frow"><label for="g-chat">助手模型</label><select id="g-chat">${ai.models.map(m => `<option value="${esc(m.id)}" ${ai.chatModel === m.id ? 'selected' : ''}>${esc(m.id)}</option>`).join('')}</select></div>` : ''}
+      ${(ai.models || []).length ? `<div class="frow"><label for="g-chat">助手模型</label><select id="g-chat"><option value="">和看图模型一样</option>${ai.models.map(m => `<option value="${esc(m.id)}" ${ai.chatModel === m.id ? 'selected' : ''}>${esc(m.id)}</option>`).join('')}</select></div>` : ''}
       <div class="frow"><label for="g-model">看图模型</label><select id="g-model">${(ai.models || []).map(m => `<option value="${esc(m.id)}" ${ai.model === m.id ? 'selected' : ''}>${esc(m.id)}${m.vision ? '（图）' : ''}</option>`).join('') || '<option value="">先扫描</option>'}</select></div>
       <div class="frow"><label for="g-aiplan">让 AI 按我的情况调整计划</label><input type="checkbox" class="switch" id="g-aiplan" ${draft._aiPlan !== false ? 'checked' : ''}></div></section>
       <p class="list-footer" id="g-msg">Key 只保存在这台手机上。打开上面的开关，设置完后助手会看你的资料和“说说你的情况”，按套表规则检查这套计划，需要改的地方给你确认后再改。</p>
@@ -126,7 +126,7 @@ function bind() {
   $$('[data-seg] button').forEach(b => b.onclick = () => { b.parentNode.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', x === b)); Kit.haptic('light'); });
   $$('[data-gdays] button,[data-gparts] button').forEach(b => b.onclick = () => { b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') !== 'true'); Kit.haptic('light'); });
   const back = $('[data-gback]'); if (back) back.onclick = () => { collect(); go(step - 1); };
-  const skip = $('[data-gskip]'); if (skip) skip.onclick = () => { if (step >= 3) { collect(); go(step + 1); } else skipAll(); };
+  const skip = $('[data-gskip]'); if (skip) skip.onclick = () => { if (step === 4) { draft._aiPlan = false; go(step + 1); } else if (step >= 3) { collect(); go(step + 1); } else skipAll(); };  // 跳过大模型这一步：不保存填了一半的 Key，也不让 AI 调整计划
   const next = $('[data-gnext]'); if (next) next.onclick = () => { if (step > 0) collect(); if (step > 0 && !validate()) return; go(step + 1); };
   const imp = $('#g-import'); if (imp) imp.onclick = () => $('#g-file').click();
   const file = $('#g-file'); if (file) file.onchange = () => { const f = file.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => Me.doImport(String(rd.result), true); rd.readAsText(f); };
@@ -153,6 +153,11 @@ function bind() {
 }
 /* 这一版新功能：更新后第一次打开时弹一次，“我的 → 更新与引导”里可以再看 */
 const WHATS_NEW = {
+  '26.10.2': [
+    ['助手一次查遍所有资料', '套表、补充资料、UP 主经验、动作库、食物一起搜，回答更全，也都标出处。'],
+    ['新增 MiniMax 和 DeepSeek', '“我的 → 大模型接口”里可以直接选，两家的新模型都能看图。'],
+    ['动作库新增 8 个动作', '直腿硬拉、西斯深蹲、肩外旋/内旋、千斤卷、器械髋内收、龙门架单臂下压。'],
+  ],
   '26.10.1': [
     ['动作要点更简洁', '点开一个动作，只有三块：练什么、要点（三句做法 + 两条 UP 主提醒）、看动作（三段演示），其余收在“更多”。'],
     ['演示全部重新审过', '只留 UP 主本人在真实器械上做、并且确认就是这个动作的片段；同一段里的正面、侧面打成标签。'],
